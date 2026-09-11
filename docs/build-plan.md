@@ -28,9 +28,25 @@ building it are folded in below and listed in `docs/status.md`.
 7. **Drop-in URL compatibility** with the commercial server most fleets are leaving (§4.1), so
    an existing fleet switches by changing DNS.
 
+### Feed-type priority
+
+Decided 2026-09-11, highest first. When time or scope has to give, a lower type never delays a
+higher one.
+
+1. **Assets**: directories of files served by plain `GET`.
+2. **PowerShell**: NuGet v2 and v3 for every PowerShell client, with a PowerShell Gallery proxy.
+3. **.NET**: NuGet v3 for nuget.exe and the dotnet CLI, with a nuget.org proxy and authenticated
+   upstreams (for example GitHub Packages with a service token), so build machines without
+   internet access or personal tokens can restore. Most of it falls out of the v3 surface and the
+   proxy phase; it stays on the list as long as it stays cheap.
+
+Later, on demand: Chocolatey, then npm and PyPI, which are separate protocols.
+
 ### Non-goals (for now)
 
-- Docker/OCI registry, npm, PyPI, Maven. Chocolatey is NuGet v2 and may come free later.
+- Docker/OCI registry and Maven.
+- npm and PyPI while the three feed types above are unfinished. Chocolatey is NuGet v2 and may
+  come almost free after phase 2.
 - WebDAV on asset directories.
 - A catalog resource (v3 `Catalog/3.0.0`) or repository signing.
 - High availability of the database itself. That is the database's job.
