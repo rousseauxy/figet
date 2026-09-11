@@ -525,6 +525,13 @@ Acceptance: the two named connector tests (§7.2) plus all phase 1–2 scenarios
 
 §4.4 in full, Range requests, UI upload and browse, remote-URL pinning.
 
+Real asset directories hold installers well over 100 MB (a surveyed production directory holds
+eleven files, the largest 118 MB, about 1 GiB in total). So `MaxAssetSizeMB` defaults to 1024,
+uploads stream to a temporary file instead of being buffered in memory, and the asset `PUT` raises
+the per-request body limit through `IHttpMaxRequestBodySizeFeature` exactly as `PackageUpload`
+already does; otherwise Kestrel's 30 MB default rejects the upload before the handler sees it.
+Downloads must stream too, and honour `Range` so a resumed `win_get_url` works.
+
 Acceptance: `curl`, `Invoke-WebRequest`, and Ansible `win_get_url` fetch by path; `PUT` with a
 token stores; listing JSON matches `docs/protocol-assets.md`.
 
