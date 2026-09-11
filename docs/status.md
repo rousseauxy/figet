@@ -158,8 +158,13 @@ HTTPS.
   snippets for the dotnet CLI and PSResourceGet only, hard-coded rather than per-feed templates,
   and there is no download link and no `Install-Module` snippet for the Windows PowerShell 5.1
   fleet. All of that is phase 4 in the build plan.
-- **The container image** was not built locally (no Docker on the development machine); CI builds it and
-  starts it as UID 1000123456 in group 0 on every push.
+- **The container image** is not built on the development machine (no Docker there); CI builds it and
+  starts it as UID 1000123456 in group 0 on every push. Since 2026-09-12 it also runs outside CI, on a
+  Linux server, SQLite on a bind-mounted data directory: startup, feed seeding from configuration, the
+  generated admin token, v3 push, search, flat container and unlist were all exercised over the network.
+  One deployment note came out of it: a bind mount replaces the image's group-0 permissions on `/data`,
+  so a bind-mounted deployment must run the container as a user that owns the mounted directory, while
+  a named volume or an OpenShift arbitrary UID needs nothing.
 - **Compatibility scripts** run manually; they join CI on a Windows runner once the repository is
   public (plan §7.2).
 
