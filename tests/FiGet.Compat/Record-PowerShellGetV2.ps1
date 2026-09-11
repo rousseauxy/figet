@@ -13,8 +13,9 @@
     Each scenario is labelled in the recorder, so every recorded exchange carries the scenario that caused it.
     A failing scenario is logged and the run continues; the outcome of each is written to summary.txt.
 
-    Side effects, all undone at the end: two temporary repository registrations (PSRepositories.xml is backed up
-    and restored byte for byte) and a synthetic test module installed for the current user and uninstalled again.
+    Side effects, all undone at the end: two temporary repository registrations (PSRepositories.xml and the user's
+    NuGet.Config, to which PowerShellGet 2.x also adds the repositories as package sources, are backed up and restored
+    byte for byte) and a synthetic test module installed for the current user and uninstalled again.
     No other installed module is touched: every Install/Update/Uninstall names the synthetic module explicitly.
 
 .PARAMETER BaselineModulePath
@@ -40,7 +41,15 @@ param(
     [string] $GalleryOldVersion = '1.0.0',
     [string] $SummaryPath = (Join-Path $env:TEMP 'figet-record-psget-summary.txt'),
     # Folder with a NuGet.exe that PowerShellGet can pack with (4.1 or later) and that still pushes to plain HTTP (before 7.0).
-    [string] $NuGetExeDirectory
+    [string] $NuGetExeDirectory,
+    # Adds scenarios with large gallery packages: a module with more than 40 versions (paging) and a meta-module
+    # with dozens of exactly pinned dependencies, saved at an older version and then at the latest. Downloads
+    # several hundred megabytes through the proxy feed.
+    [switch] $IncludeLargePackages,
+    [string] $PagingModule = 'Pester',
+    [string] $PagingOldVersion = '4.10.1',
+    [string] $MetaModule = 'Microsoft.Graph',
+    [string] $MetaOldVersion = '2.30.0'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,6 +58,8 @@ $Recorder = $Recorder.TrimEnd('/')
 $work = Join-Path $env:TEMP ('figet-record-psget-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 $repoFile = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\PowerShell\PowerShellGet\PSRepositories.xml'
 $repoBackup = "$repoFile.figet-backup"
+$nugetConfigFile = Join-Path $env:APPDATA 'NuGet\NuGet.Config'
+$nugetConfigBackup = "$nugetConfigFile.figet-backup"
 $curatedRepo = 'FiGetRecCurated'
 $proxyRepo = 'FiGetRecProxy'
 New-Item -ItemType Directory -Path $work | Out-Null
@@ -104,6 +115,7 @@ function New-TestModule([string] $Version, [string] $Prerelease) {
 
 try {
     Copy-Item -Path $repoFile -Destination $repoBackup -Force
+    if (Test-Path $nugetConfigFile) { Copy-Item -Path $nugetConfigFile -Destination $nugetConfigBackup -Force }
 
     $env:PSModulePath = "$BaselineModulePath;" + $env:PSModulePath
 
@@ -164,6 +176,28 @@ try {
     Invoke-Scenario 'proxy-find-module-after-old-version-cached' { Find-Module -Name $GalleryModule -Repository $proxyRepo -ErrorAction Stop | Format-Table Name, Version, Repository -AutoSize }
     Invoke-Scenario 'proxy-find-module-all-versions-after-cache' { Find-Module -Name $GalleryModule -AllVersions -Repository $proxyRepo -ErrorAction Stop | Format-Table Name, Version -AutoSize }
     Invoke-Scenario 'proxy-save-module-latest' { $to = New-Folder 'gallery-latest'; Save-Module -Name $GalleryModule -Repository $proxyRepo -Path $to -ErrorAction Stop; (Get-ChildItem (Join-Path $to $GalleryModule)).Name }
+
+    if ($IncludeLargePackages) {
+        Invoke-Scenario 'paging-find-module-all-versions' { $all = @(Find-Module -Name $PagingModule -AllVersions -Repository $proxyRepo -ErrorAction Stop); "versions: $($all.Count)" }
+        Invoke-Scenario 'paging-save-module-old-version' { Save-Module -Name $PagingModule -RequiredVersion $PagingOldVersion -Repository $proxyRepo -Path (New-Folder 'paging-old') -ErrorAction Stop }
+        Invoke-Scenario 'paging-find-module-latest-after-cache' { Find-Module -Name $PagingModule -Repository $proxyRepo -ErrorAction Stop | Format-Table Name, Version -AutoSize }
+
+        Invoke-Scenario 'meta-find-module-latest' { Find-Module -Name $MetaModule -Repository $proxyRepo -ErrorAction Stop | Format-Table Name, Version -AutoSize }
+        Invoke-Scenario 'meta-save-module-old-version' {
+            $to = New-Folder 'meta-old'
+            Save-Module -Name $MetaModule -RequiredVersion $MetaOldVersion -Repository $proxyRepo -Path $to -ErrorAction Stop
+            $saved = @(Get-ChildItem $to -Directory)
+            "saved modules: $($saved.Count); versions: " + ((Get-ChildItem $to -Directory | ForEach-Object { (Get-ChildItem $_.FullName -Directory).Name } | Sort-Object -Unique) -join ', ')
+        }
+        Invoke-Scenario 'meta-find-module-latest-after-old-cached' { Find-Module -Name $MetaModule -Repository $proxyRepo -ErrorAction Stop | Format-Table Name, Version -AutoSize }
+        Invoke-Scenario 'meta-find-dependency-after-old-cached' { Find-Module -Name "$MetaModule.Authentication" -Repository $proxyRepo -ErrorAction Stop | Format-Table Name, Version -AutoSize }
+        Invoke-Scenario 'meta-save-module-latest-partially-cached' {
+            $to = New-Folder 'meta-latest'
+            Save-Module -Name $MetaModule -Repository $proxyRepo -Path $to -ErrorAction Stop
+            $saved = @(Get-ChildItem $to -Directory)
+            "saved modules: $($saved.Count); versions: " + ((Get-ChildItem $to -Directory | ForEach-Object { (Get-ChildItem $_.FullName -Directory).Name } | Sort-Object -Unique) -join ', ')
+        }
+    }
 }
 finally {
     Set-Scenario 'cleanup'
@@ -176,6 +210,7 @@ finally {
         try { Unregister-PSRepository -Name $name -ErrorAction SilentlyContinue } catch { }
     }
     if (Test-Path $repoBackup) { Move-Item -Path $repoBackup -Destination $repoFile -Force }
+    if (Test-Path $nugetConfigBackup) { Move-Item -Path $nugetConfigBackup -Destination $nugetConfigFile -Force }
     Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
     Add-Content -Path $SummaryPath -Value "cleanup done" -Encoding UTF8
 }

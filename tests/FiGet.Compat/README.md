@@ -26,7 +26,9 @@ its temporary files and registrations.
 |---|---|---|---|
 | `Invoke-DotnetCliCompat.ps1` | dotnet CLI (NuGet 7) | v3 | 1 |
 | `Invoke-PSResourceGetCompat.ps1` | PowerShell 7 + PSResourceGet | v3 | 1 |
-| `Record-PowerShellGetV2.ps1` (phase 0 recording, run through FiGet.Recorder) | Windows PowerShell 5.1 + PowerShellGet 2.2.5 / PackageManagement 1.4.8.1 (NuGet provider 3.0.0.1) | v2 | 0 |
+| `Record-PowerShellGetV2.ps1` (phase 0 recording, run through FiGet.Recorder; `-IncludeLargePackages` adds Pester and Microsoft.Graph) | Windows PowerShell 5.1 + PowerShellGet 2.2.5 / PackageManagement 1.4.8.1 (NuGet provider 3.0.0.1) | v2 | 0 |
+| `Record-NuGetExeV2.ps1` (phase 0 recording) | nuget.exe before 7.0 | v2 | 0 |
+| `Record-PSResourceGetV2.ps1` (phase 0 recording; `-ReadOnly` for the PowerShell Gallery) | PowerShell 7 + PSResourceGet | v2 | 0 |
 | nuget.exe | | v2 and v3 | 2 |
 
 The NuGet 7 client refuses plain-HTTP sources unless the source sets `allowInsecureConnections`; the
