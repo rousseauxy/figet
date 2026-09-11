@@ -13,6 +13,7 @@ All under `/nuget/{feed}/v3`, plus the symbol server.
 | GET | `/registration/{id}/index.json` | registration index |
 | GET | `/registration/{id}/page/{lower}/{upper}.json` | registration page (only referenced when not inlined) |
 | GET | `/registration/{id}/{version}.json` | registration leaf |
+| GET | `/catalog/{id}/{version}.json` | catalog entry (package details) of one version |
 | GET | `/flatcontainer/{id}/index.json` | version list |
 | GET | `/flatcontainer/{id}/{version}/{id}.{version}.nupkg` | package |
 | GET | `/flatcontainer/{id}/{version}/{id}.nuspec` | nuspec |
@@ -40,8 +41,11 @@ All under `/nuget/{feed}/v3`, plus the symbol server.
 - **The NuGet 7 client refuses plain-HTTP sources** for push unless the source entry in `nuget.config`
   sets `allowInsecureConnections="true"`. The library applies this even when called programmatically and
   reports it only through its logger.
-- **PackageManagement's NuGet provider 2.8.5.208** (the version on Windows PowerShell 5.1 fleets) has no v3
-  client. See `docs/status.md`.
+- **PackageManagement 1.4.8.1 uses its bundled NuGet provider 3.0.0.1** (not an installed 2.8.5.208, which
+  is v2 only). It first calls `/query` without a query string, looks a package up through the
+  registration index, the flat container version list and then the leaf, and reads the package details
+  from the leaf's `catalogEntry` URL. It tries shortened version spellings first (`1.0.json`, then
+  `1.0.0.json`). A wildcard name becomes `query?q=Smoke&take=200&semverlevel=2.0.0`.
 
 ## Decisions
 

@@ -5,6 +5,42 @@ listed as passed when it was run against the code in the commit it names.
 
 ---
 
+## Phase 0: record the contract — started 2026-09-11
+
+**State: in progress.** First recording done; fixtures not yet scrubbed or committed.
+
+- **Reference server**: its free edition in one container (embedded PostgreSQL) on a home server, with a
+  curated PowerShell feed, a PowerShell feed with a PowerShell Gallery connector, and an asset directory.
+  Using a private instance instead of the server being replaced means the recordings contain no
+  organisation data.
+- **Recorder**: `tools/FiGet.Recorder`, a reverse proxy that writes every exchange (credentials redacted,
+  binaries reduced to SHA-256 and length) and passes the Host header through, so absolute URLs in responses
+  keep pointing at it.
+- **First recording**: Windows PowerShell 5.1 + PowerShellGet 2.2.5 + PackageManagement 1.4.8.1 through
+  `tests/FiGet.Compat/Record-PowerShellGetV2.ps1`, 85 exchanges, 26 scenarios passing plus 2 intended
+  failures (module not found, duplicate publish). The resulting v2 surface and its consequences for phase 2
+  are in `docs/protocol-v2.md`.
+- **Also recorded**: PackageManagement's NuGet provider 3.0.0.1 against FiGet's own v3 surface, which found
+  the catalog entry bug below.
+
+Getting the recording script to run exposed four client-side facts, now in the build plan's traps list:
+PowerShellGet's provider is discovered through `PSModulePath` (importing by path breaks every 2.x cmdlet),
+PackageManagement 1.4.8.1 uses its bundled NuGet provider 3.0.0.1, PowerShellGet 2.2.5 publishes with the
+dotnet CLI when present and otherwise needs NuGet.exe 4.1 or later, and NuGet 7 clients refuse plain-HTTP
+pushes. Windows PowerShell 5.1's manifest template also cannot set a prerelease label by text edit.
+
+### Phase 1 amendment — 2026-09-11
+
+**Catalog entry documents.** Registration leaves pointed `catalogEntry` at themselves. PackageManagement's
+NuGet provider 3.0.0.1 (the one Windows PowerShell 5.1 fleets actually use) resolves a version by reading
+the package details from that URL, so `Find-Package -Name X`, `Save-Package` and `Install-Package` all
+reported no match while "all versions" worked. FiGet now serves `v3/catalog/{id}/{version}.json`, and the
+registration test follows the URL. Integration tests: 35 of 35 on SQLite and LocalDB. PackageManagement
+1.4.8.1 against a running instance afterwards: exact name, all versions, wildcard, missing id, save and
+install all behave as expected.
+
+---
+
 ## Phase 1: core, persistence, storage, v3 — 2026-09-11
 
 **State: done, with one acceptance item moved to phase 2 (see "Plan corrections").** CI on GitHub
@@ -53,7 +89,7 @@ Real clients against a locally running instance (`dotnet run`, SQLite, plain HTT
 | nuget.exe 7.9.0 (manual) | `push`; `search`; `install` latest stable; `install -Version` prerelease; `delete` → version unlisted | all passed |
 | nuget.exe 7.9.0 `list` | the client refuses `list` for v3 sources ("does not support listing packages") | client limitation |
 | PSResourceGet wildcard name and tag search | the client refuses both for every v3 repository, as Microsoft documents | client limitation; v2 in phase 2 |
-| Windows PowerShell 5.1 + PackageManagement 1.4.8.1 + NuGet provider 2.8.5.208 against the v3 URI | `Find-Package -Source …/v3/index.json` and `Register-PackageSource` both fail source validation | not applicable to v3, see below |
+| Windows PowerShell 5.1 + PackageManagement 1.4.8.1 with its NuGet provider 3.0.0.1, against the v3 URI (added 2026-09-11, after the catalog entry fix) | `Find-Package` by exact name; all versions with prerelease; wildcard `Smoke*`; missing id → no match; `Save-Package -RequiredVersion`; `Install-Package` | all passed |
 | Admin UI in a browser-like client | login refused for wrong and non-admin tokens, accepted for an admin token; pages behind sign-in | covered by `AdminUiTests` |
 
 The NuGet 7 client refuses plain-HTTP sources unless the source entry sets `allowInsecureConnections`.
@@ -62,14 +98,16 @@ HTTPS.
 
 ### Plan corrections found while building
 
-1. **The Windows PowerShell 5.1 fleet cannot use v3 at all.** The NuGet provider 2.8.5.208 that
-   Windows fleets are pinned to contains no v3 client: its binary has no `index.json`, registration or
-   flat container strings, only v2 OData ones. It validates every source, registered or not, by
-   requesting `{source}/FindPackagesById()?id='FoooBarr'`. The phase 1 acceptance item "PackageManagement
-   `Find-Package` against the v3 URI" therefore cannot pass with that client and moves to phase 2,
-   where the v2 root must answer that probe. The `@type` markers stay mandatory: the later
-   PackageManagement NuGet provider (3.x, source on GitHub) reads them, and the integration tests assert
-   them. The build plan (§6, §7.2, §9) is corrected accordingly.
+1. **Corrected twice; this is the verified state.** A first test force-loaded the NuGet provider
+   2.8.5.208 DLL, found it has no v3 client, and concluded the Windows PowerShell 5.1 fleet cannot use
+   v3. That was wrong about the fleet: PackageManagement 1.4.8.1 bundles NuGet provider **3.0.0.1**
+   and selects it over 2.8.5.208 (checked with the fleet module set on `PSModulePath`). Provider 3.0.0.1
+   has a v3 client, and testing FiGet with it found a real bug: registration leaves pointed
+   `catalogEntry` at themselves, while the provider reads the package details from that URL, so
+   `Find-Package -Name X`, `Save-Package` and `Install-Package` all reported "no match". FiGet now
+   serves a catalog entry document per version, and all of those pass. The acceptance item stays in
+   phase 1. Both providers validate v2 sources with `FindPackagesById()?id='FoooBarr'`, which the v2
+   root in phase 2 must answer.
 2. **The admin UI uses static server rendering, not interactive Blazor Server.** Interactive circuits
    need sticky sessions across replicas; static pages with form posts need nothing, so the OpenShift
    two-replica target stays simple. The plan (§2) is corrected.

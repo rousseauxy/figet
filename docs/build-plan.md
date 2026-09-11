@@ -108,7 +108,7 @@ every client auto-detects correctly:
 |---|---|---|
 | `/nuget/{feed}/` | PowerShellGet 2.x, nuget.exe as a v2 source | Root answers with the OData service document |
 | `/nuget/{feed}/api/v2` | PSResourceGet in v2 mode, anything that expects the nuget.org legacy shape | PSResourceGet: URI ends with `/api/v2` |
-| `/nuget/{feed}/v3/index.json` | dotnet, nuget.exe, PSResourceGet in v3 mode, PackageManagement's later (3.x) NuGet provider | URI ends with `/v3/index.json`. The 2.8.5.208 provider on Windows PowerShell 5.1 has **no v3 client** and cannot use this root |
+| `/nuget/{feed}/v3/index.json` | dotnet, nuget.exe, PSResourceGet in v3 mode, PackageManagement's NuGet provider 3.0.0.1 (bundled with PackageManagement 1.4.8.1) | URI ends with `/v3/index.json`; the provider reads the service index `version` |
 
 `/nuget/{feed}/` and `/nuget/{feed}/api/v2` are the **same** v2 root; implement once, route
 twice. Also serve the PSResourceGet "NuGet.Server" shape: a URI ending in `/nuget` is treated
@@ -221,11 +221,18 @@ reads `root.Metadata.type` and `packageEntry.catalogentry`. BaGet omitted `@type
 registration root and the provider crashed with a NullReference (BaGet issues 199 and 427,
 OneGet issue 430). Every `@type` above is mandatory.
 
-**Correction (phase 1, verified in the binary).** That v3 code is the later provider (3.x). The
-provider Windows PowerShell 5.1 fleets are pinned to, **2.8.5.208, contains no v3 client at all**:
-its strings are v2 OData only (`FindPackagesById()`, `Search()?$filter=IsLatestVersion`). For the
-fleet the `@type` markers are irrelevant and v2 is everything; they stay mandatory for newer
-PackageManagement installs.
+**Which provider the fleet runs (verified 2026-09-11).** PackageManagement 1.4.8.1 bundles NuGet
+provider **3.0.0.1**, which is the v3 code above, and selects it over a separately installed 2.8.5.208
+(the older DLL is v2 only). So on Windows PowerShell 5.1 with PowerShellGet 2.2.5 the `@type` markers
+matter.
+
+**Catalog entry document (found in phase 1 against provider 3.0.0.1).** To resolve a version the
+provider follows the leaf's `catalogEntry` URL and reads `version` and the metadata from that
+document. It must be the package details, not the leaf again; otherwise every version silently fails
+to match and `Find-Package -Name X`, `Save-Package` and `Install-Package` report "no match". FiGet
+serves one document per version at `v3/catalog/{id}/{version}.json`, and the inline
+`catalogEntry.@id` names the same URL. The provider also asks for shortened version spellings first
+(`1.0.json` before `1.0.0.json`), so leaf and catalog routes normalise the version.
 
 **Registration leaf** `{version}.json`: `@id`, `@type: ["Package", "http://schema.nuget.org/catalog#Permalink"]`, `catalogEntry` (same object), `listed`, `packageContent`, `published`, `registration`.
 
@@ -253,11 +260,11 @@ with the key computed as the symbol server expects (signature + age, upper-case 
 There is no public specification. The contract is **what the clients send**, recorded in phase
 0 and kept as fixtures. What is known before recording:
 
-**Source validation probe (verified, phase 1).** NuGet provider 2.8.5.208 validates every source,
-on `Register-PackageSource` and on an ad-hoc `-Source`, by requesting
-`{source}/FindPackagesById()?id='FoooBarr'`. Anything but a success status makes the source
-"not valid". The v2 root must answer it with an empty feed (200) on every root alias, including a
-source URL registered with a trailing slash.
+**Source validation probe (verified, phase 1).** The NuGet providers (2.8.5.208 and 3.0.0.1 both
+contain it) validate a v2 source by requesting `{source}/FindPackagesById()?id='FoooBarr'`. Anything
+but a success status makes the source "not valid". The v2 root must answer it with an empty feed
+(200) on every root alias, including a source URL registered with a trailing slash. The reference
+server does exactly that (recorded in phase 0).
 
 **Service document** at the v2 root, `application/xml`:
 
@@ -471,9 +478,10 @@ emits. Acceptance: every scenario in §7.2 has at least one fixture.
 Acceptance: `dotnet nuget push`, `dotnet add package` / restore, `nuget.exe push/search/install/delete`,
 `Publish-PSResource`, `Find-PSResource`, `Save-PSResource` against the v3 URI all pass
 (§7.2 scripts). The registration JSON carries every `@type` marker (integration test).
-*Moved to phase 2:* PackageManagement `Find-Package` with the pinned 2.8.5.208 provider, which has
-no v3 client (see the §4.2 correction). nuget.exe 7.x refuses `list` for v3 sources and PSResourceGet
-refuses wildcard and tag searches for v3 repositories; those are client limits, tested on v2.
+PackageManagement 1.4.8.1 with its NuGet provider 3.0.0.1: `Find-Package` by exact name, all
+versions, wildcard, `Save-Package` and `Install-Package` against the v3 URI. nuget.exe 7.x refuses
+`list` for v3 sources and PSResourceGet refuses wildcard and tag searches for v3 repositories; those
+are client limits, tested on v2.
 
 ### Phase 2 — v2 OData (1.5–2 weeks)
 
@@ -552,7 +560,7 @@ manifest or the pushed version.
 
 | Client | Root used | Scenarios |
 |---|---|---|
-| Windows PowerShell 5.1, PowerShellGet 2.2.5, PackageManagement 1.4.8.1, NuGet provider 2.8.5.208 | `/nuget/{feed}/` | `Register-PSRepository`; `Find-Module -Name X`; `-Name *`; `-Tag`; `-AllVersions`; `Install-Module X`; `-RequiredVersion`; `-AllowPrerelease`; `Update-Module`; `Save-Module`; `Publish-Module`; `Install-Package -ProviderName NuGet`; `Find-Package -AllVersions` |
+| Windows PowerShell 5.1, PowerShellGet 2.2.5, PackageManagement 1.4.8.1 (NuGet provider 3.0.0.1) | `/nuget/{feed}/` | `Register-PSRepository`; `Find-Module -Name X`; `-Name *`; `-Tag`; `-AllVersions`; `Install-Module X`; `-RequiredVersion`; `-AllowPrerelease`; `Update-Module`; `Save-Module`; `Publish-Module`; `Install-Package -ProviderName NuGet`; `Find-Package -AllVersions` |
 | PowerShell 7 + PSResourceGet | `/api/v2` and `/v3/index.json` | `Register-PSResourceRepository` (auto-detect); `Find-PSResource`; `-Version` ranges; `Install-PSResource`; `Update-PSResource`; `Save-PSResource`; `Publish-PSResource` |
 | nuget.exe | v2 and v3 | `list`, `install`, `push`, `delete` |
 | dotnet CLI | v3 | `add package`, `restore`, `nuget push` |
@@ -597,9 +605,16 @@ never inline.
 
 - **`@type` everywhere in v3 registration JSON** (see §4.2). Non-negotiable, for the 3.x
   PackageManagement provider.
-- **Windows PowerShell 5.1's NuGet provider 2.8.5.208 speaks v2 only** and validates a source with
-  `{source}/FindPackagesById()?id='FoooBarr'`. Answer it with an empty 200 feed, or the source is
-  rejected before any real query.
+- **PackageManagement 1.4.8.1 uses its bundled NuGet provider 3.0.0.1**, not an installed 2.8.5.208.
+  Load the fleet modules through `PSModulePath` when testing; importing them by path leaves the inbox
+  PowerShellGet provider in charge and every 2.x cmdlet fails on `AllowPrereleaseVersions`.
+- **A v2 source is validated with `{source}/FindPackagesById()?id='FoooBarr'`.** Answer it with an
+  empty 200 feed, or the source is rejected before any real query.
+- **A registration leaf's `catalogEntry` must resolve to the package details** (see §4.2), or provider
+  3.0.0.1 finds nothing by name while "all versions" still works.
+- **PowerShellGet 2.2.5 publishes with the dotnet CLI when it finds one**, otherwise with NuGet.exe
+  4.1 or later (older copies are rejected for packing). Current SDKs and nuget.exe 7.x refuse to push
+  to plain HTTP, so HTTP test setups need a nuget.exe before 7.0 and no dotnet on PATH.
 - **NuGet 7 clients refuse plain-HTTP sources** (push, and in the library even when called from code)
   unless the source sets `allowInsecureConnections`. The library reports this only through its logger:
   a push that "does nothing" is this. Tests push over raw HTTP; compatibility scripts write a
