@@ -170,7 +170,52 @@ HTTPS.
 
 ### Next
 
-Phase 3: proxy feeds, the cached upstream index and the management API.
+Phase 4: asset directories and the browse UI.
+
+## Phase 3: proxy feeds — 2026-09-12
+
+**State: a proxy feed merges its upstreams into one version list and caches on download, on both protocols.
+The management API and the smaller connector extras are still open.**
+
+### Delivered
+
+| Plan item (section 5) | Where |
+|---|---|
+| `FeedUpstream` and `CachedUpstreamIndex`, with migrations for both providers | `src/FiGet.Core/Entities`, `src/FiGet.Persistence*/Migrations/*_Upstreams.cs` |
+| Upstream client over NuGet's own library, so v2 and v3 upstreams both work | `src/FiGet.Core/Connectors/NuGetUpstreamClient.cs` |
+| One merged version list across local and upstream versions, latest computed once | `ConnectorService` + `VersionListBuilder`, used by v2 `FindPackagesById()`/`Packages()` and v3 registration and flat container |
+| Look-through download: any exact upstream version is fetched and cached on first request | `ConnectorService.EnsureCachedAsync`, v2 `package/{id}/{version}` and v3 flat container |
+| Upstream version lists cached in the database with a time-to-live, shared by every replica | `EfUpstreamIndexStore`, `FiGet:Connector:UpstreamIndexTtl` |
+| Allow and deny patterns per upstream, deny winning, with a match timeout | `ConnectorService.Allows` |
+| Upstream credentials referenced by environment variable, never stored | `FeedUpstream.CredentialRef` |
+| Feeds with upstreams declared in configuration | `FiGet:Feeds:N:Upstreams:M:*` in docs/configuration.md |
+
+### Evidence
+
+`dotnet test`: 128 total, 99 passed, 29 skipped (the SQL Server half). Nine proxy tests cover upstream-only
+listings with exactly one latest flag, a local version and a newer upstream version merging into one list,
+look-through download that caches and is then served locally, the cached listing being reused inside the
+time-to-live, allow and deny patterns, an unreachable upstream falling back to its last known list, and the
+v3 registration and flat container showing the same merged list.
+
+### Decisions taken while building
+
+- **A version that exists only upstream is listed with placeholder metadata.** A listing must show it before
+  anything has been downloaded; the real nuspec replaces the row the moment the package is cached.
+- **A local version always wins over the same version upstream**, which is what stops one package appearing
+  twice, the failure that started this project.
+- **A failing upstream serves its last known list** and logs a warning, because a stale list beats a failed
+  install.
+- **A feed that names upstreams is a proxy feed**, whatever the configured kind says.
+
+### Still open in phase 3
+
+- The management API of section 4.5 (`/api/packages/{feed}/versions|latest|delete`).
+- Search on a proxy feed is still local only; fanning out is opt-in per section 5, rule 6.
+- The v3 registration page, registration leaf and catalog entry still answer from local rows, so an
+  upstream-only version is complete in the index but not addressable on its own leaf.
+- Cache pruning by age or size, and the drop-folder importer.
+- **The upstream client itself is stubbed in the tests.** Nothing has yet talked to a real gallery.
 
 ## Phase 2: v2 OData — 2026-09-12
 

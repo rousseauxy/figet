@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using FiGet.Core.Connectors;
 using FiGet.Core.Entities;
 using FiGet.Core.Packages;
 using FiGet.Core.Search;
@@ -89,7 +90,7 @@ public static class NuGetV3Endpoints
             Json);
     }
 
-    private static async Task<IResult> RegistrationIndexAsync(HttpContext http, string feed, string id, IPackageStore store, CancellationToken cancellationToken)
+    private static async Task<IResult> RegistrationIndexAsync(HttpContext http, string feed, string id, IPackageStore store, ConnectorService connector, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -97,14 +98,13 @@ public static class NuGetV3Endpoints
             return error;
         }
 
-        var package = await store.GetPackageAsync(request!.Feed.Key, id.ToLowerInvariant(), includeDependencies: true, cancellationToken);
-        if (package is null || package.Versions.Count == 0)
+        var (package, list) = await MergedAsync(store, connector, request!.Feed, id, includeDependencies: true, cancellationToken);
+        if (list.Count == 0)
         {
             return Results.NotFound();
         }
 
         var urls = new UrlSet(PublicUrls.Feed(http, request.Feed.Name), package.IdLower);
-        var list = VersionListBuilder.BuildLocal(package.Versions, includeSemVer2: true);
         var inline = list.Count <= MaxInlinedLeaves;
         var pages = list
             .Chunk(RegistrationPageSize)
@@ -210,7 +210,7 @@ public static class NuGetV3Endpoints
         return Results.Json(BuildLeafItem(urls, package, row).CatalogEntry, Json);
     }
 
-    private static async Task<IResult> FlatContainerVersionsAsync(HttpContext http, string feed, string id, IPackageStore store, CancellationToken cancellationToken)
+    private static async Task<IResult> FlatContainerVersionsAsync(HttpContext http, string feed, string id, IPackageStore store, ConnectorService connector, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -218,20 +218,19 @@ public static class NuGetV3Endpoints
             return error;
         }
 
-        var package = await store.GetPackageAsync(request!.Feed.Key, id.ToLowerInvariant(), includeDependencies: false, cancellationToken);
-        if (package is null || package.Versions.Count == 0)
+        var (_, list) = await MergedAsync(store, connector, request!.Feed, id, includeDependencies: false, cancellationToken);
+        if (list.Count == 0)
         {
             return Results.NotFound();
         }
 
-        // The package base address lists every stored version, unlisted included, as nuget.org does.
-        var versions = VersionListBuilder.BuildLocal(package.Versions, includeSemVer2: true)
-            .Select(e => e.Payload!.NormalizedVersionLower)
-            .ToList();
+        // The package base address lists every stored version, unlisted included, as nuget.org does, and on
+        // a proxy feed everything the upstreams hold as well.
+        var versions = list.Select(e => e.Payload!.NormalizedVersionLower).ToList();
         return Results.Json(new FlatContainerVersions(versions), Json);
     }
 
-    private static async Task<IResult> FlatContainerFileAsync(HttpContext http, string feed, string id, string version, string file, IPackageStore store, IPackageStorage storage, CancellationToken cancellationToken)
+    private static async Task<IResult> FlatContainerFileAsync(HttpContext http, string feed, string id, string version, string file, IPackageStore store, IPackageStorage storage, ConnectorService connector, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -256,6 +255,13 @@ public static class NuGetV3Endpoints
         }
 
         var row = await store.GetVersionAsync(request!.Feed.Key, idLower, versionLower, cancellationToken);
+        if (row is null && request.Feed.Upstreams.Count > 0 && NuGetVersion.TryParse(version, out var wanted))
+        {
+            // Look-through: an exact version an upstream holds is fetched and cached on first request,
+            // because a meta-package pins its dependencies to exact versions.
+            row = await connector.EnsureCachedAsync(request.Feed, id, wanted, cancellationToken);
+        }
+
         if (row is null)
         {
             return Results.NotFound();
@@ -489,6 +495,37 @@ public static class NuGetV3Endpoints
         }
 
         return Results.Json(new { message }, statusCode: statusCode);
+    }
+
+    /// <summary>
+    /// A package row and its version list. On a proxy feed the upstreams' versions are merged in, so a
+    /// package nobody has downloaded yet is listed, with exactly one version flagged latest. An id that
+    /// exists only upstream has no local row, so a stand-in carries the id for URL building.
+    /// </summary>
+    private static async Task<(Package Package, IReadOnlyList<VersionListEntry<PackageVersion>> List)> MergedAsync(
+        IPackageStore store,
+        ConnectorService connector,
+        Core.Entities.Feed feed,
+        string id,
+        bool includeDependencies,
+        CancellationToken cancellationToken)
+    {
+        var idLower = id.ToLowerInvariant();
+        var package = await store.GetPackageAsync(feed.Key, idLower, includeDependencies, cancellationToken);
+        var stand = package ?? new Package { FeedKey = feed.Key, Id = id, IdLower = idLower };
+        if (feed.Upstreams.Count == 0)
+        {
+            return (stand, package is null ? [] : VersionListBuilder.BuildLocal(package.Versions, includeSemVer2: true));
+        }
+
+        var upstream = await connector.UpstreamCandidatesAsync(feed, idLower, cancellationToken);
+        var local = package?.Versions ?? [];
+        var merged = VersionListBuilder
+            .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream), includeSemVer2: true)
+            .Where(e => e.Payload is not null)
+            .ToList();
+
+        return (stand, merged);
     }
 
     private static RegistrationPage BuildPage(UrlSet urls, Package package, IReadOnlyList<VersionListEntry<PackageVersion>> chunk, bool inline)

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text.Json.Nodes;
 using System.Xml.Linq;
 using FiGet.Integration.Tests.Infrastructure;
 using FiGet.Testing;
@@ -144,6 +145,49 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         {
             server.Upstream.Fails = false;
         }
+    }
+
+    [Fact]
+    public async Task Upstream_versions_appear_in_the_v3_registration_and_flat_container()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.V3");
+        AddUpstream(id, "1.0.0");
+        AddUpstream(id, "1.1.0");
+
+        using var client = server.CreateClient();
+        var idLower = id.ToLowerInvariant();
+
+        var registration = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(
+            await client.GetAsync($"nuget/proxy/v3/registration/{idLower}/index.json")))!;
+        var leaves = registration["items"]!.AsArray()
+            .SelectMany(page => page!["items"]!.AsArray())
+            .Select(leaf => (string?)leaf!["catalogEntry"]!["version"])
+            .ToList();
+        Assert.Equal(["1.0.0", "1.1.0"], leaves);
+
+        var flat = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(
+            await client.GetAsync($"nuget/proxy/v3/flatcontainer/{idLower}/index.json")))!;
+        Assert.Equal(["1.0.0", "1.1.0"], flat["versions"]!.AsArray().Select(v => (string?)v).ToArray());
+    }
+
+    [Fact]
+    public async Task Downloading_through_the_v3_flat_container_caches_the_package()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.V3Download");
+        AddUpstream(id, "2.0.0");
+
+        using var client = server.CreateClient();
+        var idLower = id.ToLowerInvariant();
+        var before = server.Upstream.DownloadCalls;
+
+        var response = await client.GetAsync($"nuget/proxy/v3/flatcontainer/{idLower}/2.0.0/{idLower}.2.0.0.nupkg");
+        Assert.True(response.IsSuccessStatusCode, $"{(int)response.StatusCode} {response.ReasonPhrase}");
+        var bytes = await response.Content.ReadAsByteArrayAsync();
+        Assert.Equal(0x50, bytes[0]);
+        Assert.Equal(before + 1, server.Upstream.DownloadCalls);
+
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/flatcontainer/{idLower}/2.0.0/{idLower}.2.0.0.nupkg"));
+        Assert.Equal(before + 1, server.Upstream.DownloadCalls);
     }
 
     private void AddUpstream(string id, string version)
