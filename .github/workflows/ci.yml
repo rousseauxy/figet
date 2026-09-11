@@ -54,11 +54,11 @@ jobs:
 
       - name: Migrations match the model
         run: |
-          dotnet ef migrations has-pending-model-changes --project src/FiGet.Persistence.Sqlite --no-build -c Release
-          dotnet ef migrations has-pending-model-changes --project src/FiGet.Persistence.SqlServer --no-build -c Release
+          dotnet ef migrations has-pending-model-changes --project src/FiGet.Persistence.Sqlite --no-build --configuration Release
+          dotnet ef migrations has-pending-model-changes --project src/FiGet.Persistence.SqlServer --no-build --configuration Release
 
       - name: Test (SQLite and SQL Server)
-        run: dotnet test --no-build -c Release
+        run: dotnet test --no-build --configuration Release
 
   container:
     runs-on: ubuntu-latest
