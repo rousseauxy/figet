@@ -20,6 +20,8 @@ public sealed class FiGetOptions
     public AuthOptions Auth { get; set; } = new();
 
     public LimitsOptions Limits { get; set; } = new();
+
+    public ConnectorOptions Connector { get; set; } = new();
 }
 
 public enum DatabaseProvider
@@ -69,6 +71,38 @@ public sealed class FeedSeedOptions
     public bool AllowOverwrite { get; set; }
 
     public PackageDeletionBehavior DeletionBehavior { get; set; } = PackageDeletionBehavior.Unlist;
+
+    /// <summary>Upstreams to create with the feed. Only used when the feed itself is created.</summary>
+    public List<UpstreamSeedOptions> Upstreams { get; set; } = [];
+}
+
+public sealed class UpstreamSeedOptions
+{
+    /// <summary>A name for logs and the UI, unique within the feed.</summary>
+    public string Name { get; set; } = "";
+
+    public string Url { get; set; } = "";
+
+    /// <summary>`V3` for a service index, `V2` for an OData feed root such as the PowerShell Gallery.</summary>
+    public UpstreamKind Kind { get; set; } = UpstreamKind.V3;
+
+    /// <summary>Regular expressions on the package id. Empty allows every id.</summary>
+    public List<string> Allow { get; set; } = [];
+
+    /// <summary>Regular expressions on the package id. A match is never listed or fetched.</summary>
+    public List<string> Deny { get; set; } = [];
+
+    /// <summary>Environment variable holding the upstream's API key or password, never the secret itself.</summary>
+    public string? CredentialRef { get; set; }
+}
+
+public sealed class ConnectorOptions
+{
+    /// <summary>How long an upstream's version list for one package stays usable before it is fetched again.</summary>
+    public TimeSpan UpstreamIndexTtl { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>How long a single upstream call may take before the upstream is treated as unavailable.</summary>
+    public TimeSpan UpstreamTimeout { get; set; } = TimeSpan.FromSeconds(10);
 }
 
 public sealed class AuthOptions

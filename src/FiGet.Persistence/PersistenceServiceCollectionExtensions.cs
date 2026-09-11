@@ -1,3 +1,4 @@
+using FiGet.Core.Connectors;
 using FiGet.Core.Stores;
 using FiGet.Persistence.Stores;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,6 +13,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IFeedStore, EfFeedStore>();
         services.AddScoped<IPackageStore, EfPackageStore>();
         services.AddScoped<IAccessTokenStore, EfAccessTokenStore>();
+        services.AddScoped<IUpstreamIndexStore, EfUpstreamIndexStore>();
         return services;
     }
 }

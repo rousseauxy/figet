@@ -20,6 +20,9 @@ public sealed class Feed
     public PackageDeletionBehavior DeletionBehavior { get; set; } = PackageDeletionBehavior.Unlist;
 
     public DateTime CreatedUtc { get; set; }
+
+    /// <summary>Upstreams of a proxy feed, in the order they are queried. Empty on a curated feed.</summary>
+    public List<FeedUpstream> Upstreams { get; set; } = [];
 }
 
 public enum FeedKind

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using FiGet.Core.Connectors;
 using FiGet.Core.Entities;
 using FiGet.Core.Feeds;
 using FiGet.Core.Packages;
@@ -68,6 +69,21 @@ public static class FiGetApp
         services.AddSingleton<IPackageStorage>(provider => new FileSystemPackageStorage(Path.Combine(provider.GetRequiredService<StoragePaths>().Root, "files")));
         services.AddScoped<PackageIngestionService>();
         services.AddScoped<AccessTokenService>();
+
+        // Proxy feeds. The client is a singleton because NuGet's repositories cache resources and
+        // connections inside themselves; the service is scoped because it writes through the request's
+        // database context.
+        services.AddSingleton(provider =>
+        {
+            var connector = provider.GetRequiredService<IOptions<FiGetOptions>>().Value.Connector;
+            return new ConnectorSettings
+            {
+                UpstreamIndexTtl = connector.UpstreamIndexTtl,
+                UpstreamTimeout = connector.UpstreamTimeout,
+            };
+        });
+        services.AddSingleton<IUpstreamClient, NuGetUpstreamClient>();
+        services.AddScoped<ConnectorService>();
 
         services.AddDataProtection()
             .SetApplicationName("FiGet")
@@ -237,16 +253,35 @@ public static class FiGetApp
         }
     }
 
-    private static Feed ToFeed(FeedSeedOptions seed, TimeProvider time) => new()
+    private static Feed ToFeed(FeedSeedOptions seed, TimeProvider time)
     {
-        Name = seed.Name,
-        NameLower = seed.Name.ToLowerInvariant(),
-        Kind = seed.Kind,
-        AnonymousRead = seed.AnonymousRead,
-        AllowOverwrite = seed.AllowOverwrite,
-        DeletionBehavior = seed.DeletionBehavior,
-        CreatedUtc = time.GetUtcNow().UtcDateTime,
-    };
+        var upstreams = seed.Upstreams
+            .Select((upstream, index) => new FeedUpstream
+            {
+                Ordinal = index,
+                Name = string.IsNullOrWhiteSpace(upstream.Name) ? $"upstream-{index + 1}" : upstream.Name,
+                Url = upstream.Url,
+                Kind = upstream.Kind,
+                Allow = string.Join(FeedUpstream.PatternSeparator, upstream.Allow),
+                Deny = string.Join(FeedUpstream.PatternSeparator, upstream.Deny),
+                CredentialRef = upstream.CredentialRef,
+            })
+            .ToList();
+
+        return new Feed
+        {
+            Name = seed.Name,
+            NameLower = seed.Name.ToLowerInvariant(),
+            // A feed that names upstreams is a proxy feed, whatever the configuration says, because that is
+            // what it will behave like.
+            Kind = upstreams.Count > 0 ? FeedKind.Proxy : seed.Kind,
+            AnonymousRead = seed.AnonymousRead,
+            AllowOverwrite = seed.AllowOverwrite,
+            DeletionBehavior = seed.DeletionBehavior,
+            CreatedUtc = time.GetUtcNow().UtcDateTime,
+            Upstreams = upstreams,
+        };
+    }
 
     private static MeterProviderBuilder AddRuntimeInstrumentationIfAvailable(this MeterProviderBuilder metrics) =>
         metrics.AddMeter("System.Runtime", "Microsoft.AspNetCore.Hosting", "Microsoft.AspNetCore.Server.Kestrel");

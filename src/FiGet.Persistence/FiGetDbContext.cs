@@ -22,6 +22,10 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
 
     public DbSet<SymbolFile> SymbolFiles => Set<SymbolFile>();
 
+    public DbSet<FeedUpstream> FeedUpstreams => Set<FeedUpstream>();
+
+    public DbSet<CachedUpstreamIndex> CachedUpstreamIndexes => Set<CachedUpstreamIndex>();
+
     public DbSet<AccessToken> AccessTokens => Set<AccessToken>();
 
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -43,6 +47,29 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.HasIndex(x => x.NameLower).IsUnique();
             e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(16);
             e.Property(x => x.DeletionBehavior).HasConversion<string>().HasMaxLength(16);
+        });
+
+        modelBuilder.Entity<FeedUpstream>(e =>
+        {
+            e.ToTable("FeedUpstreams");
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Name).HasMaxLength(64);
+            e.Property(x => x.Url).HasMaxLength(2048);
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(8);
+            e.Property(x => x.Allow).HasMaxLength(4000);
+            e.Property(x => x.Deny).HasMaxLength(4000);
+            e.Property(x => x.CredentialRef).HasMaxLength(128);
+            e.HasIndex(x => new { x.FeedKey, x.Name }).IsUnique();
+            e.HasOne(x => x.Feed).WithMany(x => x.Upstreams).HasForeignKey(x => x.FeedKey).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CachedUpstreamIndex>(e =>
+        {
+            e.ToTable("CachedUpstreamIndexes");
+            e.HasKey(x => x.Key);
+            e.Property(x => x.IdLower).HasMaxLength(128);
+            e.HasIndex(x => new { x.FeedUpstreamKey, x.IdLower }).IsUnique();
+            e.HasOne(x => x.FeedUpstream).WithMany().HasForeignKey(x => x.FeedUpstreamKey).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Package>(e =>

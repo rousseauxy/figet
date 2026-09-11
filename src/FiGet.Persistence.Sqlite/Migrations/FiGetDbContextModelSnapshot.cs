@@ -66,6 +66,42 @@ namespace FiGet.Persistence.Sqlite.Migrations
                     b.ToTable("AccessTokens", (string)null);
                 });
 
+            modelBuilder.Entity("FiGet.Core.Entities.CachedUpstreamIndex", b =>
+                {
+                    b.Property<long>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("FeedUpstreamKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("FetchedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IdLower")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SemVer2Versions")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Stale")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Versions")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("FeedUpstreamKey", "IdLower")
+                        .IsUnique();
+
+                    b.ToTable("CachedUpstreamIndexes", (string)null);
+                });
+
             modelBuilder.Entity("FiGet.Core.Entities.Feed", b =>
                 {
                     b.Property<int>("Key")
@@ -107,6 +143,58 @@ namespace FiGet.Persistence.Sqlite.Migrations
                         .IsUnique();
 
                     b.ToTable("Feeds", (string)null);
+                });
+
+            modelBuilder.Entity("FiGet.Core.Entities.FeedUpstream", b =>
+                {
+                    b.Property<int>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Allow")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CredentialRef")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Deny")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("FeedKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("FeedKey", "Name")
+                        .IsUnique();
+
+                    b.ToTable("FeedUpstreams", (string)null);
                 });
 
             modelBuilder.Entity("FiGet.Core.Entities.Package", b =>
@@ -392,6 +480,28 @@ namespace FiGet.Persistence.Sqlite.Migrations
                     b.Navigation("Feed");
                 });
 
+            modelBuilder.Entity("FiGet.Core.Entities.CachedUpstreamIndex", b =>
+                {
+                    b.HasOne("FiGet.Core.Entities.FeedUpstream", "FeedUpstream")
+                        .WithMany()
+                        .HasForeignKey("FeedUpstreamKey")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FeedUpstream");
+                });
+
+            modelBuilder.Entity("FiGet.Core.Entities.FeedUpstream", b =>
+                {
+                    b.HasOne("FiGet.Core.Entities.Feed", "Feed")
+                        .WithMany("Upstreams")
+                        .HasForeignKey("FeedKey")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Feed");
+                });
+
             modelBuilder.Entity("FiGet.Core.Entities.Package", b =>
                 {
                     b.HasOne("FiGet.Core.Entities.Feed", "Feed")
@@ -432,6 +542,11 @@ namespace FiGet.Persistence.Sqlite.Migrations
                         .IsRequired();
 
                     b.Navigation("PackageVersion");
+                });
+
+            modelBuilder.Entity("FiGet.Core.Entities.Feed", b =>
+                {
+                    b.Navigation("Upstreams");
                 });
 
             modelBuilder.Entity("FiGet.Core.Entities.Package", b =>

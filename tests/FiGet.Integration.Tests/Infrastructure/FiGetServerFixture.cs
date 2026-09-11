@@ -93,6 +93,8 @@ public abstract class FiGetServerFixture : IAsyncLifetime
             {
                 builder.UseSetting(key, value);
             }
+
+            Configure(builder);
         });
         factory.UseKestrel(kestrel => kestrel.Listen(IPAddress.Loopback, 0));
         factory.StartServer();
@@ -137,6 +139,14 @@ public abstract class FiGetServerFixture : IAsyncLifetime
         }
 
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Lets a derived fixture add settings or replace services, for example a proxy feed whose upstream is
+    /// a stub rather than a real gallery.
+    /// </summary>
+    protected virtual void Configure(IWebHostBuilder builder)
+    {
     }
 
     /// <summary>A plain HTTP client for raw protocol assertions. Pass a token to send it as Basic credentials.</summary>

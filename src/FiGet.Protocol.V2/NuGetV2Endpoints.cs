@@ -1,9 +1,11 @@
 using System.Globalization;
 using FiGet.Core.Entities;
 using FiGet.Core.Packages;
+using FiGet.Core.Connectors;
 using FiGet.Core.Search;
 using FiGet.Core.Storage;
 using FiGet.Core.Stores;
+using FiGet.Core.Versions;
 using FiGet.Http;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -90,7 +92,7 @@ public static class NuGetV2Endpoints
     /// The workhorse: every recorded client calls this to find a package by name. An unknown id answers an
     /// empty feed with 200, which is also how the NuGet providers validate that a source is a v2 source.
     /// </summary>
-    private static async Task<IResult> FindPackagesByIdAsync(HttpContext http, string feed, IPackageStore store, ILoggerFactory loggers, CancellationToken cancellationToken)
+    private static async Task<IResult> FindPackagesByIdAsync(HttpContext http, string feed, IPackageStore store, ConnectorService connector, ILoggerFactory loggers, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -114,7 +116,7 @@ public static class NuGetV2Endpoints
         var id = Unquote(query["id"]) ?? filter?.RequiredId ?? "";
         var rows = id.Length == 0
             ? []
-            : await RowsForIdAsync(store, request!.Feed.Key, id, SemVer2(query), cancellationToken);
+            : await RowsForIdAsync(store, connector, request!.Feed, id, SemVer2(query), cancellationToken);
 
         return Page(http, request!.Feed.Name, rows, filter, order, query);
     }
@@ -150,7 +152,7 @@ public static class NuGetV2Endpoints
         return Page(http, request.Feed.Name, rows, filter, order, query);
     }
 
-    private static async Task<IResult> PackagesAsync(HttpContext http, string feed, IPackageStore store, ILoggerFactory loggers, CancellationToken cancellationToken)
+    private static async Task<IResult> PackagesAsync(HttpContext http, string feed, IPackageStore store, ConnectorService connector, ILoggerFactory loggers, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -173,13 +175,13 @@ public static class NuGetV2Endpoints
 
         var semVer2 = SemVer2(query);
         var rows = filter?.RequiredId is { Length: > 0 } id
-            ? await RowsForIdAsync(store, request!.Feed.Key, id, semVer2, cancellationToken)
+            ? await RowsForIdAsync(store, connector, request!.Feed, id, semVer2, cancellationToken)
             : await SearchRowsAsync(store, request!.Feed.Key, "", filter, includePrerelease: true, semVer2, cancellationToken);
 
         return Page(http, request.Feed.Name, rows, filter, order, query);
     }
 
-    private static async Task<IResult> PackageByKeyAsync(HttpContext http, string feed, string id, string version, IPackageStore store, CancellationToken cancellationToken)
+    private static async Task<IResult> PackageByKeyAsync(HttpContext http, string feed, string id, string version, IPackageStore store, ConnectorService connector, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -187,7 +189,7 @@ public static class NuGetV2Endpoints
             return error;
         }
 
-        var rows = await RowsForIdAsync(store, request!.Feed.Key, id, includeSemVer2: true, cancellationToken);
+        var rows = await RowsForIdAsync(store, connector, request!.Feed, id, includeSemVer2: true, cancellationToken);
         var row = rows.FirstOrDefault(r =>
             r.OriginalVersion.Equals(version, StringComparison.OrdinalIgnoreCase)
             || r.NormalizedVersion.Equals(version, StringComparison.OrdinalIgnoreCase));
@@ -201,7 +203,7 @@ public static class NuGetV2Endpoints
     /// The update check of the old clients: for each id and version pair, the newer versions. Not sent by
     /// any client recorded in phase 0, but cheap to support and part of the documented surface.
     /// </summary>
-    private static async Task<IResult> GetUpdatesAsync(HttpContext http, string feed, IPackageStore store, CancellationToken cancellationToken)
+    private static async Task<IResult> GetUpdatesAsync(HttpContext http, string feed, IPackageStore store, ConnectorService connector, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -224,7 +226,7 @@ public static class NuGetV2Endpoints
                 continue;
             }
 
-            var rows = await RowsForIdAsync(store, request!.Feed.Key, ids[i], semVer2, cancellationToken);
+            var rows = await RowsForIdAsync(store, connector, request!.Feed, ids[i], semVer2, cancellationToken);
             var newer = rows
                 .Where(r => r.Listed && VersionComparer.Default.Compare(r.Version, current) > 0)
                 .Where(r => includePrerelease || !r.Version.IsPrerelease)
@@ -243,7 +245,7 @@ public static class NuGetV2Endpoints
             "application/atom+xml;type=feed;charset=utf-8");
     }
 
-    private static async Task<IResult> DownloadAsync(HttpContext http, string feed, string id, string version, IPackageStore store, IPackageStorage storage, CancellationToken cancellationToken)
+    private static async Task<IResult> DownloadAsync(HttpContext http, string feed, string id, string version, IPackageStore store, IPackageStorage storage, ConnectorService connector, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -259,6 +261,13 @@ public static class NuGetV2Endpoints
         }
 
         var row = await store.GetVersionAsync(request!.Feed.Key, idLower, versionLower, cancellationToken);
+        if (row is null && request.Feed.Upstreams.Count > 0 && NuGetVersion.TryParse(version, out var wanted))
+        {
+            // Look-through: any exact version an upstream has is fetchable, not only the latest, because a
+            // meta-package pins its dependencies to exact versions.
+            row = await connector.EnsureCachedAsync(request.Feed, id, wanted, cancellationToken);
+        }
+
         if (row is null)
         {
             return Results.NotFound();
@@ -326,10 +335,36 @@ public static class NuGetV2Endpoints
         return await ingestion.DeleteAsync(request!.Feed, id, version, cancellationToken) ? Results.NoContent() : Results.NotFound();
     }
 
-    private static async Task<IReadOnlyList<V2Row>> RowsForIdAsync(IPackageStore store, int feedKey, string id, bool includeSemVer2, CancellationToken cancellationToken)
+    /// <summary>
+    /// The rows for one id: local versions on a curated feed, and on a proxy feed the merged list of local
+    /// and upstream versions. The merge is what keeps exactly one version flagged latest, which is the
+    /// failure this whole server exists to avoid.
+    /// </summary>
+    private static async Task<IReadOnlyList<V2Row>> RowsForIdAsync(
+        IPackageStore store,
+        ConnectorService connector,
+        Feed feed,
+        string id,
+        bool includeSemVer2,
+        CancellationToken cancellationToken)
     {
-        var package = await store.GetPackageAsync(feedKey, id.ToLowerInvariant(), includeDependencies: true, cancellationToken);
-        return package is null ? [] : V2Row.ForPackage(package, includeSemVer2);
+        var idLower = id.ToLowerInvariant();
+        var package = await store.GetPackageAsync(feed.Key, idLower, includeDependencies: true, cancellationToken);
+        if (feed.Upstreams.Count == 0)
+        {
+            return package is null ? [] : V2Row.ForPackage(package, includeSemVer2);
+        }
+
+        var upstream = await connector.UpstreamCandidatesAsync(feed, idLower, cancellationToken);
+        var local = package?.Versions ?? [];
+        if (local.Count == 0 && upstream.Count == 0)
+        {
+            return [];
+        }
+
+        var merged = VersionListBuilder.Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream), includeSemVer2);
+        var displayId = package?.Id ?? id;
+        return merged.Where(e => e.Payload is not null).Select(e => new V2Row(displayId, e)).ToList();
     }
 
     /// <summary>

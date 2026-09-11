@@ -8,12 +8,21 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
 {
     public Task<Feed?> FindAsync(string name, CancellationToken cancellationToken)
     {
+        // Upstreams come along: every protocol request resolves its feed here, and a proxy feed needs them
+        // to answer at all. A curated feed has none, so this costs nothing there.
         var lower = name.ToLowerInvariant();
-        return db.Feeds.AsNoTracking().FirstOrDefaultAsync(f => f.NameLower == lower, cancellationToken);
+        return db.Feeds
+            .AsNoTracking()
+            .Include(f => f.Upstreams.OrderBy(u => u.Ordinal))
+            .FirstOrDefaultAsync(f => f.NameLower == lower, cancellationToken);
     }
 
     public async Task<IReadOnlyList<Feed>> ListAsync(CancellationToken cancellationToken) =>
-        await db.Feeds.AsNoTracking().OrderBy(f => f.NameLower).ToListAsync(cancellationToken);
+        await db.Feeds
+            .AsNoTracking()
+            .Include(f => f.Upstreams.OrderBy(u => u.Ordinal))
+            .OrderBy(f => f.NameLower)
+            .ToListAsync(cancellationToken);
 
     public async Task<bool> CreateAsync(Feed feed, CancellationToken cancellationToken)
     {

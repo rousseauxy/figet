@@ -40,8 +40,23 @@ configuration. If no feed exists after seeding, a feed named `default` is create
 | `Feeds:N:AnonymousRead` | `false` | When true, every read endpoint works without credentials. |
 | `Feeds:N:AllowOverwrite` | `false` | When true, pushing an existing version replaces it instead of answering 409. |
 | `Feeds:N:DeletionBehavior` | `Unlist` | `Unlist` hides the version from search and keeps it downloadable; `HardDelete` removes the metadata and the files. |
+| `Feeds:N:Upstreams:M:Name` | required with an upstream | A name for logs and the UI, unique within the feed. |
+| `Feeds:N:Upstreams:M:Url` | required with an upstream | A v3 service index (`https://api.nuget.org/v3/index.json`) or a v2 feed root (`https://www.powershellgallery.com/api/v2`). |
+| `Feeds:N:Upstreams:M:Kind` | `V3` | `V3` or `V2`. The URL alone cannot always tell, so it is stated. |
+| `Feeds:N:Upstreams:M:Allow:X` | empty | Regular expressions on the package id. Empty allows every id; otherwise an id must match one to be listed or fetched. |
+| `Feeds:N:Upstreams:M:Deny:X` | empty | Regular expressions on the package id. A match is never listed or fetched, even when it is allowed above. |
+| `Feeds:N:Upstreams:M:CredentialRef` | empty | Name of the environment variable holding this upstream's API key or password. The secret itself is never stored. |
 
 Environment variable form: `FiGet__Feeds__0__Name=modules`, `FiGet__Feeds__0__AnonymousRead=true`.
+
+## FiGet:Connector
+
+Applies to every proxy feed. Upstreams themselves are configured per feed, above.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `UpstreamIndexTtl` | `00:05:00` | How long one upstream's version list for one package stays usable before it is fetched again. A new upstream release becomes visible within this window. |
+| `UpstreamTimeout` | `00:00:10` | How long a single upstream call may take before that upstream counts as unavailable for this request. |
 
 ## FiGet:Auth
 

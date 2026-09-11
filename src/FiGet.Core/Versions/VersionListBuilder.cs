@@ -95,6 +95,11 @@ public static class VersionListBuilder
     public static VersionListEntry<T>? Latest<T>(this IReadOnlyList<VersionListEntry<T>> list, bool includePrerelease) =>
         list.LastOrDefault(e => includePrerelease ? e.IsAbsoluteLatestVersion : e.IsLatestVersion);
 
-    private static VersionCandidate<PackageVersion> ToCandidate(PackageVersion v) =>
-        new(NuGetVersion.Parse(v.NormalizedVersion), v.Listed, v.IsSemVer2, VersionSource.Local, v);
+    /// <summary>One local row as a merge candidate, so callers can merge it with upstream candidates.</summary>
+    public static VersionCandidate<PackageVersion> ToCandidate(PackageVersion v)
+    {
+        ArgumentNullException.ThrowIfNull(v);
+        return
+            new(NuGetVersion.Parse(v.NormalizedVersion), v.Listed, v.IsSemVer2, VersionSource.Local, v);
+    }
 }

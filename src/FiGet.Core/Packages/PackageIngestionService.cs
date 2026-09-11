@@ -26,11 +26,18 @@ public sealed class PackageIngestionService(IPackageIndexer indexer, IPackageSto
     private const long MaxPdbSize = 512L * 1024 * 1024;
 
     /// <summary>
-    /// Indexes and stores a package. The metadata row is written first, so a concurrent push of the same
-    /// version loses on the database's unique index instead of silently replacing the file; the file is
-    /// written second, and the row is removed again if that fails.
+    /// Indexes and stores a pushed package. The metadata row is written first, so a concurrent push of the
+    /// same version loses on the database's unique index instead of silently replacing the file; the file
+    /// is written second, and the row is removed again if that fails.
     /// </summary>
-    public async Task<PushResult> PushAsync(Feed feed, Stream nupkg, CancellationToken cancellationToken)
+    public Task<PushResult> PushAsync(Feed feed, Stream nupkg, CancellationToken cancellationToken) =>
+        PushAsync(feed, nupkg, PackageOrigin.Pushed, cancellationToken);
+
+    /// <summary>
+    /// The same, for a package that came from an upstream rather than from a client. A cached package is
+    /// identical in every way except its origin, which is what retention and cache pruning act on.
+    /// </summary>
+    public async Task<PushResult> PushAsync(Feed feed, Stream nupkg, PackageOrigin origin, CancellationToken cancellationToken)
     {
         IndexedPackage indexed;
         try
@@ -56,7 +63,7 @@ public sealed class PackageIngestionService(IPackageIndexer indexer, IPackageSto
             return new PushResult(PushOutcome.Conflict, $"{indexed.Id} {normalized} already exists in feed '{feed.Name}'.", indexed.Id, normalized);
         }
 
-        var row = ToEntity(indexed, time.GetUtcNow().UtcDateTime);
+        var row = ToEntity(indexed, time.GetUtcNow().UtcDateTime, origin);
         if (!await store.AddVersionAsync(feed.Key, indexed.Id, row, feed.AllowOverwrite, cancellationToken))
         {
             return new PushResult(PushOutcome.Conflict, $"{indexed.Id} {normalized} already exists in feed '{feed.Name}'.", indexed.Id, normalized);
@@ -205,7 +212,7 @@ public sealed class PackageIngestionService(IPackageIndexer indexer, IPackageSto
     public static string? NormalizeLower(string version) =>
         NuGet.Versioning.NuGetVersion.TryParse(version, out var parsed) ? parsed.ToNormalizedString().ToLowerInvariant() : null;
 
-    private static PackageVersion ToEntity(IndexedPackage p, DateTime utcNow)
+    private static PackageVersion ToEntity(IndexedPackage p, DateTime utcNow, PackageOrigin origin)
     {
         var normalized = p.Version.ToNormalizedString();
         var tagsLower = p.Tags.ToLowerInvariant();
@@ -237,7 +244,7 @@ public sealed class PackageIngestionService(IPackageIndexer indexer, IPackageSto
             IsPrerelease = p.Version.IsPrerelease,
             IsSemVer2 = p.IsSemVer2,
             Listed = true,
-            Origin = PackageOrigin.Pushed,
+            Origin = origin,
             Authors = p.Authors,
             Description = p.Description,
             Summary = p.Summary,
