@@ -522,7 +522,7 @@ every §7.2 scenario against `/nuget/{feed}/`; PSResourceGet passes against `/ap
 
 Acceptance: the two named connector tests (§7.2) plus all phase 1–2 scenarios unchanged.
 
-### Phase 4 — asset directories (3–4 days)
+### Phase 4 — asset directories and the browse UI (4–5 days)
 
 §4.4 in full, Range requests, UI upload and browse, remote-URL pinning.
 
@@ -539,6 +539,22 @@ confirmation. The pages are static SSR, so the drop zone posts straight to the a
 small script (`fetch` and `FormData`, or a `PUT` per file) rather than through an interactive
 component; the server path is the same one a script uses. Uploading always requires an authenticated
 session or a token, whatever the directory's anonymous-read setting says.
+
+**The UI is how a person uses the server, so it carries the same affordances the commercial servers
+have**, and this phase finishes them:
+
+- Search a feed and open any package, including one that only exists on an upstream.
+- Download any version straight from the browser, both from the package page and from an
+  all-versions list, without pasting a command anywhere.
+- Usage instructions on the package page as tabs with a copy button, chosen by feed kind:
+  `Register-PSRepository` and `Install-Module` for the PowerShell clients still on v2,
+  `Register-PSResourceRepository` and `Install-PSResource` for PSResourceGet, `dotnet add package`
+  and a `PackageReference` line for .NET, and for an asset directory a plain URL, a `curl` line and
+  a PowerShell download line.
+- Every snippet is a **per-feed template**, seeded with the built-in defaults and editable in the
+  UI, with placeholders `{feedUrl}`, `{feedName}`, `{id}`, `{version}` and `{path}`. A feed may add
+  or remove snippets, so a team can use its own wording, or name the hostname its clients actually
+  reach, which is rarely the one the server sees.
 
 Acceptance: `curl`, `Invoke-WebRequest`, and Ansible `win_get_url` fetch by path; `PUT` with a
 token stores; listing JSON matches `docs/protocol-assets.md`.
@@ -629,7 +645,7 @@ FiGet:
   PublicBaseUrl:  https://packages.example.org        (used in every absolute URL the protocols emit)
   Feeds:          declared in the database, seeded from config on first start:
                   - Name, Type: Curated|Proxy, AnonymousRead, AllowOverwrite, DeletionBehavior: Unlist|HardDelete,
-                    Retention: { MaxMajor, MaxMinor, MaxPatch, MaxPrerelease, KeepUsedWithinDays, DryRun }, Cache: { PruneUnusedAfterDays, MaxSizeMB }, Upstreams: [ { Url, Kind: V2|V3, Allow: [regex], Deny: [regex], AuthRef } ]
+                    Retention: { MaxMajor, MaxMinor, MaxPatch, MaxPrerelease, KeepUsedWithinDays, DryRun }, Instructions: [ { Name, Template } ], Cache: { PruneUnusedAfterDays, MaxSizeMB }, Upstreams: [ { Url, Kind: V2|V3, Allow: [regex], Deny: [regex], AuthRef } ]
   Assets:         directories declared the same way: Name, AnonymousRead
   Auth:           Oidc: [ { Name, Authority, ClientId, ClientSecretRef, Scopes, RoleClaim, GroupToRole: {…}, EmailAllowList: [...] } ]
                   BootstrapAdminToken (first run only; printed once if unset)

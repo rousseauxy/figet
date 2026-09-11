@@ -154,6 +154,10 @@ HTTPS.
 - **Embedded icons, readmes and licence files** inside packages are not served; `iconUrl` and
   `licenseUrl` are passed through from the nuspec.
 - **Upload size limit**: enforced while streaming (413); not yet covered by an automated test.
+- **The UI browses and searches, but neither downloads nor uploads.** Package pages carry install
+  snippets for the dotnet CLI and PSResourceGet only, hard-coded rather than per-feed templates,
+  and there is no download link and no `Install-Module` snippet for the Windows PowerShell 5.1
+  fleet. All of that is phase 4 in the build plan.
 - **The container image** was not built locally (no Docker on the development machine); CI builds it and
   starts it as UID 1000123456 in group 0 on every push.
 - **Compatibility scripts** run manually; they join CI on a Windows runner once the repository is
