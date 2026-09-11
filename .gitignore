@@ -1,0 +1,28 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.swp
+.vs/
+.vscode/
+*.DotSettings.user
+TestResults/
+artifacts/
+*.nupkg
+*.snupkg
+!tests/**/fixtures/**/*.nupkg
+
+## Local data
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+appsettings.*.local.json
+.env
+.env.*
+
+## OS
+.DS_Store
+Thumbs.db
