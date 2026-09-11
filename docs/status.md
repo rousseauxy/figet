@@ -8,7 +8,11 @@ listed as passed when it was run against the code in the commit it names.
 ## Phase 1: core, persistence, storage, v3 — 2026-09-11
 
 **State: done, with one acceptance item moved to phase 2 (see "Plan corrections").** CI on GitHub
-Actions has not run yet at the time of writing; its first run follows the push of this work.
+Actions is green on commit `036acc9` (run 34632174594): 90 tests passed with none skipped on Ubuntu
+against SQLite and a SQL Server 2022 service container, both migration assemblies match the model, and
+the image builds and serves `/health/ready` and the service index when started as UID 1000123456 in
+group 0. The first run failed only on the drift check, which passed `-c` (the EF context option) instead
+of the build configuration.
 
 ### Delivered
 
@@ -87,8 +91,8 @@ HTTPS.
 - **Embedded icons, readmes and licence files** inside packages are not served; `iconUrl` and
   `licenseUrl` are passed through from the nuspec.
 - **Upload size limit**: enforced while streaming (413); not yet covered by an automated test.
-- **The container image** was not built locally (no Docker on the development machine). CI builds it and
-  starts it as UID 1000123456 in group 0.
+- **The container image** was not built locally (no Docker on the development machine); CI builds it and
+  starts it as UID 1000123456 in group 0 on every push.
 - **Compatibility scripts** run manually; they join CI on a Windows runner once the repository is
   public (plan §7.2).
 
