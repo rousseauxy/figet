@@ -1,0 +1,117 @@
+@page "/feeds/{Name}"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@using FiGet.Core.Search
+@using FiGet.Core.Versions
+@inject IFeedStore Feeds
+@inject IPackageStore Packages
+
+<PageTitle>@Name · FiGet</PageTitle>
+
+@if (feed is null)
+{
+    <h1>Feed not found</h1>
+    <p>There is no feed named <code>@Name</code>. <a href="/">Back to feeds</a>.</p>
+    return;
+}
+
+<h1>@feed.Name</h1>
+<p class="muted">
+    v3 source: <code>@(PublicUrls.Feed(HttpContext, feed.Name))/v3/index.json</code>
+</p>
+
+<form method="get" class="search">
+    <input type="search" name="q" value="@Q" placeholder="Search id, title, tags, description" aria-label="Search packages" />
+    <button type="submit">Search</button>
+</form>
+
+<p class="muted">@total package@(total == 1 ? "" : "s")@(string.IsNullOrWhiteSpace(Q) ? "" : $" matching “{Q}”").</p>
+
+@if (rows.Count > 0)
+{
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Package</th><th>Latest</th><th>Versions</th><th>Downloads</th><th>Last published</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var row in rows)
+                {
+                    <tr>
+                        <td><a href="/feeds/@feed.Name/packages/@row.Id">@row.Id</a></td>
+                        <td>@row.Latest</td>
+                        <td>@row.Versions</td>
+                        <td>@row.Downloads.ToString("N0", CultureInfo.InvariantCulture)</td>
+                        <td>@row.Published.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) UTC</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <nav class="pager">
+        @if (Page > 1)
+        {
+            <a href="@PageLink(Page - 1)">← Previous</a>
+        }
+        @if (Page * PageSize < total)
+        {
+            <a href="@PageLink(Page + 1)">Next →</a>
+        }
+    </nav>
+}
+
+@code {
+    private const int PageSize = 50;
+    private Feed? feed;
+    private int total;
+    private List<Row> rows = [];
+
+    [Parameter]
+    public string Name { get; set; } = "";
+
+    [SupplyParameterFromQuery(Name = "q")]
+    private string? Q { get; set; }
+
+    [SupplyParameterFromQuery(Name = "page")]
+    private int Page { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Page = Math.Max(1, Page);
+        feed = await Feeds.FindAsync(Name, HttpContext.RequestAborted);
+        if (feed is null)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        var filter = new PackageSearchFilter(SearchQueryParser.Parse(Q), IncludePrerelease: true, IncludeSemVer2: true, PackageTypeLower: null);
+        var page = await Packages.SearchAsync(feed.Key, filter, (Page - 1) * PageSize, PageSize, HttpContext.RequestAborted);
+        total = page.TotalHits;
+        var packages = (await Packages.GetPackagesAsync(page.PackageKeys, HttpContext.RequestAborted)).ToDictionary(p => p.Key);
+        foreach (var key in page.PackageKeys)
+        {
+            if (!packages.TryGetValue(key, out var package))
+            {
+                continue;
+            }
+
+            var list = VersionListBuilder.BuildLocal(package.Versions, includeSemVer2: true);
+            var latest = list.Latest(includePrerelease: true) ?? list[^1];
+            rows.Add(new Row(
+                package.Id,
+                latest.Payload!.NormalizedVersion,
+                package.Versions.Count,
+                package.Versions.Sum(v => v.Downloads),
+                package.Versions.Max(v => v.PublishedUtc)));
+        }
+    }
+
+    private string PageLink(int page) =>
+        $"/feeds/{Uri.EscapeDataString(Name)}?page={page}" + (string.IsNullOrWhiteSpace(Q) ? "" : "&q=" + Uri.EscapeDataString(Q));
+
+    private sealed record Row(string Id, string Latest, int Versions, long Downloads, DateTime Published);
+}

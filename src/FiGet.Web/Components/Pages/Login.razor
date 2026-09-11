@@ -1,0 +1,73 @@
+@page "/account/login"
+@attribute [AllowAnonymous]
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using FiGet.Core.Tokens
+@inject AccessTokenService Tokens
+@inject NavigationManager Navigation
+
+<PageTitle>Sign in · FiGet</PageTitle>
+
+<section class="narrow">
+    <h1>Sign in</h1>
+    <p class="muted">Paste an admin token. Sign-in with an identity provider arrives in a later release.</p>
+
+    <EditForm Model="Input!" FormName="login" OnValidSubmit="SignInAsync" method="post">
+        <DataAnnotationsValidator />
+        <label for="token">Admin token</label>
+        <InputText id="token" type="password" autocomplete="off" @bind-Value="Input!.Token" />
+        <ValidationMessage For="() => Input!.Token" />
+        @if (error is not null)
+        {
+            <p class="error">@error</p>
+        }
+        <button type="submit">Sign in</button>
+    </EditForm>
+</section>
+
+@code {
+    private string? error;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "login")]
+    private LoginInput? Input { get; set; }
+
+    protected override void OnInitialized() => Input ??= new();
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private async Task SignInAsync()
+    {
+        var token = await Tokens.ValidateAsync(Input!.Token, HttpContext.RequestAborted);
+        if (token is null || !token.IsAdmin)
+        {
+            error = "That token is not a valid admin token.";
+            return;
+        }
+
+        var identity = new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.Name, token.Name),
+                new Claim(ClaimTypes.Role, "admin"),
+                new Claim(FiGetApp.TokenKeyClaim, token.Key.ToString(CultureInfo.InvariantCulture)),
+            ],
+            CookieAuthenticationDefaults.AuthenticationScheme);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+
+        var target = !string.IsNullOrEmpty(ReturnUrl) && ReturnUrl.StartsWith('/') && !ReturnUrl.StartsWith("//", StringComparison.Ordinal)
+            ? ReturnUrl
+            : "/";
+        Navigation.NavigateTo(target);
+    }
+
+    private sealed class LoginInput
+    {
+        [Required(ErrorMessage = "Enter a token.")]
+        public string Token { get; set; } = "";
+    }
+}

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1707;CA2201;CA1861;CA2234;xUnit1051;CS8602</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="NuGet.Protocol" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FiGet.Web\FiGet.Web.csproj" />
+    <ProjectReference Include="..\FiGet.Testing\FiGet.Testing.csproj" />
+  </ItemGroup>
+</Project>

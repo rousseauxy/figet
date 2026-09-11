@@ -1,0 +1,22 @@
+@inherits LayoutComponentBase
+
+<header class="topbar">
+    <a class="brand" href="/">FiGet</a>
+    <AuthorizeView Policy="@FiGetApp.AdminPolicy">
+        <Authorized>
+            <nav>
+                <a href="/">Feeds</a>
+                <a href="/tokens">Tokens</a>
+            </nav>
+            <form method="post" action="/account/logout" class="logout">
+                <AntiforgeryToken />
+                <span class="muted">@context.User.Identity?.Name</span>
+                <button type="submit" class="link">Sign out</button>
+            </form>
+        </Authorized>
+    </AuthorizeView>
+</header>
+
+<main>
+    @Body
+</main>

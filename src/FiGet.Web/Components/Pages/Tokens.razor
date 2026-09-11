@@ -1,0 +1,172 @@
+@page "/tokens"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@using System.ComponentModel.DataAnnotations
+@using FiGet.Core.Tokens
+@inject IAccessTokenStore Store
+@inject IFeedStore Feeds
+@inject AccessTokenService TokenService
+@inject TimeProvider Time
+
+<PageTitle>Tokens · FiGet</PageTitle>
+
+<h1>Tokens</h1>
+<p class="muted">
+    Clients send a token as <code>X-NuGet-ApiKey</code> (push), or as the password of Basic authentication (read).
+    Only a hash is stored: a token is shown once, when it is created.
+</p>
+
+@if (created is not null)
+{
+    <div class="secret" role="status">
+        <p><strong>Token “@created.Token.Name” created.</strong> Copy it now; it will not be shown again.</p>
+        <pre><code>@created.Secret</code></pre>
+    </div>
+}
+
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr><th>Name</th><th>Prefix</th><th>Scopes</th><th>Feed</th><th>Created</th><th>Last used</th><th>Expires</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var token in tokens)
+            {
+                var active = token.RevokedUtc is null && (token.ExpiresUtc is null || token.ExpiresUtc > now);
+                <tr class="@(active ? "" : "inactive")">
+                    <td>@token.Name</td>
+                    <td><code>@token.Prefix…</code></td>
+                    <td>@token.Scopes</td>
+                    <td>@(token.Feed?.Name ?? "All feeds")</td>
+                    <td>@Date(token.CreatedUtc)</td>
+                    <td>@Date(token.LastUsedUtc)</td>
+                    <td>@(token.RevokedUtc is not null ? "Revoked" : Date(token.ExpiresUtc, "Never"))</td>
+                    <td>
+                        @if (token.RevokedUtc is null)
+                        {
+                            <form method="post" @formname="@($"revoke-{token.Key}")" @onsubmit="() => RevokeAsync(token.Key)">
+                                <AntiforgeryToken />
+                                <button type="submit" class="danger">Revoke</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<h2>Create a token</h2>
+<EditForm Model="NewToken!" FormName="create-token" OnValidSubmit="CreateAsync" method="post" class="stack">
+    <DataAnnotationsValidator />
+    <label for="token-name">Name</label>
+    <InputText id="token-name" @bind-Value="NewToken!.Name" placeholder="for example: ci-publish" />
+    <ValidationMessage For="() => NewToken!.Name" />
+
+    <fieldset>
+        <legend>Scopes</legend>
+        <label class="check"><InputCheckbox @bind-Value="NewToken!.Read" /> Read</label>
+        <label class="check"><InputCheckbox @bind-Value="NewToken!.Push" /> Push (includes read)</label>
+        <label class="check"><InputCheckbox @bind-Value="NewToken!.Delete" /> Delete and relist (includes read)</label>
+        <label class="check"><InputCheckbox @bind-Value="NewToken!.Admin" /> Admin (everything, including this page)</label>
+    </fieldset>
+
+    <label for="token-feed">Feed</label>
+    <InputSelect id="token-feed" @bind-Value="NewToken!.FeedName">
+        <option value="">All feeds</option>
+        @foreach (var feed in feeds)
+        {
+            <option value="@feed.Name">@feed.Name</option>
+        }
+    </InputSelect>
+
+    <label for="token-expiry">Expires after (days, empty for never)</label>
+    <InputNumber id="token-expiry" @bind-Value="NewToken!.ExpiresInDays" min="1" />
+
+    @if (error is not null)
+    {
+        <p class="error">@error</p>
+    }
+    <button type="submit">Create token</button>
+</EditForm>
+
+@code {
+    private IReadOnlyList<AccessToken> tokens = [];
+    private IReadOnlyList<Feed> feeds = [];
+    private CreatedToken? created;
+    private string? error;
+    private DateTime now;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "create-token")]
+    private TokenForm? NewToken { get; set; }
+
+    protected override void OnInitialized() => NewToken ??= new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        now = Time.GetUtcNow().UtcDateTime;
+        feeds = await Feeds.ListAsync(HttpContext.RequestAborted);
+        tokens = await Store.ListAsync(HttpContext.RequestAborted);
+    }
+
+    private async Task CreateAsync()
+    {
+        var scopes = (NewToken!.Read ? TokenScopes.Read : 0)
+            | (NewToken!.Push ? TokenScopes.Push : 0)
+            | (NewToken!.Delete ? TokenScopes.Delete : 0)
+            | (NewToken!.Admin ? TokenScopes.Admin : 0);
+        if (scopes == TokenScopes.None)
+        {
+            error = "Choose at least one scope.";
+            return;
+        }
+
+        int? feedKey = null;
+        if (!string.IsNullOrEmpty(NewToken!.FeedName))
+        {
+            var feed = feeds.FirstOrDefault(f => f.Name == NewToken!.FeedName);
+            if (feed is null)
+            {
+                error = "That feed does not exist.";
+                return;
+            }
+
+            feedKey = feed.Key;
+        }
+
+        DateTime? expires = NewToken!.ExpiresInDays is > 0 ? now.AddDays(NewToken!.ExpiresInDays.Value) : null;
+        created = await TokenService.CreateAsync(NewToken!.Name.Trim(), scopes, feedKey, expires, HttpContext.RequestAborted);
+        tokens = await Store.ListAsync(HttpContext.RequestAborted);
+        NewToken = new();
+    }
+
+    private async Task RevokeAsync(int key)
+    {
+        await TokenService.RevokeAsync(key, HttpContext.RequestAborted);
+        tokens = await Store.ListAsync(HttpContext.RequestAborted);
+    }
+
+    private static string Date(DateTime? value, string empty = "—") =>
+        value is null ? empty : value.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+
+    private sealed class TokenForm
+    {
+        [Required(ErrorMessage = "Enter a name.")]
+        [StringLength(128)]
+        public string Name { get; set; } = "";
+
+        public bool Read { get; set; } = true;
+
+        public bool Push { get; set; }
+
+        public bool Delete { get; set; }
+
+        public bool Admin { get; set; }
+
+        public string FeedName { get; set; } = "";
+
+        public int? ExpiresInDays { get; set; }
+    }
+}

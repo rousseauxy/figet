@@ -1,0 +1,109 @@
+@page "/feeds/{Name}/packages/{Id}"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@using FiGet.Core.Versions
+@inject IFeedStore Feeds
+@inject IPackageStore Packages
+
+<PageTitle>@Id · FiGet</PageTitle>
+
+@if (feed is null || package is null || latest is null)
+{
+    <h1>Package not found</h1>
+    <p><code>@Id</code> is not in feed <code>@Name</code>. <a href="/feeds/@Name">Back to the feed</a>.</p>
+    return;
+}
+
+<p class="crumbs"><a href="/">Feeds</a> / <a href="/feeds/@feed.Name">@feed.Name</a></p>
+<h1>@package.Id <span class="version">@latest.NormalizedVersion</span></h1>
+
+@if (!string.IsNullOrWhiteSpace(latest.Description))
+{
+    <p class="description">@latest.Description</p>
+}
+
+<dl class="facts">
+    <dt>Authors</dt><dd>@(string.IsNullOrWhiteSpace(latest.Authors) ? "—" : latest.Authors)</dd>
+    <dt>Tags</dt><dd>@(string.IsNullOrWhiteSpace(latest.Tags) ? "—" : latest.Tags)</dd>
+    <dt>Project</dt>
+    <dd>
+        @if (Uri.TryCreate(latest.ProjectUrl, UriKind.Absolute, out var project) && project.Scheme is "https" or "http")
+        {
+            <a href="@project" rel="noopener noreferrer">@project</a>
+        }
+        else
+        {
+            <span>—</span>
+        }
+    </dd>
+    <dt>Licence</dt><dd>@(latest.LicenseExpression is { Length: > 0 } expr ? expr : (string.IsNullOrWhiteSpace(latest.LicenseUrl) ? "—" : latest.LicenseUrl))</dd>
+</dl>
+
+<h2>Install</h2>
+<pre><code>dotnet add package @package.Id --version @latest.NormalizedVersion --source @(feedUrl)/v3/index.json</code></pre>
+<pre><code>Register-PSResourceRepository -Name @feed.Name -Uri @(feedUrl)/v3/index.json -Trusted
+Install-PSResource -Name @package.Id -Version @latest.NormalizedVersion -Repository @feed.Name</code></pre>
+
+<h2>Versions</h2>
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr><th>Version</th><th>State</th><th>Published</th><th>Size</th><th>Downloads</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var entry in versions.Reverse())
+            {
+                var v = entry.Payload!;
+                <tr>
+                    <td>@v.NormalizedVersion</td>
+                    <td>
+                        @(v.Listed ? "Listed" : "Unlisted")
+                        @if (entry.IsAbsoluteLatestVersion) { <span class="badge">latest</span> }
+                        @if (entry.IsLatestVersion && !entry.IsAbsoluteLatestVersion) { <span class="badge">latest stable</span> }
+                    </td>
+                    <td>@v.PublishedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) UTC</td>
+                    <td>@FormatSize(v.Size)</td>
+                    <td>@v.Downloads.ToString("N0", CultureInfo.InvariantCulture)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private Feed? feed;
+    private Package? package;
+    private PackageVersion? latest;
+    private IReadOnlyList<VersionListEntry<PackageVersion>> versions = [];
+    private string feedUrl = "";
+
+    [Parameter]
+    public string Name { get; set; } = "";
+
+    [Parameter]
+    public string Id { get; set; } = "";
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        feed = await Feeds.FindAsync(Name, HttpContext.RequestAborted);
+        package = feed is null ? null : await Packages.GetPackageAsync(feed.Key, Id.ToLowerInvariant(), includeDependencies: false, HttpContext.RequestAborted);
+        if (feed is null || package is null || package.Versions.Count == 0)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        feedUrl = PublicUrls.Feed(HttpContext, feed.Name);
+        versions = VersionListBuilder.BuildLocal(package.Versions, includeSemVer2: true);
+        latest = (versions.Latest(includePrerelease: true) ?? versions[^1]).Payload;
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        >= 1024 * 1024 => (bytes / 1024d / 1024d).ToString("0.0", CultureInfo.InvariantCulture) + " MB",
+        >= 1024 => (bytes / 1024d).ToString("0", CultureInfo.InvariantCulture) + " KB",
+        _ => bytes.ToString(CultureInfo.InvariantCulture) + " B",
+    };
+}

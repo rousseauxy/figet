@@ -1,0 +1,22 @@
+@page "/error"
+@attribute [AllowAnonymous]
+@using System.Diagnostics
+
+<PageTitle>Error · FiGet</PageTitle>
+
+<h1>Something went wrong</h1>
+<p>The request could not be completed. The error has been logged.</p>
+@if (!string.IsNullOrEmpty(requestId))
+{
+    <p class="muted">Request id: <code>@requestId</code></p>
+}
+
+@code {
+    private string? requestId;
+
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    protected override void OnInitialized() =>
+        requestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

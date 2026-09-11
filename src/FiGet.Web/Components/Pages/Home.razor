@@ -1,0 +1,118 @@
+@page "/"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@using System.ComponentModel.DataAnnotations
+@using FiGet.Core.Feeds
+@inject IFeedStore Feeds
+@inject TimeProvider Time
+
+<PageTitle>Feeds · FiGet</PageTitle>
+
+<h1>Feeds</h1>
+
+@if (feeds.Count == 0)
+{
+    <p class="muted">No feeds yet.</p>
+}
+else
+{
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Name</th><th>Kind</th><th>Read</th><th>On existing version</th><th>Delete</th><th>v3 source URL</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var feed in feeds)
+                {
+                    <tr>
+                        <td><a href="/feeds/@feed.Name">@feed.Name</a></td>
+                        <td>@feed.Kind</td>
+                        <td>@(feed.AnonymousRead ? "Anonymous" : "Token")</td>
+                        <td>@(feed.AllowOverwrite ? "Overwrite" : "Reject (409)")</td>
+                        <td>@feed.DeletionBehavior</td>
+                        <td><code>@(PublicUrls.Feed(HttpContext, feed.Name))/v3/index.json</code></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<h2>Create a feed</h2>
+<EditForm Model="NewFeed!" FormName="create-feed" OnValidSubmit="CreateAsync" method="post" class="stack">
+    <DataAnnotationsValidator />
+    <label for="feed-name">Name</label>
+    <InputText id="feed-name" @bind-Value="NewFeed!.Name" placeholder="for example: modules" />
+    <ValidationMessage For="() => NewFeed!.Name" />
+
+    <label class="check"><InputCheckbox @bind-Value="NewFeed!.AnonymousRead" /> Anyone can read without a token</label>
+    <label class="check"><InputCheckbox @bind-Value="NewFeed!.AllowOverwrite" /> Pushing an existing version replaces it</label>
+
+    <label for="feed-delete">Delete behaviour</label>
+    <InputSelect id="feed-delete" @bind-Value="NewFeed!.DeletionBehavior">
+        <option value="@PackageDeletionBehavior.Unlist">Unlist (recommended)</option>
+        <option value="@PackageDeletionBehavior.HardDelete">Hard delete</option>
+    </InputSelect>
+
+    @if (message is not null)
+    {
+        <p class="@(messageIsError ? "error" : "ok")">@message</p>
+    }
+    <button type="submit">Create feed</button>
+</EditForm>
+
+@code {
+    private IReadOnlyList<Feed> feeds = [];
+    private string? message;
+    private bool messageIsError;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "create-feed")]
+    private FeedForm? NewFeed { get; set; }
+
+    protected override void OnInitialized() => NewFeed ??= new();
+
+    protected override async Task OnInitializedAsync() =>
+        feeds = await Feeds.ListAsync(HttpContext.RequestAborted);
+
+    private async Task CreateAsync()
+    {
+        if (!FeedNames.IsValid(NewFeed!.Name))
+        {
+            (message, messageIsError) = ("Use letters, digits, dot, dash or underscore, starting with a letter or digit (at most 64).", true);
+            return;
+        }
+
+        var created = await Feeds.CreateAsync(
+            new Feed
+            {
+                Name = NewFeed!.Name,
+                NameLower = NewFeed!.Name.ToLowerInvariant(),
+                AnonymousRead = NewFeed!.AnonymousRead,
+                AllowOverwrite = NewFeed!.AllowOverwrite,
+                DeletionBehavior = NewFeed!.DeletionBehavior,
+                CreatedUtc = Time.GetUtcNow().UtcDateTime,
+            },
+            HttpContext.RequestAborted);
+
+        (message, messageIsError) = created ? ($"Feed '{NewFeed!.Name}' created.", false) : ($"A feed named '{NewFeed!.Name}' already exists.", true);
+        feeds = await Feeds.ListAsync(HttpContext.RequestAborted);
+        if (created)
+        {
+            NewFeed = new();
+        }
+    }
+
+    private sealed class FeedForm
+    {
+        [Required(ErrorMessage = "Enter a name.")]
+        public string Name { get; set; } = "";
+
+        public bool AnonymousRead { get; set; }
+
+        public bool AllowOverwrite { get; set; }
+
+        public PackageDeletionBehavior DeletionBehavior { get; set; } = PackageDeletionBehavior.Unlist;
+    }
+}
