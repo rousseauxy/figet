@@ -137,6 +137,11 @@ public sealed class ODataOrderBy
                 throw new ODataFilterException($"Cannot order by '{part}'.", text);
             }
 
+            if (!V2Row.IsKnownProperty(property))
+            {
+                throw new ODataFilterException($"Cannot order by unknown property '{property}'.", text);
+            }
+
             keys.Add((property, descending));
         }
 
@@ -313,6 +318,31 @@ internal sealed class ODataComparison(string op, ODataExpression left, ODataExpr
 
 internal sealed class ODataFunction(string name, IReadOnlyList<ODataExpression> arguments) : ODataExpression
 {
+    private static readonly Dictionary<string, int> Arities = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["substringof"] = 2,
+        ["startswith"] = 2,
+        ["endswith"] = 2,
+        ["tolower"] = 1,
+        ["toupper"] = 1,
+        ["indexof"] = 2,
+        ["trim"] = 1,
+    };
+
+    /// <summary>Checked while parsing, so an unknown function fails before any row is looked at.</summary>
+    public static void Validate(string name, int argumentCount, string expression)
+    {
+        if (!Arities.TryGetValue(name, out var arity))
+        {
+            throw new ODataFilterException($"Unknown function '{name}'.", expression);
+        }
+
+        if (argumentCount != arity)
+        {
+            throw new ODataFilterException($"Function '{name}' takes {arity} argument(s).", expression);
+        }
+    }
+
     public override object? Evaluate(V2Row row)
     {
         switch (name.ToUpperInvariant())
@@ -471,6 +501,7 @@ internal sealed class ODataParser
             if (position < text.Length && text[position] == ')')
             {
                 position++;
+                ODataFunction.Validate(word, arguments.Count, text);
                 return new ODataFunction(word, arguments);
             }
 
@@ -493,6 +524,7 @@ internal sealed class ODataParser
                 throw new ODataFilterException($"Function '{word}' has a malformed argument list.", text);
             }
 
+            ODataFunction.Validate(word, arguments.Count, text);
             return new ODataFunction(word, arguments);
         }
 
@@ -501,7 +533,9 @@ internal sealed class ODataParser
             "TRUE" => new ODataLiteral(true),
             "FALSE" => new ODataLiteral(false),
             "NULL" => new ODataLiteral(null),
-            _ => new ODataProperty(word),
+            _ => V2Row.IsKnownProperty(word)
+                ? new ODataProperty(word)
+                : throw new ODataFilterException($"Unknown property '{word}'.", text),
         };
     }
 

@@ -61,6 +61,20 @@ public sealed record V2Row(string Id, VersionListEntry<PackageVersion> Entry)
         };
     }
 
+    /// <summary>
+    /// Every property the filter and the ordering accept. Names are checked while parsing, not while
+    /// evaluating rows: a feed with no matching rows must still answer 400 for an unknown property,
+    /// instead of an empty 200 that a client reads as "the package does not exist".
+    /// </summary>
+    private static readonly HashSet<string> KnownProperties = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Id", "Version", "NormalizedVersion", "Tags", "Title", "Description", "Summary", "Authors",
+        "IsLatestVersion", "IsAbsoluteLatestVersion", "IsPrerelease", "Listed",
+        "Published", "Created", "LastUpdated", "DownloadCount", "VersionDownloadCount",
+    };
+
+    public static bool IsKnownProperty(string name) => KnownProperties.Contains(name);
+
     /// <summary>True for the properties compared as NuGet versions rather than as strings.</summary>
     public static bool IsVersionProperty(string name) =>
         name.Equals("Version", StringComparison.OrdinalIgnoreCase)

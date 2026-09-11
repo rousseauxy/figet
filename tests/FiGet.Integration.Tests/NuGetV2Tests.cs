@@ -197,19 +197,33 @@ public abstract class NuGetV2Tests
 
     /// <summary>
     /// The failure mode this server must not have: an unparsable filter is a 400 naming the expression,
-    /// never an empty 200 that makes a client report "no packages found".
+    /// never an empty 200 that makes a client report "no packages found". Deliberately asked against an id
+    /// that matches nothing, because validating while evaluating rows would pass on a feed with rows and
+    /// silently answer an empty 200 on one without.
     /// </summary>
     [Fact]
-    public async Task An_unsupported_filter_is_a_400_that_names_the_expression()
+    public async Task An_unsupported_expression_is_a_400_even_when_nothing_matches()
     {
         using var client = server.CreateClient();
+        var missing = FiGetServerFixture.UniqueId("V2.NoRows");
 
-        var response = await client.GetAsync("nuget/public/Search()?$filter=SomethingUnknown eq 'x'");
+        var response = await client.GetAsync($"nuget/public/FindPackagesById()?id='{missing}'&$filter=SomethingUnknown eq 'x'");
         HttpAssert.Status(HttpStatusCode.BadRequest, response);
         Assert.Contains("SomethingUnknown", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
 
+        var unknownFunction = await client.GetAsync($"nuget/public/FindPackagesById()?id='{missing}'&$filter=nosuchfunc(Id, 'x')");
+        HttpAssert.Status(HttpStatusCode.BadRequest, unknownFunction);
+
+        var badOrder = await client.GetAsync($"nuget/public/FindPackagesById()?id='{missing}'&$orderby=Nonsense desc");
+        HttpAssert.Status(HttpStatusCode.BadRequest, badOrder);
+
         var broken = await client.GetAsync("nuget/public/Search()?$filter=Id eq");
         HttpAssert.Status(HttpStatusCode.BadRequest, broken);
+
+        // A supported filter over an id with no rows stays a plain empty feed.
+        var empty = await HttpAssert.SuccessBodyAsync(
+            await client.GetAsync($"nuget/public/FindPackagesById()?id='{missing}'&$filter=IsLatestVersion"));
+        Assert.Empty(Entries(empty));
     }
 
     [Fact]
