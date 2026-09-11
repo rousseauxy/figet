@@ -79,6 +79,15 @@ What the server does, read from these pages:
 3. The shift is not compensated in `$skip`: page 0 of Graph used to end at 1.4.2 and now ends at 1.4.0 while
    page 40 still starts at 1.5.0, so **upstream versions silently drop out**.
 
+**Confirmed on a production server** running the same version, 2026-09-11, with two proxy feeds and six gallery
+modules of more than 40 versions each. For every module the total number of entries equalled its version count on
+the PowerShell Gallery that day, however many versions were cached. Every cached version therefore appears twice
+and pushes one upstream version out: Microsoft.Graph with 10 cached versions returned 10 duplicates and only 106 of
+its 116 versions. Two entries were flagged latest whenever at least one version was cached, and one when none was.
+Locally pushed packages of more than 40 versions had no duplicates and exactly one latest. Their pages were not in
+version order either, which the client tolerates because it pages until a page is empty (point 2 above) and never
+reads version ranges from page edges.
+
 What the client does with it: `Find-Module Microsoft.Graph` returned **2.30.0** (the cached, older version) as
 the latest; `Find-Module Microsoft.Graph.Authentication` returned 2.30.0 as well; `Save-Module
 Microsoft.Graph` failed with **"Unable to download, multiple modules matched 'Microsoft.Graph'. Please specify

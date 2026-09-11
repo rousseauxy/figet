@@ -49,6 +49,11 @@ cannot take a prerelease label by text edit.
 **Not recorded yet**: authenticated feeds, `Update-Module` across a page boundary, and the asset directory
 and management API calls (their shapes are simple and are listed in build plan §4.4 and §4.5).
 
+**Production comparison, 2026-09-11.** A read-only inventory of a production server on the same reference server version
+showed the same failure with exact arithmetic: the entry total per module equals the upstream version count, so
+each cached version is duplicated and hides one upstream version. Details in `docs/protocol-v2.md`, section
+"Paging and latest flags".
+
 ### Phase 1 amendment — 2026-09-11
 
 **Catalog entry documents.** Registration leaves pointed `catalogEntry` at themselves. PackageManagement's
