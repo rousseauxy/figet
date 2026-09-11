@@ -1,0 +1,93 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          # Throwaway password for a service container that lives only for this job.
+          MSSQL_SA_PASSWORD: "FiGet_ci_Passw0rd!"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'FiGet_ci_Passw0rd!' -C -Q 'SELECT 1' || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 15
+
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+      FIGET_TEST_SQLSERVER: "Server=localhost,1433;User Id=sa;Password=FiGet_ci_Passw0rd!;TrustServerCertificate=True"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: |
+          dotnet restore
+          dotnet tool restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Migrations match the model
+        run: |
+          dotnet ef migrations has-pending-model-changes --project src/FiGet.Persistence.Sqlite --no-build -c Release
+          dotnet ef migrations has-pending-model-changes --project src/FiGet.Persistence.SqlServer --no-build -c Release
+
+      - name: Test (SQLite and SQL Server)
+        run: dotnet test --no-build -c Release
+
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Images are not pushed while the repository is private.
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          push: false
+          load: true
+          tags: figet:ci
+
+      - name: Start the image as an arbitrary UID and check health
+        run: |
+          docker run -d --name figet --user 1000123456:0 -p 8080:8080 \
+            -e FiGet__Auth__BootstrapAdminToken=ci-admin-token-0123456789 \
+            -e FiGet__Feeds__0__Name=ci -e FiGet__Feeds__0__AnonymousRead=true \
+            figet:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/health/ready > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://localhost:8080/health/ready
+          curl -fsS http://localhost:8080/nuget/ci/v3/index.json | head -c 300
+          docker logs figet 2>&1 | tail -20

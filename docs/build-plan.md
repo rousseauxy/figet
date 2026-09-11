@@ -5,7 +5,8 @@ alone. It states what to build, in what order, how each step is verified, and th
 known. Where this document and the code disagree, the code is wrong until a decision here is
 changed on purpose.
 
-Status: written 2026-09-11 after the feasibility study. Nothing built yet.
+Status: written 2026-09-11 after the feasibility study. Phase 1 done the same day; corrections found while
+building it are folded in below and listed in `docs/status.md`.
 
 ---
 
@@ -44,7 +45,7 @@ Status: written 2026-09-11 after the feasibility study. Nothing built yet.
 | NuGet plumbing | `NuGet.Protocol`, `NuGet.Packaging`, `NuGet.Versioning`, `NuGet.Frameworks` at the version that ships with the SDK (`dotnet nuget --version`) | Upstream clients for v2 and v3, nuspec reader, version normalisation, dependency ranges. Never re-implement these. |
 | Persistence | EF Core 10; **SQL Server primary, SQLite secondary**; two migration assemblies | Production runs SQL Server; stand-alone and tests run SQLite. No provider-specific SQL. |
 | Storage | `IPackageStorage`, `IAssetStorage` abstractions; local filesystem first, S3-compatible second | Local disk for dev and NAS; object storage or RWX volume for multi-replica clusters |
-| Web UI | Blazor Server (interactive server render mode), minimal, no component library dependency you cannot replace | Same stack, no second build system |
+| Web UI | Blazor with **static server rendering** (form posts, no interactive circuits), minimal, no component library | Same stack, no second build system; no sticky sessions needed across replicas |
 | Auth (humans) | ASP.NET Core `OpenIdConnect` handler, N named schemes from configuration, cookie session | Provider-agnostic. **Not** `Microsoft.Identity.Web` (Entra-only). |
 | Auth (clients) | API keys and PATs, hashed at rest, accepted as `X-NuGet-ApiKey`, `X-ApiKey`, `Authorization: Basic` (password = token) | What nuget.exe, PowerShellGet, PSResourceGet and existing scripts send |
 | Logging / metrics | `Microsoft.Extensions.Logging` to stdout (JSON in containers), OpenTelemetry metrics + traces, OTLP exporter | Cluster-native |
@@ -56,7 +57,7 @@ Status: written 2026-09-11 after the feasibility study. Nothing built yet.
 ## 3. Solution layout
 
 ```
-figet.sln
+figet.slnx
 src/
   FiGet.Core/            Domain + services. No ASP.NET, no EF references.
                          Entities: Feed, FeedUpstream, Package, PackageVersion, PackageDependency,
@@ -68,12 +69,15 @@ src/
   FiGet.Persistence.Sqlite/      migrations for SQLite
   FiGet.Storage/         IPackageStorage/IAssetStorage + FileSystem implementation
   FiGet.Storage.S3/      S3-compatible implementation (phase 6)
+  FiGet.Http/            shared ASP.NET Core helpers: feed resolution and access checks, credential
+                         extraction, public URLs, upload buffering (used by every protocol project)
   FiGet.Protocol.V3/     endpoints + JSON models for NuGet v3 (§4.2)
   FiGet.Protocol.V2/     endpoints + OData Atom writer + $filter parser for NuGet v2 (§4.3)
   FiGet.Management/      /api/packages/... compatibility API (§4.5) + FiGet's own admin API
   FiGet.Assets/          /endpoints/... asset directory endpoints (§4.4)
   FiGet.Web/             host: DI, config, auth, Blazor admin UI, health, OpenTelemetry
 tests/
+  FiGet.Testing/             shared test helpers (builds real .nupkg/.snupkg files in memory)
   FiGet.Core.Tests/          unit tests (version list merge, filter parser, indexer)
   FiGet.Protocol.Tests/      golden fixture tests: request in, exact body out (§7.1)
   FiGet.Integration.Tests/   WebApplicationFactory against SQLite and (when available) SQL Server
@@ -104,7 +108,7 @@ every client auto-detects correctly:
 |---|---|---|
 | `/nuget/{feed}/` | PowerShellGet 2.x, nuget.exe as a v2 source | Root answers with the OData service document |
 | `/nuget/{feed}/api/v2` | PSResourceGet in v2 mode, anything that expects the nuget.org legacy shape | PSResourceGet: URI ends with `/api/v2` |
-| `/nuget/{feed}/v3/index.json` | dotnet, nuget.exe, PSResourceGet in v3 mode, PackageManagement's v3 client | URI ends with `/v3/index.json`; PackageManagement probes the root and switches on `"version": "3.…"` |
+| `/nuget/{feed}/v3/index.json` | dotnet, nuget.exe, PSResourceGet in v3 mode, PackageManagement's later (3.x) NuGet provider | URI ends with `/v3/index.json`. The 2.8.5.208 provider on Windows PowerShell 5.1 has **no v3 client** and cannot use this root |
 
 `/nuget/{feed}/` and `/nuget/{feed}/api/v2` are the **same** v2 root; implement once, route
 twice. Also serve the PSResourceGet "NuGet.Server" shape: a URI ending in `/nuget` is treated
@@ -217,6 +221,12 @@ reads `root.Metadata.type` and `packageEntry.catalogentry`. BaGet omitted `@type
 registration root and the provider crashed with a NullReference (BaGet issues 199 and 427,
 OneGet issue 430). Every `@type` above is mandatory.
 
+**Correction (phase 1, verified in the binary).** That v3 code is the later provider (3.x). The
+provider Windows PowerShell 5.1 fleets are pinned to, **2.8.5.208, contains no v3 client at all**:
+its strings are v2 OData only (`FindPackagesById()`, `Search()?$filter=IsLatestVersion`). For the
+fleet the `@type` markers are irrelevant and v2 is everything; they stay mandatory for newer
+PackageManagement installs.
+
 **Registration leaf** `{version}.json`: `@id`, `@type: ["Package", "http://schema.nuget.org/catalog#Permalink"]`, `catalogEntry` (same object), `listed`, `packageContent`, `published`, `registration`.
 
 **Flat container**: `{id}/index.json` → `{ "versions": [ "1.0.0", "1.1.0-beta1" ] }` (lower-case,
@@ -242,6 +252,12 @@ with the key computed as the symbol server expects (signature + age, upper-case 
 
 There is no public specification. The contract is **what the clients send**, recorded in phase
 0 and kept as fixtures. What is known before recording:
+
+**Source validation probe (verified, phase 1).** NuGet provider 2.8.5.208 validates every source,
+on `Register-PackageSource` and on an ad-hoc `-Source`, by requesting
+`{source}/FindPackagesById()?id='FoooBarr'`. Anything but a success status makes the source
+"not valid". The v2 root must answer it with an empty feed (200) on every root alias, including a
+source URL registered with a trailing slash.
 
 **Service document** at the v2 root, `application/xml`:
 
@@ -452,10 +468,12 @@ emits. Acceptance: every scenario in §7.2 has at least one fixture.
 - Minimal Blazor UI: list feeds, browse packages, create API key.
 - `deploy/Dockerfile` (non-root, 8080, `/data`), `compose.example.yml` with SQLite.
 
-Acceptance: `dotnet nuget push`, `dotnet add package` / restore, `nuget.exe list/install`,
-`Publish-PSResource`, `Find-PSResource`, `Install-PSResource` against the v3 URI all pass
-(§7.2 scripts). PackageManagement's `Find-Package -ProviderName NuGet -Source …/v3/index.json`
-works (the `@type` trap).
+Acceptance: `dotnet nuget push`, `dotnet add package` / restore, `nuget.exe push/search/install/delete`,
+`Publish-PSResource`, `Find-PSResource`, `Save-PSResource` against the v3 URI all pass
+(§7.2 scripts). The registration JSON carries every `@type` marker (integration test).
+*Moved to phase 2:* PackageManagement `Find-Package` with the pinned 2.8.5.208 provider, which has
+no v3 client (see the §4.2 correction). nuget.exe 7.x refuses `list` for v3 sources and PSResourceGet
+refuses wildcard and tag searches for v3 repositories; those are client limits, tested on v2.
 
 ### Phase 2 — v2 OData (1.5–2 weeks)
 
@@ -577,7 +595,16 @@ never inline.
 
 ## 9. Known traps and decisions, so nobody rediscovers them
 
-- **`@type` everywhere in v3 registration JSON** (see §4.2). Non-negotiable.
+- **`@type` everywhere in v3 registration JSON** (see §4.2). Non-negotiable, for the 3.x
+  PackageManagement provider.
+- **Windows PowerShell 5.1's NuGet provider 2.8.5.208 speaks v2 only** and validates a source with
+  `{source}/FindPackagesById()?id='FoooBarr'`. Answer it with an empty 200 feed, or the source is
+  rejected before any real query.
+- **NuGet 7 clients refuse plain-HTTP sources** (push, and in the library even when called from code)
+  unless the source sets `allowInsecureConnections`. The library reports this only through its logger:
+  a push that "does nothing" is this. Tests push over raw HTTP; compatibility scripts write a
+  `nuget.config` with the flag.
+- **PSResourceGet refuses wildcard names and tag search on v3 repositories** before sending a request.
 - **Empty 200 on an unparsed `$filter` is the git-forge bug.** 400 + log instead.
 - **Version ordering is `NuGetVersion` order.** `10.0.0` > `9.0.0`; `1.0.0-beta` < `1.0.0`;
   four-part versions from PowerShell manifests (`1.2.3.4`) are legal and normalise to

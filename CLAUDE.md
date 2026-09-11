@@ -35,9 +35,18 @@ is private and the forge mirror is read-only.
 
 ## Toolchain
 
-- .NET 10 SDK (see `global.json`), C# with nullable and implicit usings on.
-- `dotnet build`, `dotnet test` from the repo root must pass before any push.
-- Compatibility scripts under `tests/compat/` run on a Windows machine with Windows PowerShell
+- .NET 10 SDK (see `global.json`), C# with nullable and implicit usings on. Warnings are errors.
+- Tests are xUnit v3 on Microsoft.Testing.Platform (`global.json` opts `dotnet test` into it). Run a
+  single project with `dotnet test --project <csproj>`.
+- `dotnet build`, `dotnet test` from the repo root must pass before any push. Run the SQL Server half
+  locally when persistence changes:
+  `FIGET_TEST_SQLSERVER="Server=(localdb)\MSSQLLocalDB;Trusted_Connection=True;TrustServerCertificate=True" dotnet test`.
+- A migration goes into both `FiGet.Persistence.Sqlite` and `FiGet.Persistence.SqlServer`
+  (`dotnet tool restore`, then `dotnet ef migrations add <Name> --project <provider project> --output-dir Migrations`).
+- Stop any running FiGet instance before building: a running `FiGet.Web.exe` locks its output and the
+  build keeps the old binary.
+- Record what was demonstrated in `docs/status.md`: the command, the client and version, the result.
+- Compatibility scripts under `tests/FiGet.Compat/` run on a Windows machine with Windows PowerShell
   5.1 and PowerShell 7 installed. They are not part of `dotnet test`; run them before claiming
   a client works.
 
@@ -45,7 +54,7 @@ is private and the forge mirror is read-only.
 
 ```
 src/        one project per concern, see build plan §3
-tests/      unit + fixture tests (dotnet test), compat/ for real-client scripts
+tests/      unit and integration tests (dotnet test), FiGet.Compat/ for real-client scripts
 docs/       build plan, protocol notes, configuration reference
 deploy/     Dockerfile, compose example, Helm chart (later phases)
 ```

@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+**/data/
+**/*.db
+**/*.db-*
+**/*.user
+.git/
+.github/
+.vs/
+.vscode/
+tests/
+docs/
+deploy/compose*.yml

@@ -5,7 +5,18 @@ NuGet **v2 and v3**, so the Windows PowerShell 5.1 fleet and the newest tooling 
 proxy feeds with caching; asset directories for installers and scripts; OpenID Connect against
 any provider.
 
-> Status: design complete, build starting. Not released. See [docs/build-plan.md](docs/build-plan.md).
+> Status: phase 1 done (NuGet v3, curated feeds, symbols, tokens, admin UI, SQL Server and SQLite). Not released.
+> See [docs/status.md](docs/status.md) for what works and how it was verified, and [docs/build-plan.md](docs/build-plan.md) for the plan.
+
+## Run it
+
+```
+dotnet run --project src/FiGet.Web
+```
+
+The first start creates a SQLite database and a feed under `src/FiGet.Web/data` and writes a one-time admin token to the
+log. Sign in at http://localhost:5555 with it. Every setting is in [docs/configuration.md](docs/configuration.md);
+`deploy/compose.example.yml` runs the container.
 
 ## Why
 
