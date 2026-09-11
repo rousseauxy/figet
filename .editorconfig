@@ -22,3 +22,8 @@ trim_trailing_whitespace = false
 
 [*.{ps1,psm1,psd1}]
 end_of_line = crlf
+
+# EF Core migrations are generated; analyzers do not apply.
+[src/**/Migrations/*.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none

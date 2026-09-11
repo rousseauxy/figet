@@ -1,0 +1,23 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+
+namespace FiGet.Persistence.Sqlite;
+
+public static class SqliteProvider
+{
+    public static readonly string MigrationsAssembly = typeof(SqliteProvider).Assembly.GetName().Name!;
+
+    public static DbContextOptionsBuilder UseFiGetSqlite(this DbContextOptionsBuilder builder, string connectionString) =>
+        builder.UseSqlite(connectionString, sqlite => sqlite.MigrationsAssembly(MigrationsAssembly));
+}
+
+/// <summary>Used by <c>dotnet ef migrations add --project src/FiGet.Persistence.Sqlite</c>.</summary>
+public sealed class SqliteDesignTimeFactory : IDesignTimeDbContextFactory<FiGetDbContext>
+{
+    public FiGetDbContext CreateDbContext(string[] args)
+    {
+        var builder = new DbContextOptionsBuilder<FiGetDbContext>();
+        builder.UseFiGetSqlite("Data Source=design-time.db");
+        return new FiGetDbContext(builder.Options);
+    }
+}
