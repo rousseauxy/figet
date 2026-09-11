@@ -25,6 +25,11 @@ var listen = builder.Configuration["listen"] ?? "http://127.0.0.1:5590";
 var output = Path.GetFullPath(builder.Configuration["out"] ?? Path.Combine("recordings", DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)));
 Directory.CreateDirectory(output);
 
+// --preserve-host false: send the upstream's own Host header. Needed for public servers (the PowerShell Gallery),
+// which reject a foreign Host. Absolute URLs in their responses then point at the upstream, so follow-up requests
+// to those URLs (downloads, next links) bypass the recorder; the requests a client builds itself are still recorded.
+var preserveHost = !string.Equals(builder.Configuration["preserve-host"], "false", StringComparison.OrdinalIgnoreCase);
+
 builder.WebHost.UseUrls(listen);
 builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 512L * 1024 * 1024);
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
@@ -43,6 +48,9 @@ var client = new HttpClient(new SocketsHttpHandler
 var sequence = 0;
 var scenario = "unlabelled";
 var gate = new object();
+
+// Clients fire several requests at once (PowerShellGet pages in parallel); concurrent appends to one file lose lines.
+var indexGate = new SemaphoreSlim(1, 1);
 var json = new JsonSerializerOptions { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 var redactedHeaders = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Authorization", "X-NuGet-ApiKey", "X-ApiKey", "Cookie", "Set-Cookie", "Proxy-Authorization" };
 var hopByHop = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Connection", "Keep-Alive", "Transfer-Encoding", "Upgrade", "Proxy-Connection", "TE", "Trailer" };
@@ -90,7 +98,10 @@ app.Map("/{**path}", async (HttpContext context) =>
     }
 
     // Keep the client's view of the server, so absolute URLs in responses point back at the recorder.
-    forward.Headers.Host = request.Host.Value;
+    if (preserveHost)
+    {
+        forward.Headers.Host = request.Host.Value;
+    }
 
     HttpResponseMessage response;
     try
@@ -154,15 +165,23 @@ app.Map("/{**path}", async (HttpContext context) =>
 
         var file = $"{number:D5}-{label}-{request.Method}-{Slug(request.Path.Value)}.json";
         await File.WriteAllTextAsync(Path.Combine(output, file), JsonSerializer.Serialize(record, json), CancellationToken.None);
-        await File.AppendAllTextAsync(
-            Path.Combine(output, "index.tsv"),
-            string.Join('\t', number, label, request.Method, (int)response.StatusCode, record.elapsedMs, WebUtility.UrlDecode(request.Path + request.QueryString.Value)) + "\n",
-            CancellationToken.None);
+        await indexGate.WaitAsync(CancellationToken.None);
+        try
+        {
+            await File.AppendAllTextAsync(
+                Path.Combine(output, "index.tsv"),
+                string.Join('\t', number, label, request.Method, (int)response.StatusCode, record.elapsedMs, WebUtility.UrlDecode(request.Path + request.QueryString.Value)) + "\n",
+                CancellationToken.None);
+        }
+        finally
+        {
+            indexGate.Release();
+        }
         Console.WriteLine($"{number,5} {(int)response.StatusCode} {request.Method,-6} {WebUtility.UrlDecode(request.Path + request.QueryString.Value)}");
     }
 });
 
-Console.WriteLine($"Recording {listen} -> {upstream} into {output}");
+Console.WriteLine($"Recording {listen} -> {upstream} into {output} (host {(preserveHost ? "passed through" : "rewritten to upstream")})");
 await app.RunAsync();
 
 Dictionary<string, string> Headers(IEnumerable<(string Key, string Value)> headers) =>
