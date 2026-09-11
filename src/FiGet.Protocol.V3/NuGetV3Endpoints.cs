@@ -50,6 +50,7 @@ public static class NuGetV3Endpoints
         v3.MapGet("/registration/{id}/index.json", RegistrationIndexAsync);
         v3.MapGet("/registration/{id}/page/{lower}/{upper}.json", RegistrationPageAsync);
         v3.MapGet("/registration/{id}/{version}.json", RegistrationLeafAsync);
+        v3.MapGet("/catalog/{id}/{version}.json", CatalogEntryAsync);
         v3.MapGet("/flatcontainer/{id}/index.json", FlatContainerVersionsAsync);
         v3.MapGet("/flatcontainer/{id}/{version}/{file}", FlatContainerFileAsync);
         v3.MapGet("/query", SearchAsync);
@@ -174,13 +175,39 @@ public static class NuGetV3Endpoints
             new RegistrationLeaf(
                 urls.Leaf(row.NormalizedVersionLower),
                 ["Package", "http://schema.nuget.org/catalog#Permalink"],
-                urls.Leaf(row.NormalizedVersionLower),
+                urls.Catalog(row.NormalizedVersionLower),
                 row.Listed,
                 urls.Content(row.NormalizedVersionLower),
                 row.Listed ? Timestamp(row.PublishedUtc) : UnlistedPublished,
                 urls.RegistrationIndex,
                 RegistrationJsonContext),
             Json);
+    }
+
+    /// <summary>
+    /// The package details of one version, the document a registration leaf's <c>catalogEntry</c> points to.
+    /// PackageManagement's NuGet provider 3.x resolves a version by following that URL and reading <c>version</c>
+    /// and the metadata from it; pointing it anywhere else makes every version silently not match. This is a
+    /// per-version document only, not the catalog resource (no pages, no commit log).
+    /// </summary>
+    private static async Task<IResult> CatalogEntryAsync(HttpContext http, string feed, string id, string version, IPackageStore store, CancellationToken cancellationToken)
+    {
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Read, cancellationToken);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        var versionLower = PackageIngestionService.NormalizeLower(version);
+        var package = versionLower is null ? null : await store.GetPackageAsync(request!.Feed.Key, id.ToLowerInvariant(), includeDependencies: true, cancellationToken);
+        var row = package?.Versions.FirstOrDefault(v => v.NormalizedVersionLower == versionLower);
+        if (package is null || row is null)
+        {
+            return Results.NotFound();
+        }
+
+        var urls = new UrlSet(PublicUrls.Feed(http, request!.Feed.Name), package.IdLower);
+        return Results.Json(BuildLeafItem(urls, package, row).CatalogEntry, Json);
     }
 
     private static async Task<IResult> FlatContainerVersionsAsync(HttpContext http, string feed, string id, IPackageStore store, CancellationToken cancellationToken)
@@ -484,6 +511,7 @@ public static class NuGetV3Endpoints
     private static RegistrationLeafItem BuildLeafItem(UrlSet urls, Package package, PackageVersion v)
     {
         var leaf = urls.Leaf(v.NormalizedVersionLower);
+        var catalog = urls.Catalog(v.NormalizedVersionLower);
         var content = urls.Content(v.NormalizedVersionLower);
         var groups = v.Dependencies
             .GroupBy(d => d.TargetFramework, StringComparer.OrdinalIgnoreCase)
@@ -508,7 +536,7 @@ public static class NuGetV3Endpoints
             Timestamp(v.LastUpdatedUtc),
             new CatalogEntry
             {
-                Id = leaf,
+                Id = catalog,
                 Authors = v.Authors,
                 DependencyGroups = groups,
                 Description = v.Description,
@@ -568,6 +596,8 @@ public static class NuGetV3Endpoints
         public string RegistrationIndexOf(string id) => $"{FeedUrl}/v3/registration/{id.ToLowerInvariant()}/index.json";
 
         public string Leaf(string versionLower) => $"{FeedUrl}/v3/registration/{IdLower}/{versionLower}.json";
+
+        public string Catalog(string versionLower) => $"{FeedUrl}/v3/catalog/{IdLower}/{versionLower}.json";
 
         public string Content(string versionLower) => $"{FeedUrl}/v3/flatcontainer/{IdLower}/{versionLower}/{IdLower}.{versionLower}.nupkg";
 

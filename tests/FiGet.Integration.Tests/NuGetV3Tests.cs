@@ -134,6 +134,17 @@ public abstract class NuGetV3Tests
         var leafDocument = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/public/v3/registration/{id.ToLowerInvariant()}/2.0.0.json")))!;
         Assert.Contains("Package", leafDocument["@type"]!.AsArray().Select(t => (string?)t));
         Assert.EndsWith($"/v3/flatcontainer/{id.ToLowerInvariant()}/2.0.0/{id.ToLowerInvariant()}.2.0.0.nupkg", (string?)leafDocument["packageContent"]);
+
+        // PackageManagement's NuGet provider 3.x follows the leaf's catalogEntry URL and reads version and metadata
+        // from that document. It must be the package details, and the inline catalogEntry must name the same URL.
+        var catalogUrl = (string)leafDocument["catalogEntry"]!;
+        Assert.Equal(catalogUrl, (string?)entry["@id"]);
+        var details = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync(new Uri(catalogUrl))))!;
+        Assert.Equal("PackageDetails", (string?)details["@type"]);
+        Assert.Equal(id, (string?)details["id"]);
+        Assert.Equal("2.0.0", (string?)details["version"]);
+        Assert.Equal("Dep.A", (string?)details["dependencyGroups"]![0]!["dependencies"]![0]!["id"]);
+        HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/public/v3/catalog/{id.ToLowerInvariant()}/9.9.9.json"));
     }
 
     [Fact]
