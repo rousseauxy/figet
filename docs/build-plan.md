@@ -405,7 +405,8 @@ GET     /endpoints/{directory}/metadata/{path}   JSON: { "contentType", "userMet
 POST    /endpoints/{directory}/metadata/{path}   set user metadata / content type
 ```
 
-Auth: read is per-directory anonymous or token; write always token. Optional per-directory
+Auth: read is per-directory anonymous or token; write always a token or an authenticated UI session, never
+anonymous, and that is not configurable. Optional per-directory
 **remote URL caching**: a `PUT` with `X-Source-Url` (or the admin UI) fetches the URL once and
 stores it under the path, so an installer can be "pinned" from a vendor site.
 
@@ -532,6 +533,13 @@ the per-request body limit through `IHttpMaxRequestBodySizeFeature` exactly as `
 already does; otherwise Kestrel's 30 MB default rejects the upload before the handler sees it.
 Downloads must stream too, and honour `Range` so a resumed `win_get_url` works.
 
+**Uploading through the UI is a first-class path, not a convenience.** Files reach an asset directory
+by drag and drop onto the browse page, or by picking them, with a progress indicator and overwrite
+confirmation. The pages are static SSR, so the drop zone posts straight to the asset endpoint with a
+small script (`fetch` and `FormData`, or a `PUT` per file) rather than through an interactive
+component; the server path is the same one a script uses. Uploading always requires an authenticated
+session or a token, whatever the directory's anonymous-read setting says.
+
 Acceptance: `curl`, `Invoke-WebRequest`, and Ansible `win_get_url` fetch by path; `PUT` with a
 token stores; listing JSON matches `docs/protocol-assets.md`.
 
@@ -543,7 +551,13 @@ token stores; listing JSON matches `docs/protocol-assets.md`.
   read flag.
 - API keys and PATs: random 32 bytes, base64url, shown once, stored as SHA-256; scope = feed
   or directory + permission + expiry; last-used tracking; revoke.
-- Audit log for push, delete, key create/revoke, config change.
+- Audit log: package push, unlist, delete, asset upload and delete, key create and revoke, feed and
+  directory config change, retention and cache-prune runs. Each entry records who, what, when and
+  from which address, is queryable per feed in the UI, and is itself subject to a retention setting.
+- Usage reporting: download count and last-download time per version, per feed totals, most and
+  least used packages, and cached versions nobody has fetched in N days. Readable in the UI and as
+  JSON, and the same numbers the cache policy and retention rules act on, so a purge can be
+  previewed before it runs.
 - Hardening: upload size limit, nupkg validation (zip bomb guard, nuspec required,
   id/version match), hash verification on cache fill, rate limit on anonymous endpoints,
   retention job, health endpoints, OpenTelemetry.
@@ -615,7 +629,7 @@ FiGet:
   PublicBaseUrl:  https://packages.example.org        (used in every absolute URL the protocols emit)
   Feeds:          declared in the database, seeded from config on first start:
                   - Name, Type: Curated|Proxy, AnonymousRead, AllowOverwrite, DeletionBehavior: Unlist|HardDelete,
-                    Retention: { MaxMajor, MaxMinor, MaxPatch, MaxPrerelease }, Cache: { PruneUnusedAfterDays, MaxSizeMB }, Upstreams: [ { Url, Kind: V2|V3, Allow: [regex], Deny: [regex], AuthRef } ]
+                    Retention: { MaxMajor, MaxMinor, MaxPatch, MaxPrerelease, KeepUsedWithinDays, DryRun }, Cache: { PruneUnusedAfterDays, MaxSizeMB }, Upstreams: [ { Url, Kind: V2|V3, Allow: [regex], Deny: [regex], AuthRef } ]
   Assets:         directories declared the same way: Name, AnonymousRead
   Auth:           Oidc: [ { Name, Authority, ClientId, ClientSecretRef, Scopes, RoleClaim, GroupToRole: {…}, EmailAllowList: [...] } ]
                   BootstrapAdminToken (first run only; printed once if unset)
