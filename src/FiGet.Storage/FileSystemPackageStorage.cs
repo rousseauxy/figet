@@ -68,6 +68,22 @@ public sealed class FileSystemPackageStorage : IPackageStorage
         return Task.CompletedTask;
     }
 
+    public Task DeleteFeedAsync(string feedLower, CancellationToken cancellationToken)
+    {
+        foreach (var area in (string[])["packages", "symbols"])
+        {
+            // SafePath refuses anything that could escape the root, uppercase included, so a feed name
+            // that never reached storage cannot delete something else here.
+            var directory = SafePath(area, feedLower);
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
     private string PackagePath(PackageStorageKey key, string extension) =>
         SafePath("packages", key.Feed, key.Id, key.Version, $"{key.Id}.{key.Version}.{extension}");
 

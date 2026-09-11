@@ -15,8 +15,10 @@
 }
 
 <h1>@feed.Name</h1>
-<p class="muted">
-    v3 source: <code>@(PublicUrls.Feed(HttpContext, feed.Name))/v3/index.json</code>
+<p class="muted url-cell">
+    v3 source: <code>@SourceUrl</code>
+    <button type="button" class="copy" data-copy="@SourceUrl" title="Copy this URL" aria-label="Copy the v3 source URL">Copy</button>
+    <a href="/feeds/@feed.Name/settings">Settings</a>
 </p>
 
 <form method="get" class="search">
@@ -61,6 +63,8 @@
 }
 
 @code {
+    private string SourceUrl => $"{PublicUrls.Feed(HttpContext, feed!.Name)}/v3/index.json";
+
     private const int PageSize = 50;
     private Feed? feed;
     private int total;

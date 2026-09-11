@@ -86,7 +86,7 @@ of the build configuration.
 | v3: service index, registration (inlined up to 128 versions, paged beyond), leaf, flat container, search, autocomplete, push, unlist/relist/hard delete, symbol publish, symbol server | `src/FiGet.Protocol.V3/NuGetV3Endpoints.cs` |
 | The merged version list rule (§5), used by every listing endpoint already | `src/FiGet.Core/Versions/VersionListBuilder.cs` |
 | Push with API key; token scopes Read / Push / Delete / Admin, optional feed scope, expiry, revoke | `src/FiGet.Core/Tokens`, `src/FiGet.Http/FeedAccess.cs` |
-| Minimal UI: feeds (list, create), packages (search, browse, versions, install snippets), tokens (create, revoke) | `src/FiGet.Web/Components` |
+| Minimal UI: feeds (list, create, change settings, delete), packages (search, browse, versions, install snippets), tokens (create, revoke), a copy button on every source URL | `src/FiGet.Web/Components` |
 | Dockerfile (non-root, arbitrary UID, port 8080, `/data`) and compose example with SQLite | `deploy/` |
 | CI: build, EF model drift check, tests on SQLite and SQL Server, image build and arbitrary-UID start | `.github/workflows/ci.yml` |
 | Compatibility scripts for the dotnet CLI and PSResourceGet | `tests/FiGet.Compat` |
@@ -154,7 +154,7 @@ HTTPS.
 - **Embedded icons, readmes and licence files** inside packages are not served; `iconUrl` and
   `licenseUrl` are passed through from the nuspec.
 - **Upload size limit**: enforced while streaming (413); not yet covered by an automated test.
-- **The UI browses and searches, but neither downloads nor uploads.** Package pages carry install
+- **The UI browses and searches, but neither downloads nor uploads packages.** Package pages carry install
   snippets for the dotnet CLI and PSResourceGet only, hard-coded rather than per-feed templates,
   and there is no download link and no `Install-Module` snippet for the Windows PowerShell 5.1
   fleet. All of that is phase 4 in the build plan.

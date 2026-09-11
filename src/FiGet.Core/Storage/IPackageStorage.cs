@@ -23,4 +23,7 @@ public interface IPackageStorage
     Task<Stream?> OpenSymbolAsync(SymbolStorageKey key, CancellationToken cancellationToken);
 
     Task DeleteSymbolAsync(SymbolStorageKey key, CancellationToken cancellationToken);
+
+    /// <summary>Removes every package and symbol file of one feed. The name must be lower-cased.</summary>
+    Task DeleteFeedAsync(string feedLower, CancellationToken cancellationToken);
 }

@@ -1,0 +1,169 @@
+@page "/feeds/{Name}/settings"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@using System.ComponentModel.DataAnnotations
+@using FiGet.Core.Storage
+@inject IFeedStore Feeds
+@inject IPackageStorage Storage
+@inject NavigationManager Navigation
+
+<PageTitle>@Name settings · FiGet</PageTitle>
+
+@if (feed is null)
+{
+    <h1>Feed not found</h1>
+    <p>There is no feed named <code>@Name</code>. <a href="/">Back to feeds</a>.</p>
+}
+else
+{
+    <p class="crumbs"><a href="/">Feeds</a> / <a href="/feeds/@feed.Name">@feed.Name</a></p>
+    <h1>@feed.Name settings</h1>
+
+    @if (message is not null)
+    {
+        <p class="@(messageIsError ? "error" : "ok")">@message</p>
+    }
+
+    <div class="settings-grid">
+        <section class="panel">
+            <h2>Settings</h2>
+            <EditForm Model="Settings!" FormName="feed-settings" OnValidSubmit="SaveAsync" method="post" class="stack">
+                <label class="check"><InputCheckbox id="anonymous-read" @bind-Value="Settings!.AnonymousRead" /> Anyone can read without a token</label>
+                <label class="check"><InputCheckbox id="allow-overwrite" @bind-Value="Settings!.AllowOverwrite" /> Pushing an existing version replaces it</label>
+
+                <label for="delete-behaviour">Delete behaviour</label>
+                <InputSelect id="delete-behaviour" @bind-Value="Settings!.DeletionBehavior">
+                    <option value="@PackageDeletionBehavior.Unlist">Unlist (recommended)</option>
+                    <option value="@PackageDeletionBehavior.HardDelete">Hard delete</option>
+                </InputSelect>
+
+                <button type="submit">Save settings</button>
+            </EditForm>
+
+            <dl class="facts">
+                <dt>Kind</dt><dd>@feed.Kind</dd>
+                <dt>Created</dt><dd>@feed.CreatedUtc.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture)</dd>
+                <dt>Versions</dt><dd>@versionCount.ToString("N0", CultureInfo.InvariantCulture)</dd>
+            </dl>
+        </section>
+
+        <section class="panel">
+            <h2>Source URLs</h2>
+            <dl class="facts">
+                <dt>NuGet v3</dt>
+                <dd>
+                    <div class="url-cell">
+                        <code>@V3Url</code>
+                        <button type="button" class="copy" data-copy="@V3Url" title="Copy this URL" aria-label="Copy the v3 source URL">Copy</button>
+                    </div>
+                </dd>
+                <dt>Feed root</dt>
+                <dd>
+                    <div class="url-cell">
+                        <code>@FeedUrl</code>
+                        <button type="button" class="copy" data-copy="@FeedUrl" title="Copy this URL" aria-label="Copy the feed root URL">Copy</button>
+                    </div>
+                </dd>
+            </dl>
+        </section>
+
+        <section class="panel danger-zone">
+            <h2>Delete this feed</h2>
+            <p class="muted">
+                Removes the feed with its @versionCount.ToString("N0", CultureInfo.InvariantCulture) package
+                version(s), their files, and any token scoped to this feed. This cannot be undone.
+            </p>
+            <EditForm Model="Confirm!" FormName="delete-feed" OnValidSubmit="DeleteAsync" method="post" class="stack">
+                <label for="confirm-name">Type the feed name to confirm</label>
+                <InputText id="confirm-name" @bind-Value="Confirm!.Name" autocomplete="off" placeholder="@feed.Name" />
+                <button type="submit" class="danger">Delete feed</button>
+            </EditForm>
+        </section>
+    </div>
+}
+
+@code {
+    private Feed? feed;
+    private int versionCount;
+    private string? message;
+    private bool messageIsError;
+
+    [Parameter]
+    public string Name { get; set; } = "";
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "feed-settings")]
+    private SettingsForm? Settings { get; set; }
+
+    [SupplyParameterFromForm(FormName = "delete-feed")]
+    private ConfirmForm? Confirm { get; set; }
+
+    private string FeedUrl => PublicUrls.Feed(HttpContext, feed!.Name);
+
+    private string V3Url => $"{FeedUrl}/v3/index.json";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        Confirm ??= new();
+        // Only seed the settings form on a GET; on a post it already carries what was submitted.
+        Settings ??= feed is null
+            ? new SettingsForm()
+            : new SettingsForm { AnonymousRead = feed.AnonymousRead, AllowOverwrite = feed.AllowOverwrite, DeletionBehavior = feed.DeletionBehavior };
+    }
+
+    private async Task LoadAsync()
+    {
+        feed = await Feeds.FindAsync(Name, HttpContext.RequestAborted);
+        versionCount = feed is null ? 0 : await Feeds.CountVersionsAsync(feed.Key, HttpContext.RequestAborted);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (feed is null)
+        {
+            return;
+        }
+
+        var saved = await Feeds.UpdateSettingsAsync(
+            feed.Key, Settings!.AnonymousRead, Settings!.AllowOverwrite, Settings!.DeletionBehavior, HttpContext.RequestAborted);
+
+        (message, messageIsError) = saved ? ("Settings saved.", false) : ("This feed no longer exists.", true);
+        await LoadAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (feed is null)
+        {
+            return;
+        }
+
+        if (!string.Equals(Confirm!.Name?.Trim(), feed.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            (message, messageIsError) = ($"Type '{feed.Name}' exactly to confirm the deletion.", true);
+            return;
+        }
+
+        // Files first: a row without files is visible and fixable, an orphaned file is neither.
+        await Storage.DeleteFeedAsync(feed.NameLower, HttpContext.RequestAborted);
+        await Feeds.DeleteAsync(feed.Key, HttpContext.RequestAborted);
+        Navigation.NavigateTo("/", forceLoad: false);
+    }
+
+    private sealed class SettingsForm
+    {
+        public bool AnonymousRead { get; set; }
+
+        public bool AllowOverwrite { get; set; }
+
+        public PackageDeletionBehavior DeletionBehavior { get; set; } = PackageDeletionBehavior.Unlist;
+    }
+
+    private sealed class ConfirmForm
+    {
+        [Required(ErrorMessage = "Type the feed name.")]
+        public string Name { get; set; } = "";
+    }
+}

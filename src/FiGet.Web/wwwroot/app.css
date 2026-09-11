@@ -80,10 +80,13 @@ label { font-weight: 600; font-size: 0.9rem; }
 label.check { font-weight: 400; display: flex; gap: 0.5rem; align-items: center; }
 fieldset { border: 1px solid var(--line); border-radius: 6px; padding: 0.5rem 0.75rem; display: grid; gap: 0.25rem; }
 legend { font-weight: 600; font-size: 0.9rem; padding: 0 0.25rem; }
-input[type=text], input[type=password], input[type=search], input[type=number], select {
+/* Blazor's InputText renders a bare <input> with no type attribute, so it has to be matched too. */
+input:not([type]), input[type=text], input[type=password], input[type=search], input[type=number], select {
   font: inherit; color: inherit; background: var(--surface);
   border: 1px solid var(--line); border-radius: 6px; padding: 0.45rem 0.6rem; width: 100%;
+  max-width: 100%; min-width: 0;
 }
+input[type=checkbox] { width: auto; margin: 0; accent-color: var(--accent); }
 button {
   font: inherit; cursor: pointer; border: none; border-radius: 6px;
   padding: 0.45rem 0.9rem; background: var(--accent); color: var(--accent-text); justify-self: start;
@@ -98,3 +101,15 @@ button.danger { background: none; color: var(--danger); border: 1px solid var(--
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
+
+.actions { display: flex; gap: 0.5rem; align-items: center; }
+.actions form { display: inline; }
+.url-cell { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.url-cell code { overflow-wrap: anywhere; }
+button.copy { background: none; color: var(--muted); border: 1px solid var(--line); padding: 0.15rem 0.5rem; font-size: 0.8rem; }
+button.copy:hover { color: var(--text); }
+button.copy.copied { color: var(--ok); border-color: var(--ok); }
+.settings-grid { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); align-items: start; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.25rem; }
+.panel h2 { margin-top: 0; }
+.panel.danger-zone { border-color: var(--danger); }

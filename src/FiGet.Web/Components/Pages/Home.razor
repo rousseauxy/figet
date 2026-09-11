@@ -18,18 +18,25 @@ else
     <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>Name</th><th>Kind</th><th>Read</th><th>On existing version</th><th>Delete</th><th>v3 source URL</th></tr>
+                <tr><th>Name</th><th>Kind</th><th>Read</th><th>On existing version</th><th>Delete</th><th>v3 source URL</th><th></th></tr>
             </thead>
             <tbody>
                 @foreach (var feed in feeds)
                 {
+                    var url = SourceUrl(feed);
                     <tr>
                         <td><a href="/feeds/@feed.Name">@feed.Name</a></td>
                         <td>@feed.Kind</td>
                         <td>@(feed.AnonymousRead ? "Anonymous" : "Token")</td>
                         <td>@(feed.AllowOverwrite ? "Overwrite" : "Reject (409)")</td>
                         <td>@feed.DeletionBehavior</td>
-                        <td><code>@(PublicUrls.Feed(HttpContext, feed.Name))/v3/index.json</code></td>
+                        <td>
+                            <div class="url-cell">
+                                <code>@url</code>
+                                <button type="button" class="copy" data-copy="@url" title="Copy this URL" aria-label="Copy the v3 source URL of feed @feed.Name">Copy</button>
+                            </div>
+                        </td>
+                        <td class="actions"><a href="/feeds/@feed.Name/settings">Settings</a></td>
                     </tr>
                 }
             </tbody>
@@ -64,6 +71,8 @@ else
     private IReadOnlyList<Feed> feeds = [];
     private string? message;
     private bool messageIsError;
+
+    private string SourceUrl(Feed feed) => $"{PublicUrls.Feed(HttpContext, feed.Name)}/v3/index.json";
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
