@@ -449,7 +449,9 @@ container, search, autocomplete; the management API):
    look through for exact versions, not only the latest. On first download the nupkg is
    stored locally, indexed, and from then on served locally.
 5. A locally cached copy is never dropped because upstream moved on. Retention rules apply to
-   curated content; cached content is pruned only by explicit cache policy (size or age).
+   curated content; cached content is pruned only by explicit cache policy: total size, or not
+   downloaded for N days. Every download records a last-download time per version for this, so a
+   version in use is never pruned. The cache policy never touches pushed versions.
 6. Search on a proxy feed queries local metadata first and, when the query is a name lookup
    (`Id eq`, `packageid:`, `FindPackagesById`), also asks upstream so uncached packages are
    findable. Free-text search fans out to upstreams only if the feed opts in.
@@ -550,7 +552,9 @@ anonymous read off and a PAT in use.
 - Helm chart: Deployment (2 replicas), Service, Ingress/Route, ConfigMap, Secret refs, PVC or
   S3 config, CronJobs, probes, `securityContext` for arbitrary UID.
 - Migration tool `figet import` that walks another server's v2 feed (`Packages()?$skip=…`) and
-  its asset directory, and pushes into FiGet.
+  its asset directory, and pushes into FiGet. A version whose hash matches the same (id, version)
+  on one of the feed's upstreams is imported as cached, not pushed, so the cache policy applies to
+  it. The source server's publisher field is not reliable for telling the two apart.
 
 Acceptance: two replicas behind one ingress pass the full §7.2 matrix; a migration from a
 populated source server reproduces every (id, version) and every asset with matching hashes.
@@ -604,7 +608,7 @@ FiGet:
   PublicBaseUrl:  https://packages.example.org        (used in every absolute URL the protocols emit)
   Feeds:          declared in the database, seeded from config on first start:
                   - Name, Type: Curated|Proxy, AnonymousRead, AllowOverwrite, DeletionBehavior: Unlist|HardDelete,
-                    Retention: { MaxMajor, MaxMinor, MaxPatch, MaxPrerelease }, Upstreams: [ { Url, Kind: V2|V3, Allow: [regex], Deny: [regex], AuthRef } ]
+                    Retention: { MaxMajor, MaxMinor, MaxPatch, MaxPrerelease }, Cache: { PruneUnusedAfterDays, MaxSizeMB }, Upstreams: [ { Url, Kind: V2|V3, Allow: [regex], Deny: [regex], AuthRef } ]
   Assets:         directories declared the same way: Name, AnonymousRead
   Auth:           Oidc: [ { Name, Authority, ClientId, ClientSecretRef, Scopes, RoleClaim, GroupToRole: {…}, EmailAllowList: [...] } ]
                   BootstrapAdminToken (first run only; printed once if unset)
