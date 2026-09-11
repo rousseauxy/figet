@@ -1,0 +1,319 @@
+{
+  "client": "Windows PowerShell 5.1, PowerShellGet 2.2.5, PackageManagement 1.4.8.1 (NuGet provider 3.0.0.1), NuGet.exe 6.11.1",
+  "reference": "reference server",
+  "scenario": "update-module",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/FindPackagesById()",
+        "query": "id='FiGetRecordingTest'&$skip=0&$top=40",
+        "headers": {
+          "User-Agent": "Mozilla/5.0 NuGet"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/atom+xml",
+        "body": {
+          "kind": "atom-feed",
+          "entryCount": 3,
+          "count": null,
+          "nextLink": false,
+          "properties": [
+            "Copyright",
+            "Created",
+            "Dependencies",
+            "Description",
+            "DownloadCount",
+            "HasSource",
+            "HasSymbols",
+            "Icon",
+            "IconUrl",
+            "IsAbsoluteLatestVersion",
+            "IsCached",
+            "IsLatestVersion",
+            "IsLocalPackage",
+            "IsPrerelease",
+            "IsPrivateHosted",
+            "LicenseExpression",
+            "LicenseUrl",
+            "Listed",
+            "NormalizedVersion",
+            "PackageHash",
+            "PackageHashAlgorithm",
+            "PackageSize",
+            "ProjectUrl",
+            "Published",
+            "ReleaseNotes",
+            "RequireLicenseAcceptance",
+            "Summary",
+            "Tags",
+            "Title",
+            "Version",
+            "VersionDownloadCount"
+          ],
+          "entries": [
+            {
+              "id": "FiGetRecordingTest",
+              "version": "1.0.0",
+              "normalizedVersion": "1.0.0",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "false",
+              "listed": "true",
+              "hasDependencies": false,
+              "contentSrc": "/nuget/{feed}/package/FiGetRecordingTest/1.0.0"
+            },
+            {
+              "id": "FiGetRecordingTest",
+              "version": "1.1.0",
+              "normalizedVersion": "1.1.0",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "false",
+              "listed": "true",
+              "hasDependencies": false,
+              "contentSrc": "/nuget/{feed}/package/FiGetRecordingTest/1.1.0"
+            },
+            {
+              "id": "FiGetRecordingTest",
+              "version": "2.0.0-beta1",
+              "normalizedVersion": "2.0.0-beta1",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "true",
+              "listed": "true",
+              "hasDependencies": false,
+              "contentSrc": "/nuget/{feed}/package/FiGetRecordingTest/2.0.0-beta1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/FindPackagesById()",
+        "query": "id='FiGetRecordingTest'&$skip=0&$top=40",
+        "headers": {
+          "User-Agent": "Mozilla/5.0 NuGet"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/atom+xml",
+        "body": {
+          "kind": "atom-feed",
+          "entryCount": 3,
+          "count": null,
+          "nextLink": false,
+          "properties": [
+            "Copyright",
+            "Created",
+            "Dependencies",
+            "Description",
+            "DownloadCount",
+            "HasSource",
+            "HasSymbols",
+            "Icon",
+            "IconUrl",
+            "IsAbsoluteLatestVersion",
+            "IsCached",
+            "IsLatestVersion",
+            "IsLocalPackage",
+            "IsPrerelease",
+            "IsPrivateHosted",
+            "LicenseExpression",
+            "LicenseUrl",
+            "Listed",
+            "NormalizedVersion",
+            "PackageHash",
+            "PackageHashAlgorithm",
+            "PackageSize",
+            "ProjectUrl",
+            "Published",
+            "ReleaseNotes",
+            "RequireLicenseAcceptance",
+            "Summary",
+            "Tags",
+            "Title",
+            "Version",
+            "VersionDownloadCount"
+          ],
+          "entries": [
+            {
+              "id": "FiGetRecordingTest",
+              "version": "1.0.0",
+              "normalizedVersion": "1.0.0",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "false",
+              "listed": "true",
+              "hasDependencies": false,
+              "contentSrc": "/nuget/{feed}/package/FiGetRecordingTest/1.0.0"
+            },
+            {
+              "id": "FiGetRecordingTest",
+              "version": "1.1.0",
+              "normalizedVersion": "1.1.0",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "false",
+              "listed": "true",
+              "hasDependencies": false,
+              "contentSrc": "/nuget/{feed}/package/FiGetRecordingTest/1.1.0"
+            },
+            {
+              "id": "FiGetRecordingTest",
+              "version": "2.0.0-beta1",
+              "normalizedVersion": "2.0.0-beta1",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "true",
+              "listed": "true",
+              "hasDependencies": false,
+              "contentSrc": "/nuget/{feed}/package/FiGetRecordingTest/2.0.0-beta1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/",
+        "query": "",
+        "headers": {
+          "User-Agent": "Mozilla/5.0 NuGet"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/xml",
+        "body": {
+          "kind": "service-document",
+          "collections": [
+            "Packages"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/FindPackagesById()",
+        "query": "id='FiGetRecordingTest'&$skip=0&$top=40",
+        "headers": {
+          "User-Agent": "Mozilla/5.0 NuGet"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/atom+xml",
+        "body": {
+          "kind": "atom-feed",
+          "entryCount": 3,
+          "count": null,
+          "nextLink": false,
+          "properties": [
+            "Copyright",
+            "Created",
+            "Dependencies",
+            "Description",
+            "DownloadCount",
+            "HasSource",
+            "HasSymbols",
+            "Icon",
+            "IconUrl",
+            "IsAbsoluteLatestVersion",
+            "IsCached",
+            "IsLatestVersion",
+            "IsLocalPackage",
+            "IsPrerelease",
+            "IsPrivateHosted",
+            "LicenseExpression",
+            "LicenseUrl",
+            "Listed",
+            "NormalizedVersion",
+            "PackageHash",
+            "PackageHashAlgorithm",
+            "PackageSize",
+            "ProjectUrl",
+            "Published",
+            "ReleaseNotes",
+            "RequireLicenseAcceptance",
+            "Summary",
+            "Tags",
+            "Title",
+            "Version",
+            "VersionDownloadCount"
+          ],
+          "entries": [
+            {
+              "id": "FiGetRecordingTest",
+              "version": "1.0.0",
+              "normalizedVersion": "1.0.0",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "false",
+              "listed": "true",
+              "hasDependencies": false,
+              "contentSrc": "/nuget/{feed}/package/FiGetRecordingTest/1.0.0"
+            },
+            {
+              "id": "FiGetRecordingTest",
+              "version": "1.1.0",
+              "normalizedVersion": "1.1.0",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "false",
+              "listed": "true",
+              "hasDependencies": false,
+              "contentSrc": "/nuget/{feed}/package/FiGetRecordingTest/1.1.0"
+            },
+            {
+              "id": "FiGetRecordingTest",
+              "version": "2.0.0-beta1",
+              "normalizedVersion": "2.0.0-beta1",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "true",
+              "listed": "true",
+              "hasDependencies": false,
+              "contentSrc": "/nuget/{feed}/package/FiGetRecordingTest/2.0.0-beta1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/package/FiGetRecordingTest/1.1.0",
+        "query": "",
+        "headers": {
+          "User-Agent": "Mozilla/5.0 NuGet"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/zip",
+        "body": {
+          "kind": "binary",
+          "length": 3873
+        }
+      }
+    }
+  ]
+}

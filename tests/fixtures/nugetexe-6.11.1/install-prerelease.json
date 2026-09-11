@@ -1,0 +1,49 @@
+{
+  "client": "nuget.exe 6.11.1",
+  "reference": "reference server",
+  "scenario": "install-prerelease",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/",
+        "query": "",
+        "headers": {
+          "User-Agent": "NuGet Command Line/6.11.1 (Microsoft Windows NT 10.0.26200.0)"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/xml",
+        "body": {
+          "kind": "service-document",
+          "collections": [
+            "Packages"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/package/FiGet.NuGetExe.Test/2.0.0-beta1",
+        "query": "",
+        "headers": {
+          "User-Agent": "NuGet Command Line/6.11.1 (Microsoft Windows NT 10.0.26200.0)"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/zip",
+        "body": {
+          "kind": "binary",
+          "length": 1909
+        }
+      }
+    }
+  ]
+}

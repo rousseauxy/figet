@@ -7,27 +7,47 @@ listed as passed when it was run against the code in the commit it names.
 
 ## Phase 0: record the contract — started 2026-09-11
 
-**State: in progress.** First recording done; fixtures not yet scrubbed or committed.
+**State: recordings and fixtures for the three v2 clients done; phase 2 can start from them.**
 
-- **Reference server**: its free edition in one container (embedded PostgreSQL) on a home server, with a
-  curated PowerShell feed, a PowerShell feed with a PowerShell Gallery connector, and an asset directory.
-  Using a private instance instead of the server being replaced means the recordings contain no
-  organisation data.
-- **Recorder**: `tools/FiGet.Recorder`, a reverse proxy that writes every exchange (credentials redacted,
-  binaries reduced to SHA-256 and length) and passes the Host header through, so absolute URLs in responses
-  keep pointing at it.
-- **First recording**: Windows PowerShell 5.1 + PowerShellGet 2.2.5 + PackageManagement 1.4.8.1 through
-  `tests/FiGet.Compat/Record-PowerShellGetV2.ps1`, 85 exchanges, 26 scenarios passing plus 2 intended
-  failures (module not found, duplicate publish). The resulting v2 surface and its consequences for phase 2
-  are in `docs/protocol-v2.md`.
-- **Also recorded**: PackageManagement's NuGet provider 3.0.0.1 against FiGet's own v3 surface, which found
-  the catalog entry bug below.
+| Recording | Client | Exchanges | Fixtures |
+|---|---|---|---|
+| `powershellget-2.2.5` | Windows PowerShell 5.1, PowerShellGet 2.2.5, PackageManagement 1.4.8.1 (NuGet provider 3.0.0.1), NuGet.exe 6.11.1 | 419 | 36 scenarios |
+| `nugetexe-6.11.1` | nuget.exe 6.11.1 | 25 | 13 scenarios |
+| `psresourceget-1.2.0-v2` | PSResourceGet 1.2.0 against a feed root without `/api/v2` | 4 | 4 scenarios |
+| `psresourceget-1.2.0-v2-gallery` | PSResourceGet 1.2.0 in v2 mode against the PowerShell Gallery | 16 | 12 scenarios |
 
-Getting the recording script to run exposed four client-side facts, now in the build plan's traps list:
-PowerShellGet's provider is discovered through `PSModulePath` (importing by path breaks every 2.x cmdlet),
-PackageManagement 1.4.8.1 uses its bundled NuGet provider 3.0.0.1, PowerShellGet 2.2.5 publishes with the
-dotnet CLI when present and otherwise needs NuGet.exe 4.1 or later, and NuGet 7 clients refuse plain-HTTP
-pushes. Windows PowerShell 5.1's manifest template also cannot set a prerelease label by text edit.
+- **Reference server**: its free edition in one container on a home server: a curated PowerShell feed, a
+  PowerShell feed with a PowerShell Gallery connector, a PowerShell feed and a NuGet feed for the other clients,
+  and an asset directory. A private instance means the recordings contain no organisation data.
+- **Tools**: `tools/FiGet.Recorder` (recording reverse proxy; `--preserve-host false` for public upstreams) and
+  `tools/FiGet.Fixtures` (reduces a recording to committed digests: request shapes, statuses, property sets,
+  versions and flags; no response bodies, no hosts, no credentials, and it refuses to write anything that looks
+  like an address, a user path or a secret).
+- **Scripts**: `tests/FiGet.Compat/Record-PowerShellGetV2.ps1`, `Record-NuGetExeV2.ps1`,
+  `Record-PSResourceGetV2.ps1`. Each restores what it touches; after every run `PSRepositories.xml` and the
+  user's `NuGet.Config` were verified byte for byte against their original hashes, and no test package remained
+  in the user's module folder or NuGet package cache.
+
+**Main result: the double-latest failure reported on the server being replaced is reproduced and explained.**
+With more versions than PowerShellGet's page size of 40 (Pester, Microsoft.Graph), the reference server puts a cached older
+version in front of page 0 flagged latest while the connector's latest stays flagged on a later page, and drops
+upstream versions at the page boundary. `Find-Module Microsoft.Graph` returned the cached 2.30.0 instead of
+2.39.0 and `Save-Module Microsoft.Graph` failed with "multiple modules matched". Evidence and FiGet's answer are
+in `docs/protocol-v2.md`, "Paging and latest flags".
+
+Other findings, all in `docs/protocol-v2.md`: PowerShellGet 2.2.5 uses only five v2 routes and paginates by
+`$skip` itself; nuget.exe adds `$metadata`, `Packages(Id,Version)`, `$orderby` and a delete route under the feed
+root; PSResourceGet cannot use a feed URL without `/api/v2` for anything but publishing; the reference server
+accepts duplicate pushes silently.
+
+Client-side traps met while getting the scripts to run are in the build plan's traps list: PowerShellGet's
+provider is found through `PSModulePath`; PackageManagement 1.4.8.1 uses its bundled NuGet provider 3.0.0.1;
+PowerShellGet 2.2.5 publishes with the dotnet CLI when present and otherwise needs NuGet.exe 4.1 to 6.x over
+HTTP; `Register-PSRepository` also writes the user's `NuGet.Config`; Windows PowerShell 5.1's manifest template
+cannot take a prerelease label by text edit.
+
+**Not recorded yet**: authenticated feeds, `Update-Module` across a page boundary, and the asset directory
+and management API calls (their shapes are simple and are listed in build plan §4.4 and §4.5).
 
 ### Phase 1 amendment — 2026-09-11
 

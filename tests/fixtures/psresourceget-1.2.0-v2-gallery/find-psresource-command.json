@@ -1,0 +1,197 @@
+{
+  "client": "PowerShell 7.6.5, PSResourceGet 1.2.0",
+  "reference": "PowerShell Gallery",
+  "scenario": "find-psresource-command",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/Search()",
+        "query": "$filter=IsLatestVersion&searchTerm='tag:PSCommand_Get-Secret'&$inlinecount=allpages&$skip=0&$top=6000",
+        "headers": {
+          "User-Agent": "PSResourceGet/1.1.0.1 PowerShell/7.6.5 DistributionChannel/MSI:Windows 10 Pro PowerShellGetCompat/false"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/atom+xml",
+        "body": {
+          "kind": "atom-feed",
+          "entryCount": 11,
+          "count": "11",
+          "nextLink": false,
+          "properties": [
+            "Authors",
+            "CLRVersion",
+            "CompanyName",
+            "Copyright",
+            "Created",
+            "Dependencies",
+            "Description",
+            "DotNetFrameworkVersion",
+            "DownloadCount",
+            "FileList",
+            "GUID",
+            "GalleryDetailsUrl",
+            "IconUrl",
+            "Id",
+            "IsAbsoluteLatestVersion",
+            "IsLatestVersion",
+            "IsPrerelease",
+            "ItemType",
+            "Language",
+            "LastEdited",
+            "LastUpdated",
+            "LicenseNames",
+            "LicenseReportUrl",
+            "LicenseUrl",
+            "MinClientVersion",
+            "NormalizedVersion",
+            "Owners",
+            "PackageHash",
+            "PackageHashAlgorithm",
+            "PackageSize",
+            "PowerShellHostVersion",
+            "PowerShellVersion",
+            "ProcessorArchitecture",
+            "ProjectUrl",
+            "Published",
+            "ReleaseNotes",
+            "ReportAbuseUrl",
+            "RequireLicenseAcceptance",
+            "Summary",
+            "Tags",
+            "Title",
+            "Version",
+            "VersionDownloadCount"
+          ],
+          "entries": [
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "1.1.2",
+              "normalizedVersion": "1.1.2",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/1.1.2"
+            },
+            {
+              "id": "PowerVault",
+              "version": "1.0.1",
+              "normalizedVersion": "1.0.1",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/PowerVault/1.0.1"
+            },
+            {
+              "id": "SecretManagement.BitWarden",
+              "version": "0.1.1",
+              "normalizedVersion": "0.1.1",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/SecretManagement.BitWarden/0.1.1"
+            },
+            {
+              "id": "SecretManagement.CyberArk",
+              "version": "1.0.2",
+              "normalizedVersion": "1.0.2",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": true,
+              "contentSrc": "/api/v2/package/SecretManagement.CyberArk/1.0.2"
+            },
+            {
+              "id": "TrellOps",
+              "version": "1.0.1.25",
+              "normalizedVersion": "1.0.1.25",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/TrellOps/1.0.1.25"
+            },
+            {
+              "id": "CramPOSH.PSSecret",
+              "version": "0.0.13",
+              "normalizedVersion": "0.0.13",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/CramPOSH.PSSecret/0.0.13"
+            },
+            {
+              "id": "SecretManagement.Windows.LAPS",
+              "version": "0.2505.2",
+              "normalizedVersion": "0.2505.2",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": true,
+              "contentSrc": "/api/v2/package/SecretManagement.Windows.LAPS/0.2505.2"
+            },
+            {
+              "id": "SecretManagement.VMware.CloudFoundation",
+              "version": "0.2505.7",
+              "normalizedVersion": "0.2505.7",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": true,
+              "contentSrc": "/api/v2/package/SecretManagement.VMware.CloudFoundation/0.2505.7"
+            },
+            {
+              "id": "SecretManagement.BitLocker",
+              "version": "0.2505.2",
+              "normalizedVersion": "0.2505.2",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": true,
+              "contentSrc": "/api/v2/package/SecretManagement.BitLocker/0.2505.2"
+            },
+            {
+              "id": "SecretManagement.HashiCorp.HCP.Vault.Secrets",
+              "version": "0.2505.2",
+              "normalizedVersion": "0.2505.2",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": true,
+              "contentSrc": "/api/v2/package/SecretManagement.HashiCorp.HCP.Vault.Secrets/0.2505.2"
+            },
+            {
+              "id": "CyberArk.SecretsHub",
+              "version": "1.0.1",
+              "normalizedVersion": "1.0.1",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/CyberArk.SecretsHub/1.0.1"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

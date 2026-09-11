@@ -1,0 +1,75 @@
+{
+  "client": "Windows PowerShell 5.1, PowerShellGet 2.2.5, PackageManagement 1.4.8.1 (NuGet provider 3.0.0.1), NuGet.exe 6.11.1",
+  "reference": "reference server",
+  "scenario": "find-command",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/Search()",
+        "query": "$filter=IsLatestVersion&searchTerm=' tag:PSCommand_Get-FiGetRecording'&targetFramework=''&includePrerelease=false&$skip=0&$top=40",
+        "headers": {
+          "User-Agent": "Mozilla/5.0 NuGet"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/atom+xml",
+        "body": {
+          "kind": "atom-feed",
+          "entryCount": 1,
+          "count": null,
+          "nextLink": false,
+          "properties": [
+            "Copyright",
+            "Created",
+            "Dependencies",
+            "Description",
+            "DownloadCount",
+            "HasSource",
+            "HasSymbols",
+            "Icon",
+            "IconUrl",
+            "IsAbsoluteLatestVersion",
+            "IsCached",
+            "IsLatestVersion",
+            "IsLocalPackage",
+            "IsPrerelease",
+            "IsPrivateHosted",
+            "LicenseExpression",
+            "LicenseUrl",
+            "Listed",
+            "NormalizedVersion",
+            "PackageHash",
+            "PackageHashAlgorithm",
+            "PackageSize",
+            "ProjectUrl",
+            "Published",
+            "ReleaseNotes",
+            "RequireLicenseAcceptance",
+            "Summary",
+            "Tags",
+            "Title",
+            "Version",
+            "VersionDownloadCount"
+          ],
+          "entries": [
+            {
+              "id": "FiGetRecordingTest",
+              "version": "1.1.0",
+              "normalizedVersion": "1.1.0",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "false",
+              "listed": "true",
+              "hasDependencies": false,
+              "contentSrc": "/nuget/{feed}/package/FiGetRecordingTest/1.1.0"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

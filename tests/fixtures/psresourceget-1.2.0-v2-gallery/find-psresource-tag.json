@@ -1,0 +1,26 @@
+{
+  "client": "PowerShell 7.6.5, PSResourceGet 1.2.0",
+  "reference": "PowerShell Gallery",
+  "scenario": "find-psresource-tag",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/Search()",
+        "query": "$filter=IsLatestVersion and substringof('PSScript', Tags) eq true and substringof('SecretManagement', Tags) eq true&$inlinecount=allpages&$skip=0&$top=6000",
+        "headers": {
+          "User-Agent": "PSResourceGet/1.1.0.1 PowerShell/7.6.5 DistributionChannel/MSI:Windows 10 Pro PowerShellGetCompat/false"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 500,
+        "contentType": "application/xml",
+        "body": {
+          "kind": "xml:error"
+        }
+      }
+    }
+  ]
+}

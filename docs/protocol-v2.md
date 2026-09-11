@@ -2,7 +2,11 @@
 
 The v2 contract is what the clients send, not a specification. This file lists what was recorded in phase 0
 and the conclusions that follow for phase 2. Raw recordings stay outside git; scrubbed fixtures derived from
-them go under `tests/fixtures/`.
+them are in `tests/fixtures/` (format described there).
+
+Recordings so far: PowerShellGet 2.2.5 (419 exchanges, including prerelease, a 144-version module and
+Microsoft.Graph with its 38 pinned dependencies), nuget.exe 6.11.1, and PSResourceGet 1.2.0 against a v2
+feed root.
 
 ## Recording setup (2026-09-11)
 
@@ -14,7 +18,7 @@ them go under `tests/fixtures/`.
 | Recorder | `tools/FiGet.Recorder`, Host header passed through so every absolute URL points back at the recorder |
 | Script | `tests/FiGet.Compat/Record-PowerShellGetV2.ps1` |
 | Packages | synthetic `FiGetRecordingTest` (1.0.0, 1.1.0, 2.0.0) and `Microsoft.PowerShell.SecretManagement` from the gallery |
-| Exchanges | 85 |
+| Exchanges | 85 in the first run; 419 in the second (2026-09-12), which added a real prerelease, Pester (144 versions) and Microsoft.Graph 2.30.0 then 2.39.0 |
 
 ## The whole v2 surface PowerShellGet 2.2.5 used
 
@@ -41,25 +45,113 @@ Not requested at all: `$metadata`, `Packages()`, `Packages(Id=,Version=)`, `GetU
    `FindPackagesById()`, `Search()`, `PUT` on the root, and `package/{id}/{version}`. The `$filter` parser
    must support `IsLatestVersion`; everything else in the grammar of build plan §4.3 is for other clients
    (nuget.exe, PSResourceGet in v2 mode) and must be proven by their own recordings before it is built.
-2. **Paging is `$skip`/`$top` with a page size of 40.** A package with more than 40 versions (Az modules,
-   Microsoft.Graph) makes the client follow up; the response must carry the `next` link or the client
-   must be recorded paging with `$skip` before this is settled.
+2. **Paging is `$skip`/`$top` with a page size of 40, driven by the client.** The reference server sends
+   no `next` link. PowerShellGet requests the first page twice, then keeps asking for further pages
+   (`$skip=40`, `80`, `120`, …, several at once and out of order) until pages come back empty. FiGet must
+   honour `$skip`/`$top` on `FindPackagesById()` exactly and return an empty feed past the end.
 3. **`id='pattern*'` reaches `FindPackagesById()`.** The reference server answers it (with no entries here) and the client
    falls back to `Search()`. FiGet must not return 400 for it.
 4. **`api/v2/` under a feed root may 404.** The client tolerates it.
 5. **Publish-Module checks the feed first**: it calls `FindPackagesById()` and refuses client-side when the
    version already exists or is not higher than the current version, so a duplicate never reaches `PUT`.
-6. **Latest flags.** In every recorded answer exactly one entry had `IsLatestVersion` and one had
-   `IsAbsoluteLatestVersion`, including the proxy feed after an older gallery version had been cached (16
-   entries, latest 1.1.2). The double-latest failure reported on the server being replaced did **not**
-   reproduce on the reference server with the connector metadata cache off. Its conditions (server version,
-   connector cache settings) are still to be found.
+6. **Latest flags: see the next section.** With fewer versions than one page (SecretManagement, 16) the
+   reference server gets them right. With more, it does not.
+
+## Paging and latest flags: the double-latest failure, reproduced
+
+The failure reported on the server being replaced ("it returns both the cached version and the gallery
+version, and Update-Module / Microsoft.Graph breaks") reproduces on the reference server as soon as a package has
+more versions than one page. Recorded evidence, proxy feed with a PowerShell Gallery connector:
+
+| Scenario | Page (`$skip`) | Entries | Flagged `IsLatestVersion` |
+|---|---|---|---|
+| Microsoft.Graph, nothing cached | 0 / 40 / 80 | 40 / 40 / 36 | – / – / **2.39.0** |
+| after `Save-Module -RequiredVersion 2.30.0` | 0 / 40 / 80 | 40 / 40 / 36 | **2.30.0** (first entry) / – / **2.39.0** |
+| Pester, nothing cached | 0 / 40 / 80 / 120 | 40 / 40 / 40 / 24 | – / – / – / **6.2.0** |
+| after `Save-Module -RequiredVersion 4.10.1` | 0 / 40 / 80 / 120 | 40 / 40 / 40 / 24 | **4.10.1** (first entry) / – / – / **6.2.0** |
+
+What the server does, read from these pages:
+
+1. The locally cached version is put **in front of page 0** and flagged latest (for Graph also absolute
+   latest), computed over the local packages alone.
+2. The connector's versions follow in the connector's own order, which is **not version order** (the last
+   Graph page runs 2.2.0 … 2.9.1), with its own latest flag on whichever page it lands.
+3. The shift is not compensated in `$skip`: page 0 of Graph used to end at 1.4.2 and now ends at 1.4.0 while
+   page 40 still starts at 1.5.0, so **upstream versions silently drop out**.
+
+What the client does with it: `Find-Module Microsoft.Graph` returned **2.30.0** (the cached, older version) as
+the latest; `Find-Module Microsoft.Graph.Authentication` returned 2.30.0 as well; `Save-Module
+Microsoft.Graph` failed with **"Unable to download, multiple modules matched 'Microsoft.Graph'. Please specify
+an exact -Name and -RequiredVersion."** — the reported symptom.
+
+What FiGet does instead (build plan §5, `VersionListBuilder`): one merged list per id over local and upstream
+versions, de-duplicated, **sorted by NuGet version before paging**, latest flags computed once over the whole
+list, and `$skip`/`$top` applied to that list. The recorded latest flags on proxy feeds are therefore the one
+part of these fixtures FiGet must *not* reproduce; the phase 2 fixture comparison exempts them and asserts
+exactly one latest per id instead.
+
+## nuget.exe 6.11.1
+
+| Request | Used by |
+|---|---|
+| `GET /nuget/{feed}/` then `GET /nuget/{feed}/$metadata` | `list` (before searching) |
+| `GET /nuget/{feed}/Search()?$filter=IsLatestVersion&$orderby=Id&searchTerm='{term}'&targetFramework=''&includePrerelease=false&$skip=0&$top=30&semVerLevel=2.0.0` | `list {id}` |
+| `GET /nuget/{feed}/Search()?$orderby=Id&searchTerm='{term}'&targetFramework=''&includePrerelease=true&$skip=0&$top=30&semVerLevel=2.0.0` | `list -AllVersions -PreRelease` (no `$filter`) |
+| `GET /nuget/{feed}/Search()?$filter=IsAbsoluteLatestVersion&searchTerm='{term}'&targetFramework=''&includePrerelease=true&$skip=0&$top=20&semVerLevel=2.0.0` | `search -PreRelease` (no `$metadata` request, `$top=20`) |
+| `GET /nuget/{feed}/FindPackagesById()?id='{id}'&semVerLevel=2.0.0` | `install {id}` (latest) |
+| `GET /nuget/{feed}/Packages(Id='{id}',Version='{version}')` | `install -Version` |
+| `GET /nuget/{feed}/package/{id}/{version}` | every download |
+| `PUT /nuget/{feed}/` | `push`; 201, and 403 for a wrong key |
+| `DELETE /nuget/{feed}/{id}/{version}` | `delete` (note: not under `api/v2/package`) |
+
+So nuget.exe needs `$metadata`, `Packages(Id,Version)`, `$orderby=Id`, and `semVerLevel` on top of the
+PowerShellGet surface, and a delete route directly under the feed root.
+
+## PSResourceGet 1.2.0 in v2 mode (recorded against the PowerShell Gallery)
+
+Registered as `…/api/v2`, PSResourceGet detects `ApiVersion` V2 and speaks a far richer OData dialect than
+PowerShellGet: it puts the whole query into `$filter` and adds `$inlinecount=allpages`. Recorded 2026-09-12 with
+the recorder rewriting the Host header to the gallery's (downloads and `next` links therefore bypassed it).
+
+| Scenario | Request |
+|---|---|
+| find by name (latest) | `FindPackagesById()?$filter=Id eq '{id}' and IsLatestVersion eq true&$inlinecount=allpages&id='{id}'` |
+| find with `-Prerelease` | `FindPackagesById()?$filter=Id eq '{id}' and IsAbsoluteLatestVersion eq true&$inlinecount=allpages&id='{id}'` |
+| find exact version | `FindPackagesById()?$filter=Id eq '{id}' and NormalizedVersion eq '1.0.0'&$inlinecount=allpages&id='{id}'` |
+| find version range `[1.0.0, 1.1.0]` | `FindPackagesById()?$filter=NormalizedVersion ge '1.0.0' and NormalizedVersion le '1.1.0' and IsPrerelease eq false and Id eq '{id}'&$inlinecount=allpages&$skip=0&$orderby=NormalizedVersion desc&id='{id}'` |
+| find all versions (`-Version *`) | `FindPackagesById()?$filter=Id eq '{id}'&$inlinecount=allpages&$skip=0&$orderby=NormalizedVersion desc&id='{id}'`, then `$skip=100`: pages of 100 |
+| find wildcard `Name*` | `Search()?$filter=IsLatestVersion and startswith(Id, '{prefix}')&$inlinecount=allpages&$skip=0&$top=100` |
+| find `-Tag` | `Search()?$filter=IsLatestVersion and substringof('PSScript', Tags) eq true and substringof('{tag}', Tags) eq true&$inlinecount=allpages&$skip=0&$top=6000` — **the gallery itself answered 500** |
+| find `-CommandName` | `Search()?$filter=IsLatestVersion&searchTerm='tag:PSCommand_{name}'&$inlinecount=allpages&$skip=0&$top=6000` |
+| find with `-IncludeDependencies` | one latest-version lookup per id, the dependency resolved with `IsAbsoluteLatestVersion eq true` |
+| save | `FindPackagesById()` as above, then `GET package/{id}/{version}` (302 from the gallery to its blob storage) |
+
+Consequences for FiGet's `$filter` parser (build plan §4.3), now proven rather than assumed:
+
+- boolean properties both bare (`IsLatestVersion`) and compared (`IsLatestVersion eq true`);
+- `Id eq`, `NormalizedVersion eq|ge|le` with string literals, `IsPrerelease eq false`, joined by `and`;
+- `startswith(Id, '…')` and `substringof('…', Tags) eq true`;
+- `$filter` and the function parameter `id='…'` present together (both must agree);
+- `$orderby=NormalizedVersion desc`, which must mean NuGet version order, not string order;
+- `$inlinecount=allpages` (`<m:count>` in the feed) and `$top` values far above any sensible page size (6000),
+  which FiGet caps while PSResourceGet keeps paging with `$skip`;
+- a 302 redirect for downloads is acceptable to the client.
+
+## PSResourceGet 1.2.0 against a v2 feed root
+
+Registered with a URL ending in the feed name (`/nuget/{feed}/`), PSResourceGet reports the repository's
+`ApiVersion` as **Unknown**. It still publishes (`PUT /nuget/{feed}/`), but every find, save and install fails
+client-side with "is not a known repository type that is supported", before any request. The reference server
+serves no `/api/v2` form of its feeds (404 for every variant), so PSResourceGet can only use it through v3.
+FiGet's `/nuget/{feed}/api/v2` alias is what makes v2 usable for PSResourceGet at all.
+
+## Reference server behaviour worth not copying
+
+- **Duplicate pushes are silently accepted** (201) and overwrite the existing version, on PowerShell and NuGet
+  feeds alike. FiGet answers 409 unless the feed allows overwrite.
 
 ## Not yet recorded
 
-- A real prerelease: the manifest edit in the first script did not set `Prerelease` on Windows PowerShell
-  5.1, so "2.0.0-beta1" was published as stable 2.0.0. Fixed in the script; needs a new run.
-- A package with more than 40 versions (paging).
-- `Microsoft.Graph` install and update through the proxy feed (connector acceptance test B).
-- PSResourceGet against the v2 root (`/api/v2` suffix) and nuget.exe against v2.
-- Authenticated feeds (anonymous read was on for both feeds).
+- PSResourceGet in v2 mode against a server that does serve `/api/v2` (the PowerShell Gallery itself).
+- `Update-Module` of a module with more than 40 versions after an older one was installed.
+- Authenticated feeds (anonymous read was on for every feed).

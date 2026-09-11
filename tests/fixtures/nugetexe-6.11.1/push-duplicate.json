@@ -1,0 +1,32 @@
+{
+  "client": "nuget.exe 6.11.1",
+  "reference": "reference server",
+  "scenario": "push-duplicate",
+  "exchanges": [
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/nuget/{feed}/",
+        "query": "",
+        "headers": {
+          "Content-Type": "multipart/form-data; boundary={boundary}",
+          "User-Agent": "NuGet Command Line/6.11.1 (Microsoft Windows NT 10.0.26200.0)"
+        },
+        "credentials": [
+          "X-NuGet-ApiKey"
+        ],
+        "body": {
+          "kind": "multipart-package",
+          "length": 2121
+        }
+      },
+      "response": {
+        "status": 201,
+        "contentType": null,
+        "body": {
+          "kind": "empty"
+        }
+      }
+    }
+  ]
+}

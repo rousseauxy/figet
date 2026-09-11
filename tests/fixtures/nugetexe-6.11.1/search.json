@@ -1,0 +1,98 @@
+{
+  "client": "nuget.exe 6.11.1",
+  "reference": "reference server",
+  "scenario": "search",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/",
+        "query": "",
+        "headers": {
+          "User-Agent": "NuGet Command Line/6.11.1 (Microsoft Windows NT 10.0.26200.0)"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/xml",
+        "body": {
+          "kind": "service-document",
+          "collections": [
+            "Packages"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/Search()",
+        "query": "$filter=IsAbsoluteLatestVersion&searchTerm='FiGet.NuGetExe'&targetFramework=''&includePrerelease=true&$skip=0&$top=20&semVerLevel=2.0.0",
+        "headers": {
+          "Accept": "application/atom+xml, application/xml",
+          "User-Agent": "NuGet Command Line/6.11.1 (Microsoft Windows NT 10.0.26200.0)"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/atom+xml",
+        "body": {
+          "kind": "atom-feed",
+          "entryCount": 1,
+          "count": null,
+          "nextLink": false,
+          "properties": [
+            "Copyright",
+            "Created",
+            "Dependencies",
+            "Description",
+            "DownloadCount",
+            "HasSource",
+            "HasSymbols",
+            "Icon",
+            "IconUrl",
+            "IsAbsoluteLatestVersion",
+            "IsCached",
+            "IsLatestVersion",
+            "IsLocalPackage",
+            "IsPrerelease",
+            "IsPrivateHosted",
+            "LicenseExpression",
+            "LicenseUrl",
+            "Listed",
+            "NormalizedVersion",
+            "PackageHash",
+            "PackageHashAlgorithm",
+            "PackageSize",
+            "ProjectUrl",
+            "Published",
+            "ReleaseNotes",
+            "RequireLicenseAcceptance",
+            "Summary",
+            "Tags",
+            "Title",
+            "Version",
+            "VersionDownloadCount"
+          ],
+          "entries": [
+            {
+              "id": "FiGet.NuGetExe.Test",
+              "version": "2.0.0-beta1",
+              "normalizedVersion": "2.0.0-beta1",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "true",
+              "listed": "true",
+              "hasDependencies": false,
+              "contentSrc": "/nuget/{feed}/package/FiGet.NuGetExe.Test/2.0.0-beta1"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

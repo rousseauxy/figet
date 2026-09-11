@@ -1,0 +1,191 @@
+{
+  "client": "Windows PowerShell 5.1, PowerShellGet 2.2.5, PackageManagement 1.4.8.1 (NuGet provider 3.0.0.1), NuGet.exe 6.11.1",
+  "reference": "reference server",
+  "scenario": "register-psrepository-proxy",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/",
+        "query": "",
+        "headers": {},
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/xml",
+        "body": {
+          "kind": "service-document",
+          "collections": [
+            "Packages"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/",
+        "query": "",
+        "headers": {
+          "User-Agent": "Mozilla/5.0 NuGet"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/xml",
+        "body": {
+          "kind": "service-document",
+          "collections": [
+            "Packages"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/",
+        "query": "",
+        "headers": {
+          "User-Agent": "Mozilla/5.0 NuGet"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/xml",
+        "body": {
+          "kind": "service-document",
+          "collections": [
+            "Packages"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/",
+        "query": "",
+        "headers": {
+          "User-Agent": "Mozilla/5.0 NuGet"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/xml",
+        "body": {
+          "kind": "service-document",
+          "collections": [
+            "Packages"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/",
+        "query": "",
+        "headers": {},
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/xml",
+        "body": {
+          "kind": "service-document",
+          "collections": [
+            "Packages"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/",
+        "query": "",
+        "headers": {},
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/xml",
+        "body": {
+          "kind": "service-document",
+          "collections": [
+            "Packages"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/",
+        "query": "",
+        "headers": {},
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/xml",
+        "body": {
+          "kind": "service-document",
+          "collections": [
+            "Packages"
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/api/v2/",
+        "query": "",
+        "headers": {},
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "contentType": "text/plain",
+        "body": {
+          "kind": "text/plain",
+          "length": 32
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/nuget/{feed}/",
+        "query": "",
+        "headers": {},
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/xml",
+        "body": {
+          "kind": "service-document",
+          "collections": [
+            "Packages"
+          ]
+        }
+      }
+    }
+  ]
+}

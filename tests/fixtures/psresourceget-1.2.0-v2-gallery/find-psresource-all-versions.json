@@ -1,0 +1,252 @@
+{
+  "client": "PowerShell 7.6.5, PSResourceGet 1.2.0",
+  "reference": "PowerShell Gallery",
+  "scenario": "find-psresource-all-versions",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/FindPackagesById()",
+        "query": "$filter=Id eq 'Microsoft.PowerShell.SecretManagement'&$inlinecount=allpages&$skip=0&$orderby=NormalizedVersion desc&id='Microsoft.PowerShell.SecretManagement'",
+        "headers": {
+          "User-Agent": "PSResourceGet/1.1.0.1 PowerShell/7.6.5 DistributionChannel/MSI:Windows 10 Pro PowerShellGetCompat/false"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/atom+xml",
+        "body": {
+          "kind": "atom-feed",
+          "entryCount": 16,
+          "count": "16",
+          "nextLink": false,
+          "properties": [
+            "Authors",
+            "CLRVersion",
+            "CompanyName",
+            "Copyright",
+            "Created",
+            "Dependencies",
+            "Description",
+            "DotNetFrameworkVersion",
+            "DownloadCount",
+            "FileList",
+            "GUID",
+            "GalleryDetailsUrl",
+            "IconUrl",
+            "Id",
+            "IsAbsoluteLatestVersion",
+            "IsLatestVersion",
+            "IsPrerelease",
+            "ItemType",
+            "Language",
+            "LastEdited",
+            "LastUpdated",
+            "LicenseNames",
+            "LicenseReportUrl",
+            "LicenseUrl",
+            "MinClientVersion",
+            "NormalizedVersion",
+            "Owners",
+            "PackageHash",
+            "PackageHashAlgorithm",
+            "PackageSize",
+            "PowerShellHostVersion",
+            "PowerShellVersion",
+            "ProcessorArchitecture",
+            "ProjectUrl",
+            "Published",
+            "ReleaseNotes",
+            "ReportAbuseUrl",
+            "RequireLicenseAcceptance",
+            "Summary",
+            "Tags",
+            "Title",
+            "Version",
+            "VersionDownloadCount"
+          ],
+          "entries": [
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "1.1.2",
+              "normalizedVersion": "1.1.2",
+              "isLatestVersion": "true",
+              "isAbsoluteLatestVersion": "true",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/1.1.2"
+            },
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "1.1.1",
+              "normalizedVersion": "1.1.1",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/1.1.1"
+            },
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "1.1.0-preview2",
+              "normalizedVersion": "1.1.0-preview2",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "true",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/1.1.0-preview2"
+            },
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "1.1.0-preview",
+              "normalizedVersion": "1.1.0-preview",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "true",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/1.1.0-preview"
+            },
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "1.1.0",
+              "normalizedVersion": "1.1.0",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/1.1.0"
+            },
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "1.0.1",
+              "normalizedVersion": "1.0.1",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/1.0.1"
+            },
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "1.0.0",
+              "normalizedVersion": "1.0.0",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/1.0.0"
+            },
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "0.9.1",
+              "normalizedVersion": "0.9.1",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/0.9.1"
+            },
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "0.9.0",
+              "normalizedVersion": "0.9.0",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/0.9.0"
+            },
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "0.5.5-preview6",
+              "normalizedVersion": "0.5.5-preview6",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "true",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/0.5.5-preview6"
+            },
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "0.5.4-preview5",
+              "normalizedVersion": "0.5.4-preview5",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "true",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/0.5.4-preview5"
+            },
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "0.5.3-preview4",
+              "normalizedVersion": "0.5.3-preview4",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "true",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/0.5.3-preview4"
+            },
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "0.5.2-preview3",
+              "normalizedVersion": "0.5.2-preview3",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "true",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/0.5.2-preview3"
+            },
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "0.5.1-preview3",
+              "normalizedVersion": "0.5.1-preview3",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "true",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/0.5.1-preview3"
+            },
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "0.5.0-preview3",
+              "normalizedVersion": "0.5.0-preview3",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "true",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/0.5.0-preview3"
+            },
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "0.2.1-alpha1",
+              "normalizedVersion": "0.2.1-alpha1",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "true",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/0.2.1-alpha1"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

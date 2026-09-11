@@ -1,0 +1,107 @@
+{
+  "client": "PowerShell 7.6.5, PSResourceGet 1.2.0",
+  "reference": "PowerShell Gallery",
+  "scenario": "save-psresource-exact-version",
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/FindPackagesById()",
+        "query": "$filter=Id eq 'Microsoft.PowerShell.SecretManagement' and NormalizedVersion eq '1.0.0'&$inlinecount=allpages&id='Microsoft.PowerShell.SecretManagement'",
+        "headers": {
+          "User-Agent": "PSResourceGet/1.1.0.1 PowerShell/7.6.5 DistributionChannel/MSI:Windows 10 Pro PowerShellGetCompat/false"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/atom+xml",
+        "body": {
+          "kind": "atom-feed",
+          "entryCount": 1,
+          "count": "1",
+          "nextLink": false,
+          "properties": [
+            "Authors",
+            "CLRVersion",
+            "CompanyName",
+            "Copyright",
+            "Created",
+            "Dependencies",
+            "Description",
+            "DotNetFrameworkVersion",
+            "DownloadCount",
+            "FileList",
+            "GUID",
+            "GalleryDetailsUrl",
+            "IconUrl",
+            "Id",
+            "IsAbsoluteLatestVersion",
+            "IsLatestVersion",
+            "IsPrerelease",
+            "ItemType",
+            "Language",
+            "LastEdited",
+            "LastUpdated",
+            "LicenseNames",
+            "LicenseReportUrl",
+            "LicenseUrl",
+            "MinClientVersion",
+            "NormalizedVersion",
+            "Owners",
+            "PackageHash",
+            "PackageHashAlgorithm",
+            "PackageSize",
+            "PowerShellHostVersion",
+            "PowerShellVersion",
+            "ProcessorArchitecture",
+            "ProjectUrl",
+            "Published",
+            "ReleaseNotes",
+            "ReportAbuseUrl",
+            "RequireLicenseAcceptance",
+            "Summary",
+            "Tags",
+            "Title",
+            "Version",
+            "VersionDownloadCount"
+          ],
+          "entries": [
+            {
+              "id": "Microsoft.PowerShell.SecretManagement",
+              "version": "1.0.0",
+              "normalizedVersion": "1.0.0",
+              "isLatestVersion": "false",
+              "isAbsoluteLatestVersion": "false",
+              "isPrerelease": "false",
+              "listed": null,
+              "hasDependencies": false,
+              "contentSrc": "/api/v2/package/Microsoft.PowerShell.SecretManagement/1.0.0"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/api/v2/package/Microsoft.PowerShell.SecretManagement/1.0.0",
+        "query": "",
+        "headers": {
+          "User-Agent": "PSResourceGet/1.1.0.1 PowerShell/7.6.5 DistributionChannel/MSI:Windows 10 Pro PowerShellGetCompat/false"
+        },
+        "credentials": [],
+        "body": null
+      },
+      "response": {
+        "status": 302,
+        "contentType": "text/html",
+        "body": {
+          "kind": "text/html",
+          "length": 209
+        }
+      }
+    }
+  ]
+}

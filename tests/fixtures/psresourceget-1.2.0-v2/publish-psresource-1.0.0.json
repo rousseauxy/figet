@@ -1,0 +1,32 @@
+{
+  "client": "PowerShell 7.6.5, PSResourceGet 1.2.0",
+  "reference": "reference server",
+  "scenario": "publish-psresource-1.0.0",
+  "exchanges": [
+    {
+      "request": {
+        "method": "PUT",
+        "path": "/nuget/{feed}/",
+        "query": "",
+        "headers": {
+          "Content-Type": "multipart/form-data; boundary={boundary}",
+          "User-Agent": "NuGet Client V3/6.9.1 (Microsoft Windows NT 10.0.26200.0)"
+        },
+        "credentials": [
+          "X-NuGet-ApiKey"
+        ],
+        "body": {
+          "kind": "multipart-package",
+          "length": 3820
+        }
+      },
+      "response": {
+        "status": 201,
+        "contentType": null,
+        "body": {
+          "kind": "empty"
+        }
+      }
+    }
+  ]
+}

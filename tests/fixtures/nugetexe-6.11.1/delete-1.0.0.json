@@ -1,0 +1,28 @@
+{
+  "client": "nuget.exe 6.11.1",
+  "reference": "reference server",
+  "scenario": "delete-1.0.0",
+  "exchanges": [
+    {
+      "request": {
+        "method": "DELETE",
+        "path": "/nuget/{feed}/FiGet.NuGetExe.Test/1.0.0",
+        "query": "",
+        "headers": {
+          "User-Agent": "NuGet Command Line/6.11.1 (Microsoft Windows NT 10.0.26200.0)"
+        },
+        "credentials": [
+          "X-NuGet-ApiKey"
+        ],
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "contentType": null,
+        "body": {
+          "kind": "empty"
+        }
+      }
+    }
+  ]
+}
