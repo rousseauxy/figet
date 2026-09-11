@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FiGet.Core\FiGet.Core.csproj" />
+    <ProjectReference Include="..\FiGet.Http\FiGet.Http.csproj" />
+  </ItemGroup>
+</Project>

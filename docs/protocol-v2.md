@@ -159,6 +159,40 @@ FiGet's `/nuget/{feed}/api/v2` alias is what makes v2 usable for PSResourceGet a
 - **Duplicate pushes are silently accepted** (201) and overwrite the existing version, on PowerShell and NuGet
   feeds alike. FiGet answers 409 unless the feed allows overwrite.
 
+## What FiGet serves (phase 2, 2026-09-12)
+
+Built from the recordings above, in `src/FiGet.Protocol.V2`. Both roots carry the identical surface:
+`/nuget/{feed}` for PowerShellGet and nuget.exe, `/nuget/{feed}/api/v2` because PSResourceGet decides the
+protocol from the URL suffix and reports `Unknown` without it.
+
+| Route | Notes |
+|---|---|
+| `GET /nuget/{feed}` | Service document. A trailing slash is the same endpoint: the router ignores it, so it is mapped once. |
+| `GET /nuget/{feed}/$metadata` | Static EDMX for `V2FeedPackage` plus `Search`, `FindPackagesById` and `GetUpdates`. |
+| `GET /nuget/{feed}/FindPackagesById()` | `id`, `$filter`, `$orderby`, `$skip`, `$top`, `$inlinecount`, `semVerLevel`. Unknown id: empty feed, 200, which is also the providers' source-validation probe. |
+| `GET /nuget/{feed}/Search()` | Adds `searchTerm` (PowerShellGet's ` tag:x` syntax included) and `includePrerelease`. |
+| `GET /nuget/{feed}/Packages()` and `Packages(Id='x',Version='y')` | The collection and one entry; an `Id eq` in the filter fetches that package directly. |
+| `GET /nuget/{feed}/GetUpdates()` | `packageIds`, `versions`, `includePrerelease`, `includeAllVersions`. No recorded client sends it. |
+| `GET …/$count` on the three listings | `text/plain` integer. |
+| `GET /nuget/{feed}/package/{id}/{version}` | Download by normalised version. |
+| `PUT /nuget/{feed}` and `PUT /nuget/{feed}/package` | Push, multipart or raw, `X-NuGet-ApiKey` or Basic. |
+| `DELETE /nuget/{feed}/{id}/{version}` and `…/package/{id}/{version}` | Unlist or hard delete per feed. |
+
+Decisions this implementation makes, all visible to clients:
+
+- **Latest flags come from the merged version list**, never from a per-source view, so exactly one entry
+  carries `IsLatestVersion` and one carries `IsAbsoluteLatestVersion`. This is where FiGet deliberately
+  differs from the recorded reference answers on proxy feeds.
+- **Unparsed `$filter` or `$orderby` is a 400 naming the expression**, logged at Warning. An empty 200 would
+  be indistinguishable from "the package does not exist", which is the git forges' failure mode.
+- **Version properties compare as NuGet versions**, so `NormalizedVersion ge '1.0.0' and le '1.1.0'` and
+  `$orderby=NormalizedVersion desc` order 1.10.0 after 1.9.0 rather than before it.
+- **Default order**: `FindPackagesById()` ascending by version, as the reference server returned;
+  `Search()` and `Packages()` id ascending then version descending.
+- **`$top` is capped at 1000** and a `next` link is emitted, which is how PSResourceGet's request for 6000
+  is answered.
+- **Unlisted versions** report `Listed` false and `Published` 1900-01-01, as nuget.org does.
+
 ## Not yet recorded
 
 - PSResourceGet in v2 mode against a server that does serve `/api/v2` (the PowerShell Gallery itself).

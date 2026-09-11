@@ -170,6 +170,48 @@ HTTPS.
 
 ### Next
 
-Phase 0 (recording a reference server's traffic) needs an environment with such a server and has not started. Phase 2 (v2 OData)
-can begin from the published v2 knowledge plus the probe found above, but its fixtures must come from
-phase 0 before it is called done.
+Phase 3: proxy feeds, the cached upstream index and the management API.
+
+## Phase 2: v2 OData — 2026-09-12
+
+**State: the surface is built and green against the recorded request shapes. Replaying the phase 0 fixtures
+as tests is the one piece still missing before phase 2 is called done.**
+
+### Delivered
+
+| Plan item (section 4.3) | Where |
+|---|---|
+| Service document at the feed root and at the `/api/v2` alias, with and without a trailing slash | `src/FiGet.Protocol.V2/NuGetV2Endpoints.cs` |
+| `$metadata` (EDMX for `V2FeedPackage` plus the three function imports) | `src/FiGet.Protocol.V2/AtomWriter.cs` |
+| Atom feed and entry writers with the full property set, dependencies as `id:range:tfm` triples | `src/FiGet.Protocol.V2/AtomWriter.cs` |
+| `FindPackagesById()`, `Search()`, `Packages()`, `Packages(Id=,Version=)`, `GetUpdates()`, `/$count` on each | `src/FiGet.Protocol.V2/NuGetV2Endpoints.cs` |
+| Hand-written `$filter` parser and `$orderby`, both failing loudly with 400 | `src/FiGet.Protocol.V2/ODataFilter.cs` |
+| Push to the feed root and to `package`, delete under the root and under `package` | `src/FiGet.Protocol.V2/NuGetV2Endpoints.cs` |
+| Download by normalised version | `src/FiGet.Protocol.V2/NuGetV2Endpoints.cs` |
+| The merged version list drives the latest flags, so exactly one entry claims each | `V2Row.ForPackage` over `VersionListBuilder` |
+
+### Evidence
+
+`dotnet test` on the commit that adds this section: 119 total, 90 passed, 29 skipped (the SQL Server half).
+The v2 tests drive the request shapes recorded in phase 0, including the source-validation probe, the
+PowerShellGet tag search, the PSResourceGet filter dialect with a version range ordered descending, inline
+count with a next link, an unsupported filter answered 400, unlist moving the latest flag, and a private
+feed challenging for credentials.
+
+### Decisions taken while building
+
+- **Ordering defaults differ per operation.** `FindPackagesById()` returns versions ascending, which is what
+  the reference server returned and what keeps client paging stable; `Search()` and `Packages()` default to
+  id ascending then version descending. Version properties always compare as NuGet versions.
+- **`$top` is capped at 1000.** PSResourceGet asks for 6000; it pages with `$skip` when it receives fewer.
+- **The answer keeps the root the client used.** A request under `/api/v2` gets URLs under `/api/v2`, so a
+  client that registered the alias never leaves it.
+- **A listing without an id scans a bounded window of packages** (2000) before flattening versions, because
+  the client pages over entries while the store pages over packages.
+
+### Still to do in phase 2
+
+- Replay the `tests/fixtures` recordings as tests (build plan section 7.1). The fixtures are committed and
+  the shapes they carry are covered by hand-written tests, but nothing reads the fixture files yet.
+- Run the real Windows PowerShell 5.1 client against this surface (section 7.2). That needs the compat
+  scripts pointed at a running instance.

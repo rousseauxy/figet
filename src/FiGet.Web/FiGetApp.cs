@@ -9,6 +9,7 @@ using FiGet.Http;
 using FiGet.Persistence;
 using FiGet.Persistence.Sqlite;
 using FiGet.Persistence.SqlServer;
+using FiGet.Protocol.V2;
 using FiGet.Protocol.V3;
 using FiGet.Storage;
 using FiGet.Web.Components;
@@ -125,6 +126,7 @@ public static class FiGetApp
         app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
         app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 
+        app.MapNuGetV2();
         app.MapNuGetV3();
         app.MapAccountEndpoints();
         app.MapStaticAssets();

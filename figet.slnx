@@ -5,6 +5,7 @@
     <Project Path="src/FiGet.Persistence.Sqlite/FiGet.Persistence.Sqlite.csproj" />
     <Project Path="src/FiGet.Persistence.SqlServer/FiGet.Persistence.SqlServer.csproj" />
     <Project Path="src/FiGet.Persistence/FiGet.Persistence.csproj" />
+    <Project Path="src/FiGet.Protocol.V2/FiGet.Protocol.V2.csproj" />
     <Project Path="src/FiGet.Protocol.V3/FiGet.Protocol.V3.csproj" />
     <Project Path="src/FiGet.Storage/FiGet.Storage.csproj" />
     <Project Path="src/FiGet.Web/FiGet.Web.csproj" />
