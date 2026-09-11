@@ -14,6 +14,7 @@ COPY src/FiGet.Http/FiGet.Http.csproj src/FiGet.Http/
 COPY src/FiGet.Persistence/FiGet.Persistence.csproj src/FiGet.Persistence/
 COPY src/FiGet.Persistence.Sqlite/FiGet.Persistence.Sqlite.csproj src/FiGet.Persistence.Sqlite/
 COPY src/FiGet.Persistence.SqlServer/FiGet.Persistence.SqlServer.csproj src/FiGet.Persistence.SqlServer/
+COPY src/FiGet.Protocol.V2/FiGet.Protocol.V2.csproj src/FiGet.Protocol.V2/
 COPY src/FiGet.Protocol.V3/FiGet.Protocol.V3.csproj src/FiGet.Protocol.V3/
 COPY src/FiGet.Storage/FiGet.Storage.csproj src/FiGet.Storage/
 COPY src/FiGet.Web/FiGet.Web.csproj src/FiGet.Web/
