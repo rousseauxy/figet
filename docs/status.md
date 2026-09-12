@@ -1213,3 +1213,48 @@ is the state real rows reach, and that is what the test pins now.
 The deeper miss is the same one as the paged-registration defect earlier today: every test writes its rows
 through today's code, so no test ever produces a row that an older build left behind. Nothing in the suite
 can see a migration-shaped defect unless it is written to.
+
+## Un-caching a package, and two alarms I raised wrongly — 2026-09-12
+
+The tester's "no way to clean up cached versions" is now an action. A cached copy wins the merge by
+design, so one held version keeps being answered - and keeps being latest - however the gallery moves on.
+PowerShellGet 2.2.5.1 is what that looks like from the outside.
+
+`PackageIngestionService.UncacheAsync` removes every `Cached` version of one id and its files, reusing
+`PurgeAsync` per version rather than growing a second cleanup path - the symbol-file removal lives there
+and is easy to forget. Versions **pushed** to the feed are untouched, the same rule withdrawal
+reconciliation already follows: what somebody published here is nobody else's to remove. The button sits
+on the package page, says how many it will remove, and is one click rather than a typed confirmation
+because nothing is lost - the next download fetches the versions back.
+
+The test drives the service, not the button: the fixture with a browser harness has no upstream, and the
+one with an upstream has no harness. What it pins is which rows and files go and which survive, and that
+the package still resolves from upstream afterwards. The endpoint itself is a thin wrapper on the
+`versions/delete` template and is *not* covered by a test.
+
+### "The listed flag is flapping" — it was not
+
+The tester reported PowerShellGet was no longer being cached. Reading a filtered log tail I saw
+listed → unlisted → listed on 2.2.5.1 and called it a flap. Counted over six hours it is **2 withdrawn and
+2 offered-again, both for that one version**: the reconcile correctly mirroring a version the gallery
+hides, with one transient re-list across a restart. Live state is 49 cached listed, 2 cached unlisted, and
+both unlisted ones are genuinely hidden upstream.
+
+### "v2 is advertising Listed: false" — also not
+
+Same mistake, ten minutes later: a `tail` of the Atom showed a run of `Listed: false` and I called it a
+defect in what we advertise. Across the whole document it is 27 true against 13 false, and the two that
+decide it are right - 2.2.5 reports `Listed: true, IsLatestVersion: true`, 2.2.5.1 reports false. The
+false rows are prereleases the gallery hides. Twice in one session a truncated tail produced a defect that
+was not there; the discriminator was always the specific version, never the tail.
+
+### What was actually wrong: nothing here
+
+Caching works, proven on the deployed build against a package nothing had ever fetched: one v2-shaped
+download of `Carbon 2.11.1` (781,650 bytes, 2.0s) wrote `Carbon 2.11.1 | Cached` and took the table from
+55 rows to 56. The same held for PowerShellGet 2.2.5 - requesting it created the row that was missing.
+
+So the install that "did not cache" never reached this server. It took 386 ms where the cold find beside
+it took 59.7 s, and PSResourceGet keeps its own package cache: a module it has already downloaded installs
+without asking us again. Unconfirmed until the tester checks - the proxy has no access log, so there is no
+record on our side either way.
