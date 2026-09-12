@@ -1479,3 +1479,59 @@ absent.
 
 What survives is the useful set: package pages, the v3 index, registration documents, sign-ins, and every
 protocol call.
+
+## A first install brought no dependencies with it - 2026-09-12
+
+Reported from testing: `Install-Module Microsoft.Entra` installed the module and none of its nine
+sub-modules. The second attempt installed everything. The same had happened over v3 earlier.
+
+The request log answered it, which is the first time it has earned its place. Two attempts, minutes apart:
+
+    21:23:05  FindPackagesById id='Microsoft.Entra'        200   2ms
+    21:23:08  package/Microsoft.Entra/1.3.0                200 1370ms
+    -- nothing else. Not one dependency was asked about. --
+
+    21:23:48  FindPackagesById id='Microsoft.Entra'        200   2ms
+    21:23:53  FindPackagesById id='...CertificateBased...' 200   2ms   (and the other eight)
+    21:23:55  package/...CertificateBasedAuthentication/1.3.0  200 927ms   (and the other eight)
+
+The client did not fail to install the dependencies. It never learned they existed.
+
+### Why
+
+`UpstreamMetadata` carried description, summary, title, authors, tags, urls, published, downloads and
+listed - everything except dependencies. `Describe()` copied all of it onto the placeholder row for an
+uncached version, so that row declared no dependencies, and both protocols read dependencies from that one
+collection: the v2 Atom writer through `AtomWriter.Dependencies`, and v3 through `BuildLeafItem`, which
+groups `v.Dependencies` into `dependencyGroups`. A client reading either concluded the module had none.
+
+On the second attempt the first had already cached the package, its dependencies came from the nuspec by
+way of the indexer, and everything resolved.
+
+Proven on a package nobody here has ever cached. For `ExchangeOnlineManagement` this server answered
+`<d:Dependencies />` and `"dependencyGroups":[]`, where the gallery answers
+`PackageManagement:[1.0.0.1, ):|PowerShellGet:[1.0.0.1, ):`.
+
+For a proxy feed in front of a gallery, an uncached version is *the first install of anything*. This was
+the normal case, not an edge one.
+
+### The fix
+
+`UpstreamMetadata` gained a dependency list, `ToMetadata` maps `IPackageSearchMetadata.DependencySets`, and
+`Describe()` writes them onto the row. No extra network traffic: those sets already arrive in the call
+being made for the description.
+
+The mapping copies `PackageIndexer` exactly - empty framework name for "any", empty range for "any
+version", one running ordinal across groups, and a single row with no id for a group that declares none.
+That matters more than it looks: if upstream-derived dependencies differed in shape from indexed ones, a
+package would report different dependencies before and after being cached, which is a worse defect than
+the one being fixed.
+
+Two tests, one per protocol, both on a version nothing has cached.
+
+### Noted while measuring
+
+`UpstreamMetadataCache` is an unbounded dictionary - `Get` evicts only the key it is asked for, and nothing
+sweeps it. Dependencies add to what it holds: Microsoft.Graph averages about 2 KB of dependency text per
+version, so roughly 210 KB across a hundred versions. Small next to the tags already held, but it is
+growth on something already unbounded, and the 101 MB incident came from this same cache.

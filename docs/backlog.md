@@ -151,14 +151,6 @@ given an `IQueryable`; this one is fed by `IPackageStore.SearchAsync`, a port wi
 filter but no ordering. Pointing the grid at EF directly would put queries in the composition root and
 undo the layering, so the honest fix is a sort parameter on the port plus both EF implementations.
 
-### Dependencies and metadata for a version nobody has cached
-
-Asked for 2026-09-12: the server being replaced shows a package's dependencies and versions without
-caching anything first. FiGet already lists upstream versions and describes them (description, authors,
-tags), but the Dependencies tab is empty until the package is here. NuGet's metadata resource returns
-`DependencySets` in the same call already being made for the description, so this is plumbing
-`UpstreamMetadata` through to the placeholder rows rather than new network traffic.
-
 ### Pull should cache the dependency closure, not one package
 
 Raised 2026-09-12. **Pull is currently the only path that does not leave a working offline copy.**
