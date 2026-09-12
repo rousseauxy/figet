@@ -59,6 +59,14 @@ public sealed class StubUpstreamClient : IUpstreamClient
     /// </summary>
     public bool Describes { get; set; } = true;
 
+    /// <summary>Dependencies this upstream declares, keyed by "id|version".</summary>
+    private readonly ConcurrentDictionary<string, List<UpstreamDependency>> dependencies = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Declares a dependency for one version, the way a gallery does for a module.</summary>
+    public void AddDependency(string id, string version, string dependencyId, string range) =>
+        dependencies.GetOrAdd(id + "|" + NuGetVersion.Parse(version).ToNormalizedString(), _ => [])
+            .Add(new UpstreamDependency("", dependencyId, range));
+
     private void FailIfAsked()
     {
         if (TimesOut)
@@ -146,7 +154,8 @@ public sealed class StubUpstreamClient : IUpstreamClient
                 "",
                 new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
                 7,
-                !unlisted.ContainsKey(idLower + "|" + v)))
+                !unlisted.ContainsKey(idLower + "|" + v),
+                dependencies.TryGetValue(idLower + "|" + v, out var declared) ? declared : []))
             .ToList();
 
         // The spelling this upstream knows the package by, recovered from the key it was added under:

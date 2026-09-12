@@ -125,7 +125,48 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
         m.LicenseUrl?.ToString() ?? "",
         m.Published?.UtcDateTime,
         m.DownloadCount ?? 0,
-        m.IsListed);
+        m.IsListed,
+        ToDependencies(m));
+
+    /// <summary>
+    /// What the upstream declares this version depends on, in exactly the shape <c>PackageIndexer</c>
+    /// produces for a pushed package - same framework spelling, same range normalisation, same
+    /// one-row-for-an-empty-group rule - so a package reports the same dependencies before and after
+    /// somebody caches it. A difference there would be a nastier defect than the one this fixes.
+    ///
+    /// Free of extra network traffic: the metadata resource already returns these in the call being made
+    /// for the description.
+    /// </summary>
+    private static IReadOnlyList<UpstreamDependency> ToDependencies(IPackageSearchMetadata m)
+    {
+        var groups = m.DependencySets?.ToList();
+        if (groups is null || groups.Count == 0)
+        {
+            return [];
+        }
+
+        var dependencies = new List<UpstreamDependency>();
+        foreach (var group in groups)
+        {
+            var framework = group.TargetFramework is null || group.TargetFramework.IsAny || group.TargetFramework.IsUnsupported
+                ? ""
+                : group.TargetFramework.GetShortFolderName();
+
+            var packages = group.Packages?.ToList() ?? [];
+            if (packages.Count == 0)
+            {
+                dependencies.Add(new UpstreamDependency(framework, null, ""));
+                continue;
+            }
+
+            dependencies.AddRange(packages.Select(d => new UpstreamDependency(
+                framework,
+                d.Id,
+                d.VersionRange is null || d.VersionRange.Equals(VersionRange.All) ? "" : d.VersionRange.ToNormalizedString())));
+        }
+
+        return dependencies;
+    }
 
     public async Task<IReadOnlyList<UpstreamSearchHit>> SearchAsync(
         FeedUpstream upstream,

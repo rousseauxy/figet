@@ -301,6 +301,28 @@ public sealed class ConnectorService(
         return hits;
     }
 
+    /// <summary>
+    /// The upstream's dependencies as rows, numbered the way the indexer numbers a pushed package's: one
+    /// running ordinal across every group, and a row with no id for a group that declares none. Matching
+    /// that exactly is the point - a package must read the same before and after it is cached.
+    /// </summary>
+    private static List<PackageDependency> ToDependencies(IReadOnlyList<UpstreamDependency>? dependencies)
+    {
+        if (dependencies is null || dependencies.Count == 0)
+        {
+            return [];
+        }
+
+        var ordinal = 0;
+        return [.. dependencies.Select(d => new PackageDependency
+        {
+            Ordinal = ordinal++,
+            TargetFramework = d.TargetFramework,
+            Id = d.Id,
+            VersionRange = d.VersionRange,
+        })];
+    }
+
     private static PackageVersion Placeholder(string idLower, UpstreamVersion version)
     {
         var normalized = version.Version.ToNormalizedString();
@@ -343,6 +365,7 @@ public sealed class ConnectorService(
         row.IconUrl = metadata.IconUrl;
         row.LicenseUrl = metadata.LicenseUrl;
         row.Downloads = metadata.Downloads;
+        row.Dependencies = ToDependencies(metadata.Dependencies);
         if (metadata.Published is { } published)
         {
             row.PublishedUtc = published;

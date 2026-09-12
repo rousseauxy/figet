@@ -40,7 +40,19 @@ public sealed record UpstreamMetadata(
     string LicenseUrl,
     DateTime? Published,
     long Downloads,
-    bool Listed = true);
+    bool Listed = true,
+    IReadOnlyList<UpstreamDependency>? Dependencies = null);
+
+/// <summary>
+/// One dependency an upstream declares for a version, in the shape the indexer produces for a package
+/// pushed here: the group's short framework name (empty for "any"), the dependency id (null for a group
+/// that declares none), and a normalised range (empty for "any version").
+///
+/// Carried because a version nobody has cached was otherwise described with everything except this, so a
+/// client read "no dependencies" and installed the module alone. The second attempt worked, because by
+/// then the first had cached the package and its dependencies came from the nuspec.
+/// </summary>
+public sealed record UpstreamDependency(string TargetFramework, string? Id, string VersionRange);
 
 /// <summary>
 /// One upstream's answer for one package id: every version it holds, and what it published about the

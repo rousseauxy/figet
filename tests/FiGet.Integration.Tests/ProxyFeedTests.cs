@@ -570,6 +570,64 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         }
     }
 
+    /// <summary>
+    /// A version nobody has cached is listed with the dependencies its upstream declares.
+    ///
+    /// Reported from testing: `Install-Module Microsoft.Entra` brought none of its nine sub-modules the
+    /// first time and all of them the second. The request log showed why - on the first attempt the client
+    /// never asked about a single dependency, because the entry it read declared none. An uncached version
+    /// was described with everything except its dependencies, so a client concluded there were none; by
+    /// the second attempt the first had cached the package, and then they came from the nuspec.
+    ///
+    /// For a proxy feed in front of a gallery, that is the first install of anything - which makes it the
+    /// normal case, not an edge one.
+    /// </summary>
+    [Fact]
+    public async Task An_uncached_version_is_listed_with_the_dependencies_its_upstream_declares()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Dependencies");
+        AddUpstream(id, "1.0.0");
+        server.Upstream.AddDependency(id, "1.0.0", "Some.Dependency", "[1.2.0, )");
+        server.Upstream.AddDependency(id, "1.0.0", "Another.Dependency", "[2.0.0, 2.0.0]");
+
+        // Nothing is cached: this is the look-through listing, exactly what a client reads before deciding
+        // what else it has to fetch.
+        var entries = await FindAsync("proxy", id);
+        var declared = Property(entries.Single(e => Property(e, "Version") == "1.0.0"), "Dependencies");
+
+        Assert.Contains("Some.Dependency:[1.2.0, ):", declared, StringComparison.Ordinal);
+        Assert.Contains("Another.Dependency:[2.0.0, 2.0.0]:", declared, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The same over v3, because the same client fails the same way there: `Install-PSResource` reads
+    /// `dependencyGroups` out of the registration, and an uncached version declared none of them.
+    ///
+    /// Both protocols read the one collection on the row, so one fix serves both - but it is asserted
+    /// separately because "it must be fine, it is the same field" is how a protocol regression hides.
+    /// </summary>
+    [Fact]
+    public async Task An_uncached_version_declares_its_dependencies_over_v3_too()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.DependenciesV3");
+        AddUpstream(id, "1.0.0");
+        server.Upstream.AddDependency(id, "1.0.0", "Some.Dependency", "[1.2.0, )");
+
+        using var client = server.CreateClient();
+        var idLower = id.ToLowerInvariant();
+
+        // The catalog entry is what the NuGet provider follows to resolve what else it must fetch.
+        var entry = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(
+            await client.GetAsync($"nuget/proxy/v3/catalog/{idLower}/1.0.0.json")))!;
+
+        var groups = entry["dependencyGroups"]!.AsArray();
+        Assert.NotEmpty(groups);
+
+        var dependency = groups[0]!["dependencies"]!.AsArray().Single();
+        Assert.Equal("Some.Dependency", (string?)dependency!["id"]);
+        Assert.Equal("[1.2.0, )", (string?)dependency!["range"]);
+    }
+
     [Fact]
     public async Task An_unreachable_upstream_withdraws_nothing()
     {
