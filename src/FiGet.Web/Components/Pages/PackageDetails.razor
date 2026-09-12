@@ -76,6 +76,24 @@
             {
                 <a class="fg-btn fg-btn-sm" href="@TabLink("versions", Page + 1)">Older →</a>
             }
+            @* Only worth offering when there is more than one page to have. *@
+            @if (visible.Count > DefaultPageSize)
+            {
+                <span class="fg-pager-sizes">
+                    @foreach (var size in PageSizes)
+                    {
+                        if (size == PageSize)
+                        {
+                            <strong>@size</strong>
+                        }
+                        else
+                        {
+                            <a href="@TabLink("versions", 1, size)">@size</a>
+                        }
+                    }
+                    <span class="fg-muted">per page</span>
+                </span>
+            }
         </nav>
         @if (IsAdmin && CachedCount > 0)
         {
@@ -176,7 +194,16 @@
     /// How many the full list shows at a time. A package with two thousand versions is not unusual on a
     /// gallery, and rendering all of them is a download rather than a page.
     /// </summary>
-    private const int PageSize = 50;
+    private const int DefaultPageSize = 50;
+
+    /// <summary>
+    /// Sizes offered per page. Capped deliberately: the rows are rendered server-side, and a package with
+    /// a couple of thousand versions - PnP.PowerShell has 2098 - makes a page nobody enjoys waiting for.
+    /// </summary>
+    private static readonly int[] PageSizes = [50, 100, 250, 500];
+
+    /// <summary>Rows per page: whatever the query asked for, if it is one of the offered sizes.</summary>
+    private int PageSize => Array.IndexOf(PageSizes, Per) >= 0 ? Per : DefaultPageSize;
 
     private Feed? feed;
     private string displayId = "";
@@ -284,6 +311,10 @@
     [SupplyParameterFromQuery(Name = "page")]
     private int Page { get; set; }
 
+    /// <summary>Rows per page. Anything not in <c>PageSizes</c> falls back to the default.</summary>
+    [SupplyParameterFromQuery(Name = "per")]
+    private int Per { get; set; }
+
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
 
@@ -305,7 +336,7 @@
 
     private string Active(string tab) => CurrentTab == tab ? "active" : "";
 
-    private string TabLink(string tab, int? page = null)
+    private string TabLink(string tab, int? page = null, int? per = null)
     {
         var link = $"/feeds/{Uri.EscapeDataString(Name)}/packages/{Uri.EscapeDataString(displayId)}";
         if (tab.Length == 0)
@@ -314,7 +345,14 @@
         }
 
         link += "?tab=" + tab;
-        return page is null ? link : link + "&page=" + page.Value.ToString(CultureInfo.InvariantCulture);
+        if (page is not null)
+        {
+            link += "&page=" + page.Value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        // Carried on every link, or paging back would silently drop the size the reader chose.
+        var size = per ?? (PageSize == DefaultPageSize ? null : PageSize);
+        return size is null ? link : link + "&per=" + size.Value.ToString(CultureInfo.InvariantCulture);
     }
 
     protected override async Task OnInitializedAsync()

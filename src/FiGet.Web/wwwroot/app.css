@@ -430,6 +430,13 @@ pre code { padding: 0; background: none; }
 }
 .fg-pager-info { font-size: 0.78rem; color: var(--text-2); white-space: nowrap; }
 
+/* How many rows per page. Quiet by default: it is a preference, not an action, so it should not
+   compete with the Newer/Older buttons beside it. */
+.fg-pager-sizes { display: inline-flex; gap: 0.4rem; align-items: baseline; font-size: 0.78rem; }
+.fg-pager-sizes a { color: var(--text-2); text-decoration: none; }
+.fg-pager-sizes a:hover { color: var(--accent); text-decoration: underline; }
+.fg-pager-sizes strong { color: var(--text); font-weight: 600; }
+
 /* No rules for the grid's own paginator: it is not used. Styling it meant fighting scoped selectors
    that outrank plain ones, and the background this set wiped out the arrows it draws — which is what
    turned the pager into blank circles. The grid now uses the same fg-btn pager as everything else. */
