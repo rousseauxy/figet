@@ -505,16 +505,18 @@ pre code { padding: 0; background: none; }
   font-weight: 500;
   white-space: nowrap;
   line-height: 1.5;
+  /* Reserved, and left transparent by every variant: it keeps a badge the same size whether or not
+     something paints it, so a bordered one does not sit a pixel taller than its neighbours. */
   border: 1px solid transparent;
   background: var(--inset);
   color: var(--text-2);
 }
-.fg-badge-accent { background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent); }
+.fg-badge-accent { background: var(--accent-soft); color: var(--accent-strong); }
 .fg-badge-ok     { background: var(--ok-soft);     color: var(--ok); }
 .fg-badge-warn   { background: var(--warn-soft);   color: var(--warn); }
 .fg-badge-danger { background: var(--danger-soft); color: var(--danger); }
 .fg-badge-info   { background: var(--info-soft);   color: var(--info); }
-.fg-badge-plain  { background: var(--inset); color: var(--text-2); border-color: var(--border-strong); }
+.fg-badge-plain  { background: var(--inset); color: var(--text-2); }
 
 /* ── Chips (tags) ───────────────────────────────────────────────── */
 .fg-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.25rem 0; }
