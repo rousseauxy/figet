@@ -202,9 +202,9 @@
         feedUrl = PublicUrls.Feed(HttpContext, feed.Name);
         origin = entry.Source switch
         {
-            VersionSource.Local when row.Origin == PackageOrigin.Cached => "Cached from an upstream",
-            VersionSource.Local => "Pushed to this feed",
-            _ => "Upstream only",
+            VersionSource.Local when row.Origin == PackageOrigin.Cached => "Cached",
+            VersionSource.Local => "Local",
+            _ => "Upstream",
         };
 
         dependencies = [.. row.Dependencies.OrderBy(dependency => dependency.Ordinal)];

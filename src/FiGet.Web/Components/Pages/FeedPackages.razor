@@ -56,7 +56,7 @@
                not a separate question. app.js submits on change so choosing is one action. *@
             <select name="src" data-autosubmit aria-label="Where the package comes from">
                 <option value="" selected="@(Src.Length == 0)">Everywhere</option>
-                <option value="local" selected="@(Src == "local")">Pushed here</option>
+                <option value="local" selected="@(Src == "local")">Local</option>
                 <option value="cached" selected="@(Src == "cached")">Cached</option>
                 <option value="upstream" selected="@(Src == "upstream")">Upstream only</option>
             </select>
@@ -233,7 +233,7 @@ else
                 package.Id,
                 latest.Payload!.NormalizedVersion,
                 package.Versions.Count,
-                pushed ? "Pushed here" : "Cached",
+                pushed ? "Local" : "Cached",
                 package.Versions.Sum(v => v.Downloads),
                 package.Versions.Max(v => v.PublishedUtc),
                 Local: true));
@@ -260,10 +260,13 @@ else
         total = Math.Max(total, rows.Count);
     }
 
-    /// <summary>Held here reads as settled; upstream-only reads as somewhere else.</summary>
+    /// <summary>
+    /// Held here reads as settled; upstream-only reads as somewhere else. Keyed on the label the row
+    /// already carries, so renaming one without the other leaves the badge silently unstyled.
+    /// </summary>
     private static string SourceBadge(string source) => source switch
     {
-        "Pushed here" => "fg-badge-accent",
+        "Local" => "fg-badge-accent",
         "Cached" => "fg-badge-info",
         _ => "fg-badge-plain",
     };

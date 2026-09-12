@@ -326,7 +326,7 @@
     private static string Origin(VersionListEntry<PackageVersion> entry) => entry.Source switch
     {
         VersionSource.Local when entry.Payload!.Origin == PackageOrigin.Cached => "Cached",
-        VersionSource.Local => "Pushed here",
+        VersionSource.Local => "Local",
         _ => "Upstream",
     };
 

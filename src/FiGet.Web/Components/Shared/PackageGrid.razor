@@ -32,7 +32,7 @@
         {
             <select @bind="source" @bind:after="ResetAsync" aria-label="Where the package comes from">
                 <option value="">Everywhere</option>
-                <option value="local">Pushed here</option>
+                <option value="local">Local</option>
                 <option value="cached">Cached</option>
                 <option value="upstream">Upstream only</option>
             </select>
@@ -233,7 +233,7 @@
                     package.Id,
                     latest.Payload!.NormalizedVersion,
                     package.Versions.Count,
-                    pushed ? "Pushed here" : "Cached",
+                    pushed ? "Local" : "Cached",
                     package.Versions.Sum(version => version.Downloads),
                     package.Versions.Max(version => version.PublishedUtc),
                     Local: true));
@@ -305,10 +305,13 @@
         await ResetAsync();
     }
 
-    /// <summary>Held here reads as settled; upstream-only reads as somewhere else.</summary>
+    /// <summary>
+    /// Held here reads as settled; upstream-only reads as somewhere else. Keyed on the label the row
+    /// already carries, so renaming one without the other leaves the badge silently unstyled.
+    /// </summary>
     private static string SourceBadge(string source) => source switch
     {
-        "Pushed here" => "fg-badge-accent",
+        "Local" => "fg-badge-accent",
         "Cached" => "fg-badge-info",
         _ => "fg-badge-plain",
     };

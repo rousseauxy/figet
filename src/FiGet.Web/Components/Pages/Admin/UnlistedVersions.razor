@@ -53,7 +53,7 @@ else
                         <tr class="is-inactive">
                             <td><a href="/feeds/@feed.Name/packages/@id">@id</a></td>
                             <td class="fg-num">@row.NormalizedVersion</td>
-                            <td><span class="fg-badge @(row.Origin == PackageOrigin.Pushed ? "fg-badge-accent" : "fg-badge-info")">@(row.Origin == PackageOrigin.Pushed ? "Pushed here" : "Cached")</span></td>
+                            <td><span class="fg-badge @(row.Origin == PackageOrigin.Pushed ? "fg-badge-accent" : "fg-badge-info")">@(row.Origin == PackageOrigin.Pushed ? "Local" : "Cached")</span></td>
                             <td class="fg-num">@Display.Date(row.LastUpdatedUtc)</td>
                             <td class="fg-num">@Display.Size(row.Size)</td>
                             <td class="fg-cell-actions">
