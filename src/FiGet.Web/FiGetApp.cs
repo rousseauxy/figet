@@ -325,7 +325,7 @@ public static class FiGetApp
                     cancellationToken);
             }
 
-            return Back(form["returnUrl"].ToString(), $"/feeds/{Uri.EscapeDataString(feed)}/settings");
+            return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
         });
 
         // The two buttons of the unlisted view. Relisting offers a version again; deleting removes it for
@@ -377,7 +377,7 @@ public static class FiGetApp
                 await feeds.RemoveUpstreamAsync(target.Key, upstreamKey, cancellationToken);
             }
 
-            return Back(form["returnUrl"].ToString(), $"/feeds/{Uri.EscapeDataString(feed)}/settings");
+            return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
         });
     }
 

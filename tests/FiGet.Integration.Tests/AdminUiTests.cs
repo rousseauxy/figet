@@ -132,6 +132,23 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         Assert.Contains("href=\"/admin/feeds/public\"", admin, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The feed page keeps its Settings button for an admin, and it has to point where settings actually
+    /// live. It did not: the page moved under /admin and this link kept naming the old route, so the one
+    /// button an admin would press from a feed answered 404. Nothing failed, because nothing asserted it.
+    /// </summary>
+    [Fact]
+    public async Task A_feed_page_links_its_settings_into_the_admin_area()
+    {
+        using var client = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/public"));
+
+        Assert.Contains("href=\"/admin/feeds/public\"", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("/feeds/public/settings", page, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Feed_settings_can_be_changed()
     {
