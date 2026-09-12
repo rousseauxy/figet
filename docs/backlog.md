@@ -9,6 +9,44 @@ Ordered roughly by when it is likely to be worth doing, not by importance.
 
 ## Next
 
+### Describe only the versions being rendered
+
+Measured 2026-09-12 on the live instance, cold (the container had just restarted, so both upstream caches
+were empty):
+
+| Package | Versions | Cold | Warm |
+|---|---|---|---|
+| AdminByRequest | 7 | 0.57s | — |
+| Az.Accounts, Pester | 119–144 | ~1.0s | 0.13s |
+| PnP.PowerShell | 2098 | **22.99s** | 0.23s |
+
+Twenty-three seconds to render a page that shows ten rows. `ConnectorService.UpstreamCandidatesAsync`
+calls `GetMetadataAsync` for the whole id and fills in description, authors and tags for **every** version
+before the page picks the handful it displays. On a v2 gallery that is a paged walk of several megabytes.
+
+The distinction that matters: the version **list** genuinely is needed in full, because computing exactly
+one latest entry across local and upstream versions is the rule this server exists to get right (section
+5). The **descriptions** are not — they are needed for the rows actually rendered, which is ten on the
+overview and fifty on a page of the full list.
+
+This is not a cold-start curiosity. `UpstreamIndexTtl` defaults to five minutes and nothing overrides it,
+so any package not visited within that window pays it again.
+
+Three ways to fix it, and they are not exclusive:
+
+1. **Describe lazily** — the honest fix. Stop describing inside `UpstreamCandidatesAsync`; expose a call
+   that describes a named set of versions, and have each caller ask for the rows it is about to render.
+   The v2 Atom feed and the v3 registration pages page their output too, so they want the same treatment
+   rather than a UI-only patch.
+2. **Cache the metadata in the database** instead of in memory. Today it lives in a singleton with the same
+   TTL, so it is refetched after every restart and separately by every replica — neither of which is
+   acceptable once this runs as more than one pod.
+3. **Raise the TTL**, which reduces how often the cost is paid without reducing the cost. Worth considering
+   alongside, not instead.
+
+Start with 1: it removes the work rather than remembering it, and the cost it removes grows with exactly
+the packages people care about most.
+
 ### The admin area, with its own side menu
 
 The management controls sit among the public pages. Feeds, tokens, upstreams and appearance belong
@@ -113,6 +151,23 @@ while private, so going public removes the pressure rather than creating it.
 Shape to decide on: keep `build-and-test` on push to main; keep the container smoke test there too, since
 it has already caught a real defect (a project added without its `COPY` line in the Dockerfile's restore
 layer); and add a *separate* tag-triggered job that pushes to GHCR once the repository is public.
+
+### Pin the SDK and runtime base image tags
+
+Both stages of `deploy/Dockerfile` float: `sdk:10.0` and `aspnet:10.0`. The sibling application pins both
+(`sdk:10.0.302`, `aspnet:10.0.10`) with a comment giving two reasons — avoiding float drift, and keeping
+the runtime on the same patch as the SDK that *composed* the static web assets it will serve.
+
+To be clear about what this is not: the SDK was **not** the cause of the missing framework script on
+2026-09-12. Both the container image and this machine resolved to 10.0.401 under our `global.json`, and
+the cause was `--no-restore` on the publish. This is prophylactic, and the argument for it is the shape
+of that failure rather than its cause: a build/runtime mismatch fails the same silent way — no error, a
+healthy container, and a 404 for a file the page asks for. Two floating tags that happen to agree today
+are not an arrangement that keeps agreeing.
+
+Decide alongside it whether the runtime pin is worth the maintenance: pinning means noticing patch
+releases by hand, and the sibling's comment records a case where the runtime image *was* the fix for a
+set of CVEs in an assembly the app never ships itself.
 
 ## Later
 
