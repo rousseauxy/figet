@@ -413,13 +413,13 @@ public sealed class ConnectorService(
                 refreshes.Enqueue(upstream, idLower);
             }
 
-            return (new UpstreamCatalog(cached.Versions, described), !cached.Stale);
+            return (new UpstreamCatalog(cached.Versions, described, cached.Id), !cached.Stale);
         }
 
         try
         {
             var catalog = await client.GetCatalogAsync(upstream, idLower, cancellationToken);
-            await index.SaveAsync(upstream.Key, idLower, catalog.Versions, stale: false, now, cancellationToken);
+            await index.SaveAsync(upstream.Key, idLower, catalog.Id, catalog.Versions, stale: false, now, cancellationToken);
             metadataCache.Set(upstream.Key, idLower, catalog.Described, now);
             return (catalog, true);
         }

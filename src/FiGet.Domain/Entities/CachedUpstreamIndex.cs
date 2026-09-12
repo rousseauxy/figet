@@ -17,6 +17,14 @@ public sealed class CachedUpstreamIndex
     public required string IdLower { get; set; }
 
     /// <summary>
+    /// The id as the upstream spells it. Kept here because a registration URL is lower-cased by
+    /// convention, so without it an uncached package is renamed to its own URL - "powershellget" until
+    /// somebody downloads it and the real nuspec replaces it. Empty on rows written before this existed,
+    /// which simply falls back to the requested spelling until the next refresh.
+    /// </summary>
+    public string Id { get; set; } = "";
+
+    /// <summary>
     /// The versions the upstream reported, normalised and separated by a single space. Empty means the
     /// upstream answered but knows no such package, which is cached too so a miss is not asked twice.
     /// </summary>

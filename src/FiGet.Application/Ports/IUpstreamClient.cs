@@ -104,7 +104,8 @@ public interface IUpstreamClient
 public sealed record CachedUpstreamCatalog(
     IReadOnlyList<UpstreamVersion> Versions,
     DateTime FetchedUtc,
-    bool Stale);
+    bool Stale,
+    string Id = "");
 
 public interface IUpstreamIndexStore
 {
@@ -116,7 +117,7 @@ public interface IUpstreamIndexStore
     /// are two orders of magnitude larger and live in memory, for the reason recorded on
     /// <c>UpstreamMetadataCache</c>.
     /// </summary>
-    Task SaveAsync(int feedUpstreamKey, string idLower, IReadOnlyList<UpstreamVersion> versions, bool stale, DateTime fetchedUtc, CancellationToken cancellationToken);
+    Task SaveAsync(int feedUpstreamKey, string idLower, string casedId, IReadOnlyList<UpstreamVersion> versions, bool stale, DateTime fetchedUtc, CancellationToken cancellationToken);
 
     /// <summary>Drops every cached list of one upstream, used when its configuration changes.</summary>
     Task ClearAsync(int feedUpstreamKey, CancellationToken cancellationToken);

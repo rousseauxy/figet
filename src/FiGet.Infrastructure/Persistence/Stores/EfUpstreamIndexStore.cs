@@ -19,12 +19,13 @@ public sealed class EfUpstreamIndexStore(FiGetDbContext db) : IUpstreamIndexStor
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.FeedUpstreamKey == feedUpstreamKey && c.IdLower == idLower, cancellationToken);
 
-        return row is null ? null : new CachedUpstreamCatalog(ParseVersions(row), row.FetchedUtc, row.Stale);
+        return row is null ? null : new CachedUpstreamCatalog(ParseVersions(row), row.FetchedUtc, row.Stale, row.Id);
     }
 
     public async Task SaveAsync(
         int feedUpstreamKey,
         string idLower,
+        string casedId,
         IReadOnlyList<UpstreamVersion> versions,
         bool stale,
         DateTime fetchedUtc,
@@ -40,6 +41,7 @@ public sealed class EfUpstreamIndexStore(FiGetDbContext db) : IUpstreamIndexStor
         if (existing is not null)
         {
             existing.Versions = all;
+            existing.Id = casedId;
             existing.SemVer2Versions = semVer2;
             existing.FetchedUtc = fetchedUtc;
             existing.Stale = stale;
@@ -51,6 +53,7 @@ public sealed class EfUpstreamIndexStore(FiGetDbContext db) : IUpstreamIndexStor
         {
             FeedUpstreamKey = feedUpstreamKey,
             IdLower = idLower,
+            Id = casedId,
             Versions = all,
             SemVer2Versions = semVer2,
             FetchedUtc = fetchedUtc,

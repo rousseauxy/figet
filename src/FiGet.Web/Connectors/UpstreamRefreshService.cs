@@ -102,7 +102,7 @@ public sealed class UpstreamRefreshService(
 
         // Both halves, or the descriptions never arrive: the request path only fills them when it had to
         // fetch synchronously, which after this change is the first view of a package and nothing else.
-        await index.SaveAsync(upstream.Key, idLower, catalog.Versions, stale: false, now, cancellationToken);
+        await index.SaveAsync(upstream.Key, idLower, catalog.Id, catalog.Versions, stale: false, now, cancellationToken);
         metadataCache.Set(upstream.Key, idLower, catalog.Described, now);
 
         logger.LogInformation(

@@ -78,6 +78,10 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                     b.Property<DateTime>("FetchedUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Id")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("IdLower")
                         .IsRequired()
                         .HasMaxLength(128)

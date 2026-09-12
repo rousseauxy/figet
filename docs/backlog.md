@@ -31,6 +31,28 @@ writer serialises what survives. The v3 path pages first.
 Not the catalogue fetch - that is cached and shared by both. Measure before changing anything: the
 suspicion is the per-row work in the filter and the writer, not the merge.
 
+### A way to un-cache a package
+
+Raised while testing, 2026-09-12: there is no way to push a cached package back to being upstream-only.
+The admin area can relist and delete a version one at a time, and deleting is not the same thing - a
+reader wants "forget what you cached and follow the gallery again", for the whole id.
+
+It matters more than tidiness because a cached copy *overrides* the upstream in the merge: local wins by
+design, so one wrong cached version keeps winning until somebody removes it. That is exactly how
+PowerShellGet 2.2.5.1 kept being served as latest.
+
+Wants: an action per package on the feed's admin page, removing every cached version and its files while
+leaving pushed versions alone, and a confirmation that says how many it will remove.
+
+### Find-Module is slow for a package with thousands of versions
+
+`Find-Module PnP.PowerShell` took 44s over v2 where `Find-PSResource` took 3.1s over v3 (2026-09-12).
+The v2 path builds a merged row for all 2098 versions, then filters, orders and pages them, and the Atom
+writer serialises what survives. The v3 path pages first.
+
+Not the catalogue fetch - that is cached and shared by both. Measure before changing anything: the
+suspicion is the per-row work in the filter and the writer, not the merge.
+
 ### Stop the proxy compressing package downloads
 
 `Save-Module` fails for every package through the public hostname, with a zip error, because the proxy

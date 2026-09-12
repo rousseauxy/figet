@@ -1157,3 +1157,18 @@ nobody has cached.
 
 The last one matters most: an exact older version of a paged package reaches it through a page *and* a
 catalog entry, which is the path an install walks.
+
+## The proxy stopped compressing packages — 2026-09-12
+
+Applied on the host, with the owner's go-ahead. `middlewares-compress.yaml` said `compress: {}`, which
+takes no options and so compresses every content type, and `chain-no-auth` pulls it in for every router on
+that chain. It now excludes `application/zip` and `application/octet-stream`.
+
+Verified: a package download returns `Content-Length: 24977` and no `Content-Encoding`, while
+`/v3/index.json` still comes back gzipped - so the other services on that chain keep their bandwidth
+saving. Traefik reloaded the dynamic file without an error, and the original is kept beside it as
+`middlewares-compress.yaml.bak-20260912`.
+
+Worth stating what this was not: nothing in this repository ever compressed anything, the application sets
+a correct `Content-Length`, and it ignores `Accept-Encoding`. The failure only existed between a proxy
+that gzipped an already-compressed payload and a client old enough not to cope.

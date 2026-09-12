@@ -395,10 +395,22 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
 
         using var client = server.CreateClient();
 
-        var registration = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(
-            await client.GetAsync($"nuget/proxy/v3/registration/{id.ToLowerInvariant()}/index.json")))!;
-        var entry = registration["items"]!.AsArray()[0]!["items"]!.AsArray()[0]!["catalogEntry"]!;
-        Assert.Equal(id, (string?)entry["id"]);
+        // Twice, and the second one matters most. The first fetches from the upstream, which is the only
+        // path that ever carried the spelling; every request after it answers from the cached catalogue,
+        // which is what nearly all real traffic hits - and what shipped renaming the package.
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var before = server.Upstream.CatalogCalls;
+            var registration = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(
+                await client.GetAsync($"nuget/proxy/v3/registration/{id.ToLowerInvariant()}/index.json")))!;
+            var entry = registration["items"]!.AsArray()[0]!["items"]!.AsArray()[0]!["catalogEntry"]!;
+            Assert.Equal(id, (string?)entry["id"]);
+
+            if (attempt == 1)
+            {
+                Assert.Equal(before, server.Upstream.CatalogCalls);
+            }
+        }
 
         // And the same over v2, which asks with its own casing and must not be contradicted.
         var entries = await FindAsync("proxy", id);
