@@ -349,13 +349,16 @@ public static class NuGetV2Endpoints
         CancellationToken cancellationToken)
     {
         var idLower = id.ToLowerInvariant();
-        var package = await store.GetPackageAsync(feed.Key, idLower, includeDependencies: true, cancellationToken);
         if (feed.Upstreams.Count == 0)
         {
-            return package is null ? [] : V2Row.ForPackage(package, includeSemVer2);
+            var curated = await store.GetPackageAsync(feed.Key, idLower, includeDependencies: true, cancellationToken);
+            return curated is null ? [] : V2Row.ForPackage(curated, includeSemVer2);
         }
 
+        // The upstreams are asked first: that refresh is what unlists a cached copy the upstream has
+        // withdrawn, and the local rows must be read after it, not before.
         var upstream = await connector.UpstreamCandidatesAsync(feed, idLower, cancellationToken);
+        var package = await store.GetPackageAsync(feed.Key, idLower, includeDependencies: true, cancellationToken);
         var local = package?.Versions ?? [];
         if (local.Count == 0 && upstream.Count == 0)
         {

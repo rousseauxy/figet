@@ -453,12 +453,19 @@ container, search, autocomplete; the management API):
    curated content; cached content is pruned only by explicit cache policy: total size, or not
    downloaded for N days. Every download records a last-download time per version for this, so a
    version in use is never pruned. The cache policy never touches pushed versions.
-6. Search on a proxy feed queries local metadata first and, when the query is a name lookup
+6. **A cached copy of a version the upstream has withdrawn stops being offered.** When an upstream
+   answers and no longer lists a version that exists here as a cached copy, that copy is unlisted:
+   it disappears from listings, can never be "latest", and is never what an install of the newest
+   version picks up. It is unlisted rather than deleted, so a deployment already pinned to that
+   exact version can still fetch it while it is moved off. If the upstream offers it again, it is
+   listed again. This applies only to cached copies, never to what was pushed to the feed, and only
+   when an upstream actually answered: an outage serves the last known list and withdraws nothing.
+7. Search on a proxy feed queries local metadata first and, when the query is a name lookup
    (`Id eq`, `packageid:`, `FindPackagesById`), also asks upstream so uncached packages are
    findable. Free-text search fans out to upstreams only if the feed opts in.
-7. Allow and deny lists per upstream (regex on id) are applied before anything upstream is
+8. Allow and deny lists per upstream (regex on id) are applied before anything upstream is
    listed or fetched.
-8. If a feed has several upstreams and both hold the same (id, version), the first upstream in
+9. If a feed has several upstreams and both hold the same (id, version), the first upstream in
    feed order wins for the download; metadata is identical by definition.
 
 Two named acceptance tests (§7.2): the cached-v1/upstream-v2 scenario and the

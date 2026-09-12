@@ -548,14 +548,19 @@ public static class NuGetV3Endpoints
         CancellationToken cancellationToken)
     {
         var idLower = id.ToLowerInvariant();
-        var package = await store.GetPackageAsync(feed.Key, idLower, includeDependencies, cancellationToken);
-        var stand = package ?? new Package { FeedKey = feed.Key, Id = id, IdLower = idLower };
         if (feed.Upstreams.Count == 0)
         {
-            return (stand, package is null ? [] : VersionListBuilder.BuildLocal(package.Versions, includeSemVer2: true));
+            var curated = await store.GetPackageAsync(feed.Key, idLower, includeDependencies, cancellationToken);
+            return (
+                curated ?? new Package { FeedKey = feed.Key, Id = id, IdLower = idLower },
+                curated is null ? [] : VersionListBuilder.BuildLocal(curated.Versions, includeSemVer2: true));
         }
 
+        // Upstreams first: that refresh unlists cached copies the upstream has withdrawn, and the local
+        // rows have to be read after it to reflect that in this same response.
         var upstream = await connector.UpstreamCandidatesAsync(feed, idLower, cancellationToken);
+        var package = await store.GetPackageAsync(feed.Key, idLower, includeDependencies, cancellationToken);
+        var stand = package ?? new Package { FeedKey = feed.Key, Id = id, IdLower = idLower };
         var local = package?.Versions ?? [];
         var merged = VersionListBuilder
             .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream), includeSemVer2: true)

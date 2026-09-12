@@ -3,7 +3,10 @@ using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
 using System.Xml.Linq;
 using FiGet.Integration.Tests.Infrastructure;
+using FiGet.Persistence;
 using FiGet.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace FiGet.Integration.Tests;
 
@@ -222,6 +225,86 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
             $"nuget/guarded/Search()?$filter=IsLatestVersion&searchTerm='{secret}'&$top=40"));
 
         Assert.Empty(XDocument.Parse(body).Root!.Elements(Atom + "entry"));
+    }
+
+    /// <summary>
+    /// What happens when a gallery pulls a module version that this feed already cached. It must stop
+    /// being offered: not found, not latest, not what an install of "the newest" picks up. It stays
+    /// downloadable by exact version, so a deployment already pinned to it is not broken mid-flight.
+    /// </summary>
+    [Fact]
+    public async Task A_version_withdrawn_upstream_stops_being_offered_even_when_cached()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Withdrawn");
+        AddUpstream(id, "1.0.0");
+        AddUpstream(id, "1.1.0");
+
+        using var client = server.CreateClient();
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.1.0"));
+
+        server.Upstream.Remove(id, "1.1.0");
+        await ForgetUpstreamListingsAsync();
+
+        var entries = await FindAsync("proxy", id);
+        Assert.Equal("false", Property(entries.Single(e => Property(e, "Version") == "1.1.0"), "Listed"));
+        Assert.Equal("1.0.0", Property(entries.Single(e => Property(e, "IsLatestVersion") == "true"), "Version"));
+
+        // Pinned installs still work while the version is being moved off.
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.1.0"));
+
+        // And if the gallery puts it back, it is offered again.
+        AddUpstream(id, "1.1.0");
+        await ForgetUpstreamListingsAsync();
+        var restored = await FindAsync("proxy", id);
+        Assert.Equal("true", Property(restored.Single(e => Property(e, "Version") == "1.1.0"), "Listed"));
+        Assert.Equal("1.1.0", Property(restored.Single(e => Property(e, "IsLatestVersion") == "true"), "Version"));
+    }
+
+    [Fact]
+    public async Task A_version_pushed_here_is_never_withdrawn_by_an_upstream()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Mine");
+        using (var local = TestPackages.Create(id, "3.0.0"))
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("proxy", local));
+        }
+
+        // The upstream knows this id but not that version, which says nothing about what was pushed here.
+        AddUpstream(id, "1.0.0");
+        await ForgetUpstreamListingsAsync();
+
+        var entries = await FindAsync("proxy", id);
+        Assert.Equal("true", Property(entries.Single(e => Property(e, "Version") == "3.0.0"), "Listed"));
+    }
+
+    [Fact]
+    public async Task An_unreachable_upstream_withdraws_nothing()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.NoOutageWithdrawal");
+        AddUpstream(id, "1.0.0");
+
+        using var client = server.CreateClient();
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.0.0"));
+
+        server.Upstream.Fails = true;
+        await ForgetUpstreamListingsAsync();
+        try
+        {
+            var entries = await FindAsync("proxy", id);
+            Assert.Equal("true", Property(entries.Single(e => Property(e, "Version") == "1.0.0"), "Listed"));
+        }
+        finally
+        {
+            server.Upstream.Fails = false;
+        }
+    }
+
+    /// <summary>Expires the cached upstream listings, instead of waiting out the time-to-live.</summary>
+    private async Task ForgetUpstreamListingsAsync()
+    {
+        await using var scope = server.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<FiGetDbContext>();
+        await db.CachedUpstreamIndexes.ExecuteDeleteAsync();
     }
 
     private void AddUpstream(string id, string version)

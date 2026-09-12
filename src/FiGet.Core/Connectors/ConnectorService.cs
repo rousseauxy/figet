@@ -34,6 +34,9 @@ public sealed class ConnectorService(
     {
         ArgumentNullException.ThrowIfNull(feed);
         var candidates = new List<VersionCandidate<PackageVersion>>();
+        var offered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var authoritative = false;
+
         foreach (var upstream in feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal))
         {
             if (!Allows(upstream, idLower))
@@ -41,8 +44,11 @@ public sealed class ConnectorService(
                 continue;
             }
 
-            foreach (var version in await VersionsAsync(upstream, idLower, cancellationToken))
+            var (versions, answered) = await VersionsAsync(upstream, idLower, cancellationToken);
+            authoritative |= answered;
+            foreach (var version in versions)
             {
+                offered.Add(version.Version.ToNormalizedString());
                 candidates.Add(new VersionCandidate<PackageVersion>(
                     version.Version,
                     Listed: true,
@@ -52,7 +58,49 @@ public sealed class ConnectorService(
             }
         }
 
+        // Only when an upstream actually answered: an outage must never look like a mass withdrawal.
+        if (authoritative)
+        {
+            await ReconcileWithdrawnAsync(feed, idLower, offered, cancellationToken);
+        }
+
         return candidates;
+    }
+
+    /// <summary>
+    /// Keeps cached copies in step with what the upstreams still offer. A version withdrawn upstream, for
+    /// instance a module pulled from the gallery, is unlisted here too, so it stops being found, stops
+    /// being "latest" and stops being installed by anyone asking for the newest version. It is unlisted
+    /// rather than deleted, so a deployment already pinned to that exact version can still fetch it while
+    /// it is being moved off; a feed that wants it gone entirely deletes it.
+    /// Only cached copies are touched. What was pushed to this feed is nobody else's to withdraw.
+    /// </summary>
+    private async Task ReconcileWithdrawnAsync(Feed feed, string idLower, HashSet<string> offered, CancellationToken cancellationToken)
+    {
+        var package = await packages.GetPackageAsync(feed.Key, idLower, includeDependencies: false, cancellationToken);
+        if (package is null)
+        {
+            return;
+        }
+
+        foreach (var version in package.Versions.Where(v => v.Origin == PackageOrigin.Cached))
+        {
+            var stillOffered = offered.Contains(version.NormalizedVersion);
+            if (version.Listed == stillOffered)
+            {
+                continue;
+            }
+
+            await packages.SetListedAsync(feed.Key, idLower, version.NormalizedVersionLower, stillOffered, cancellationToken);
+            if (stillOffered)
+            {
+                logger.LogInformation("{Id} {Version} is offered upstream again; the cached copy is listed once more.", package.Id, version.NormalizedVersion);
+            }
+            else
+            {
+                logger.LogWarning("{Id} {Version} was withdrawn upstream; the cached copy is now unlisted.", package.Id, version.NormalizedVersion);
+            }
+        }
     }
 
     /// <summary>
@@ -241,25 +289,33 @@ public sealed class ConnectorService(
         }
     }
 
-    private async Task<IReadOnlyList<UpstreamVersion>> VersionsAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
+    /// <summary>
+    /// The upstream's versions, and whether they are a real answer. A list served after a failure is the
+    /// last known one, which is good enough to answer a client but not good enough to conclude that
+    /// anything missing from it was withdrawn.
+    /// </summary>
+    private async Task<(IReadOnlyList<UpstreamVersion> Versions, bool Authoritative)> VersionsAsync(
+        FeedUpstream upstream,
+        string idLower,
+        CancellationToken cancellationToken)
     {
         var now = time.GetUtcNow().UtcDateTime;
         var cached = await index.FindAsync(upstream.Key, idLower, cancellationToken);
         if (cached is not null && now - cached.FetchedUtc < settings.UpstreamIndexTtl)
         {
-            return Parse(cached);
+            return (Parse(cached), !cached.Stale);
         }
 
         try
         {
             var versions = await client.GetVersionsAsync(upstream, idLower, cancellationToken);
             await index.SaveAsync(upstream.Key, idLower, versions, stale: false, now, cancellationToken);
-            return versions;
+            return (versions, true);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Upstream {Upstream} did not answer for {Id}; serving the last known list.", upstream.Name, idLower);
-            return cached is null ? [] : Parse(cached);
+            return (cached is null ? [] : Parse(cached), false);
         }
     }
 

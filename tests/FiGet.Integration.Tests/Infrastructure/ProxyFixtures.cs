@@ -38,6 +38,15 @@ public sealed class StubUpstreamClient : IUpstreamClient
         versions[NuGetVersion.Parse(version).ToNormalizedString()] = nupkg;
     }
 
+    /// <summary>Withdraws a version, the way a gallery pulls a module that should no longer be used.</summary>
+    public void Remove(string id, string version)
+    {
+        if (packages.TryGetValue(id, out var versions))
+        {
+            versions.TryRemove(NuGetVersion.Parse(version).ToNormalizedString(), out _);
+        }
+    }
+
     public Task<IReadOnlyList<UpstreamVersion>> GetVersionsAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref versionCalls);
