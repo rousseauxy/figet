@@ -12,9 +12,11 @@
                     </Authorized>
                 </AuthorizeView>
 
-                @* Static SSR cannot know the reader's choice, so the button is stateless and app.js
-                   flips the attribute the stylesheet keys off. Without script the page still follows
-                   the operating system's preference, which is what it did before the button existed. *@
+                @* Static SSR cannot know the reader's choice, so the button ships a neutral glyph and
+                   app.js paints the real one, flips the attribute the stylesheet keys off, and restores
+                   the choice after an enhanced navigation replaces the document. Without script the page
+                   still follows the operating system's preference, which is what it did before the
+                   button existed. *@
                 <button type="button" class="fg-theme-btn" data-theme-toggle title="Switch between light and dark" aria-label="Switch between light and dark">◐</button>
 
                 <AuthorizeView Policy="@FiGetApp.AdminPolicy">

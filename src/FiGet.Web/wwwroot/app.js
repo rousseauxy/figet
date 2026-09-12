@@ -70,6 +70,54 @@
     // The stylesheet already answers the operating system's preference on its own; this only records an
     // explicit choice, which has to beat it. The matching attribute is applied in <head> before first
     // paint, or the page would flash the other theme on every navigation.
+    //
+    // It has to be re-applied after an enhanced navigation too. For a signed-in reader the framework is
+    // loaded, so following a link patches the DOM instead of loading a page: the <head> script never runs
+    // again and the attribute it set does not survive the patch. That is why a chosen theme used to last
+    // exactly one page, and why an anonymous reader - who gets no framework at all - never saw it happen.
+
+    function storedTheme() {
+        try {
+            var chosen = localStorage.getItem("figet-theme");
+            return chosen === "light" || chosen === "dark" ? chosen : null;
+        } catch (error) {
+            // A browser refusing storage simply follows the system preference.
+            return null;
+        }
+    }
+
+    function currentTheme() {
+        var attribute = document.documentElement.getAttribute("data-theme");
+        if (attribute === "light" || attribute === "dark") {
+            return attribute;
+        }
+
+        // No choice recorded, so the reader is seeing whatever the system asked for.
+        return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+
+    // Static SSR cannot know the reader's choice, so the button ships a neutral glyph and is painted
+    // here. It names what the click will do rather than what is on screen, which is what a reader is
+    // actually choosing between.
+    function paintToggles() {
+        var dark = currentTheme() === "dark";
+        var label = dark ? "Switch to light" : "Switch to dark";
+        var buttons = document.querySelectorAll("[data-theme-toggle]");
+        for (var i = 0; i < buttons.length; i++) {
+            buttons[i].textContent = dark ? "☀" : "☾";
+            buttons[i].setAttribute("title", label);
+            buttons[i].setAttribute("aria-label", label);
+        }
+    }
+
+    function applyTheme() {
+        var chosen = storedTheme();
+        if (chosen) {
+            document.documentElement.setAttribute("data-theme", chosen);
+        }
+
+        paintToggles();
+    }
 
     document.addEventListener("click", function (event) {
         var toggle = event.target.closest("[data-theme-toggle]");
@@ -77,21 +125,24 @@
             return;
         }
 
-        var root = document.documentElement;
-        var current = root.getAttribute("data-theme");
-        if (!current) {
-            // No choice recorded yet, so the reader is seeing whatever the system asked for.
-            current = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-                ? "dark"
-                : "light";
-        }
-
-        var next = current === "dark" ? "light" : "dark";
-        root.setAttribute("data-theme", next);
+        var next = currentTheme() === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
         try {
             localStorage.setItem("figet-theme", next);
         } catch (error) {
             // A browser refusing storage still gets the theme it asked for, just not next time.
+        }
+
+        paintToggles();
+    });
+
+    applyTheme();
+
+    // The framework script is loaded after this one, so the hook is registered once it exists. Absent
+    // for an anonymous reader, which is correct: without the framework there is no enhanced navigation.
+    document.addEventListener("DOMContentLoaded", function () {
+        if (window.Blazor && typeof window.Blazor.addEventListener === "function") {
+            window.Blazor.addEventListener("enhancedload", applyTheme);
         }
     });
 
