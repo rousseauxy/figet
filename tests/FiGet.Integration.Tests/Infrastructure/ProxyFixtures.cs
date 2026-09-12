@@ -52,6 +52,13 @@ public sealed class StubUpstreamClient : IUpstreamClient
     /// </summary>
     public bool TimesOut { get; set; }
 
+    /// <summary>
+    /// Whether this upstream says anything *about* the versions it lists. False models the state every
+    /// restart begins in: the version list is read back from the database, while what the gallery says
+    /// about those versions lives in memory and is gone.
+    /// </summary>
+    public bool Describes { get; set; } = true;
+
     private void FailIfAsked()
     {
         if (TimesOut)
@@ -145,7 +152,7 @@ public sealed class StubUpstreamClient : IUpstreamClient
         // The spelling this upstream knows the package by, recovered from the key it was added under:
         // a real gallery answers a lower-cased request with its own casing, and so must this.
         var casedId = packages.Keys.FirstOrDefault(k => k.Equals(idLower, StringComparison.OrdinalIgnoreCase)) ?? idLower;
-        return Task.FromResult(new UpstreamCatalog(versions, described, casedId));
+        return Task.FromResult(new UpstreamCatalog(versions, Describes ? described : [], casedId));
     }
 
     /// <summary>Matches on the id, which is all the real galleries are asked for in these tests.</summary>

@@ -528,6 +528,48 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         Assert.Equal("true", Property(entries.Single(e => Property(e, "Version") == "3.0.0"), "Listed"));
     }
 
+    /// <summary>
+    /// A restart must not put a hidden version back in the running for "latest".
+    ///
+    /// The version list survives a restart in the database; what the gallery says about those versions
+    /// does not, because it is held in memory on purpose. Reconciliation used to read "nothing described"
+    /// as "still offered", so every container start re-listed a cached copy the gallery hides - observed
+    /// on the live instance, one re-list and one correction per start. Between the two, the hidden version
+    /// was eligible to win "latest" again, which is the single thing that reconciliation exists to stop.
+    ///
+    /// Absence still withdraws. Only re-listing needs the upstream to actually say so.
+    /// </summary>
+    [Fact]
+    public async Task A_restart_does_not_relist_a_version_the_upstream_hides()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.ColdRelist");
+        AddUpstream(id, "1.0.0");
+        AddUpstream(id, "1.1.0");
+
+        using var client = server.CreateClient();
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.1.0"));
+
+        // The gallery hides it, and this feed follows: the cached copy stops being latest.
+        AddUpstreamUnlisted(id, "1.1.0");
+        await ForgetUpstreamListingsAsync();
+        var settled = await FindAsync("proxy", id);
+        Assert.Equal("false", Property(settled.Single(e => Property(e, "Version") == "1.1.0"), "Listed"));
+
+        // Now a restart: the versions are still known, nothing is described any more.
+        server.Upstream.Describes = false;
+        await ForgetUpstreamListingsAsync();
+        try
+        {
+            var entries = await FindAsync("proxy", id);
+            Assert.Equal("false", Property(entries.Single(e => Property(e, "Version") == "1.1.0"), "Listed"));
+            Assert.Equal("1.0.0", Property(entries.Single(e => Property(e, "IsLatestVersion") == "true"), "Version"));
+        }
+        finally
+        {
+            server.Upstream.Describes = true;
+        }
+    }
+
     [Fact]
     public async Task An_unreachable_upstream_withdraws_nothing()
     {

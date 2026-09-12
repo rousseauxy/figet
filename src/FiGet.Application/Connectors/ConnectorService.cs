@@ -114,8 +114,12 @@ public sealed class ConnectorService(
     /// Versions the upstream still lists, or null when it described nothing this time. A cached copy of a
     /// version the gallery has hidden should stop being offered here too - PowerShellGet 2.2.5.1 is
     /// unlisted on the gallery, was cached here by a look-through install, and then went on winning
-    /// "latest" over the 2.2.5 the gallery actually advertises. Null is the safe case and behaves as
-    /// before: presence only, so a cold description cache cannot unlist a feed wholesale.
+    /// "latest" over the 2.2.5 the gallery actually advertises.
+    ///
+    /// Null means "no news", and nothing is changed on that basis. It cannot unlist a feed wholesale, and
+    /// - since 2026-09-12 - it cannot re-list either: the description cache is empty after every restart,
+    /// and treating that as "still offered" put a hidden version back in the running for "latest" each
+    /// time the container came up.
     /// </param>
     private async Task ReconcileWithdrawnAsync(Feed feed, string idLower, HashSet<string> offered, HashSet<string>? advertised, CancellationToken cancellationToken)
     {
@@ -127,9 +131,17 @@ public sealed class ConnectorService(
 
         foreach (var version in package.Versions.Where(v => v.Origin == PackageOrigin.Cached))
         {
-            var stillOffered = offered.Contains(version.NormalizedVersion)
-                && (advertised is null || advertised.Contains(version.NormalizedVersion));
-            if (version.Listed == stillOffered)
+            // Three answers, not two: withdrawn, advertised, or no news. A cold description cache used to
+            // count as "still offered", so every restart re-listed a copy the gallery hides - and while it
+            // was listed it could win "latest" again, which is the one thing this method exists to prevent.
+            // Re-listing now needs positive evidence; absence from the version list alone still withdraws.
+            bool? offeredNow = !offered.Contains(version.NormalizedVersion)
+                ? false
+                : advertised is null
+                    ? null
+                    : advertised.Contains(version.NormalizedVersion);
+
+            if (offeredNow is not { } stillOffered || version.Listed == stillOffered)
             {
                 continue;
             }
