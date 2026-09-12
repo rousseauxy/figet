@@ -28,6 +28,8 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
 
     public DbSet<AccessToken> AccessTokens => Set<AccessToken>();
 
+    public DbSet<Setting> Settings => Set<Setting>();
+
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -61,6 +63,17 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.Property(x => x.CredentialRef).HasMaxLength(128);
             e.HasIndex(x => new { x.FeedKey, x.Name }).IsUnique();
             e.HasOne(x => x.Feed).WithMany(x => x.Upstreams).HasForeignKey(x => x.FeedKey).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Setting>(e =>
+        {
+            e.ToTable("Settings");
+            // The key is the primary key: there is exactly one row per setting, and no surrogate to
+            // keep unique alongside it.
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Key).HasMaxLength(128);
+            e.Property(x => x.Value).HasMaxLength(1024);
+            e.Property(x => x.UpdatedBy).HasMaxLength(128);
         });
 
         modelBuilder.Entity<CachedUpstreamIndex>(e =>

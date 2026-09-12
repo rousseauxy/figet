@@ -173,6 +173,48 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         Assert.Equal(FiGet.Domain.Entities.PackageDeletionBehavior.HardDelete, stored.DeletionBehavior);
     }
 
+    /// <summary>
+    /// Choosing a theme has to reach the <c>&lt;head&gt;</c> of every page, which is further than it
+    /// looks: the choice is stored in the database, read by the root component, and beats the configured
+    /// value. Asserted end to end because each half can work while the whole does nothing - a stored row
+    /// nobody reads, or a page that keeps answering from configuration.
+    /// </summary>
+    [Fact]
+    public async Task A_chosen_theme_is_stored_and_linked_by_every_page()
+    {
+        using var client = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/appearance"));
+        Assert.Contains("cobalt", page, StringComparison.Ordinal);
+
+        try
+        {
+            var form = FormBlock(page, "choose-theme");
+            var fields = HiddenFields(form);
+            fields[FieldName(form, "theme")] = "cobalt";
+            using var content = new FormUrlEncodedContent(fields);
+
+            var applied = await client.PostAsync("/admin/appearance", content);
+            Assert.True(
+                applied.IsSuccessStatusCode || applied.StatusCode == HttpStatusCode.Redirect,
+                $"Unexpected status {applied.StatusCode}.");
+
+            var home = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/"));
+            Assert.Contains("/themes/cobalt.css", home, StringComparison.Ordinal);
+        }
+        finally
+        {
+            // The fixture is shared, and a theme left set would follow every later test into its page.
+            var again = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/appearance"));
+            var reset = FormBlock(again, "choose-theme");
+            var back = HiddenFields(reset);
+            back[FieldName(reset, "theme")] = "";
+            using var empty = new FormUrlEncodedContent(back);
+            await client.PostAsync("/admin/appearance", empty);
+        }
+    }
+
     [Fact]
     public async Task A_feed_is_deleted_only_when_its_name_is_typed_exactly()
     {

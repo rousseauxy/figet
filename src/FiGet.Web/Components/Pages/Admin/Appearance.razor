@@ -1,0 +1,138 @@
+@page "/admin/appearance"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@layout AdminLayout
+@using System.Security.Claims
+@using FiGet.Web.Theming
+@inject IThemeService Themes
+@inject ISettingStore Settings
+@inject NavigationManager Navigation
+
+<PageTitle>Appearance · admin · FiGet</PageTitle>
+
+<h1>Appearance</h1>
+<p class="fg-lede">
+    Theme packs are YAML files in <code>wwwroot/themes</code>: drop one in, reload the list, and it is
+    selectable here. A pack states only the tokens it changes, so a short file is a complete theme.
+</p>
+
+@if (message is not null)
+{
+    <div class="fg-alert fg-alert-ok">@message</div>
+}
+
+<section class="fg-panel">
+    <h2>Active theme</h2>
+
+    <EditForm Model="Choice!" FormName="choose-theme" OnValidSubmit="ApplyAsync" method="post" class="fg-form">
+        <div class="fg-field">
+            <label for="theme">Theme</label>
+            <InputSelect id="theme" @bind-Value="Choice!.Name">
+                @* Empty rather than a name: it means "whatever configuration says", so an instance that
+                   has never been touched here keeps following its own settings file. *@
+                <option value="">Built-in (whatever configuration sets)</option>
+                @foreach (var pack in Themes.Packs)
+                {
+                    <option value="@pack.Name">@pack.Label</option>
+                }
+            </InputSelect>
+            @if (Description(Choice!.Name) is { Length: > 0 } description)
+            {
+                <p class="fg-muted fg-small">@description</p>
+            }
+        </div>
+
+        <button type="submit" class="fg-btn fg-btn-primary">Apply</button>
+    </EditForm>
+</section>
+
+<section class="fg-panel">
+    <h2>Packs on disk</h2>
+    @if (Themes.Packs.Count == 0)
+    {
+        <p class="fg-muted fg-small">None found. The built-in look is all there is until a pack is added.</p>
+    }
+    else
+    {
+        <div class="fg-table-wrap">
+            <table class="fg-table">
+                <thead>
+                    <tr><th>Name</th><th>Label</th><th>Description</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var pack in Themes.Packs)
+                    {
+                        <tr>
+                            <td><code>@pack.Name</code></td>
+                            <td>@pack.Label</td>
+                            <td>@(string.IsNullOrWhiteSpace(pack.Description) ? Display.None : pack.Description)</td>
+                            <td class="fg-cell-actions">
+                                <a class="fg-btn fg-btn-sm" href="@($"/themes/{pack.Name}.css")" target="_blank" rel="noopener">View CSS</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @* Rereads the folder without a restart, which is the point of packs being files rather than code. *@
+    <EditForm Model="Choice!" FormName="reload-themes" OnValidSubmit="ReloadAsync" method="post" class="fg-form">
+        <button type="submit" class="fg-btn fg-btn-sm">Reload packs from disk</button>
+    </EditForm>
+</section>
+
+@code {
+    private string? message;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "choose-theme")]
+    private ThemeForm? Choice { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Only seed on a GET; on a post the form already carries what was submitted.
+        if (Choice is null)
+        {
+            var stored = await Settings.GetAsync(SettingKeys.Theme, HttpContext.RequestAborted);
+            Choice = new ThemeForm { Name = stored ?? "" };
+        }
+    }
+
+    private string? Description(string? name) =>
+        string.IsNullOrWhiteSpace(name)
+            ? null
+            : Themes.Packs.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Description;
+
+    private async Task ApplyAsync()
+    {
+        var chosen = (Choice!.Name ?? "").Trim();
+
+        // A name that is not on disk would leave every page asking for a stylesheet that 404s, and the
+        // site would silently fall back to the built-in look with nothing saying why.
+        if (chosen.Length > 0 && !Themes.Packs.Any(p => p.Name.Equals(chosen, StringComparison.OrdinalIgnoreCase)))
+        {
+            message = $"There is no pack named '{chosen}'.";
+            return;
+        }
+
+        await Settings.SetAsync(SettingKeys.Theme, chosen, HttpContext.User.Identity?.Name, HttpContext.RequestAborted);
+
+        // A full load, because the stylesheet link lives in <head> of the root component: an enhanced
+        // navigation would patch the body and leave the old pack linked above it.
+        Navigation.NavigateTo("/admin/appearance", forceLoad: true);
+    }
+
+    private Task ReloadAsync()
+    {
+        Themes.Reload();
+        message = $"Read the themes folder again: {Themes.Packs.Count} pack(s).";
+        return Task.CompletedTask;
+    }
+
+    private sealed class ThemeForm
+    {
+        public string? Name { get; set; } = "";
+    }
+}

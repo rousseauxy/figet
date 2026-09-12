@@ -438,6 +438,29 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.ToTable("PackageVersions", (string)null);
                 });
 
+            modelBuilder.Entity("FiGet.Domain.Entities.Setting", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("Settings", (string)null);
+                });
+
             modelBuilder.Entity("FiGet.Domain.Entities.SymbolFile", b =>
                 {
                     b.Property<long>("Key")

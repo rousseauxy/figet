@@ -12,9 +12,9 @@
         reconnect dialog, which is how the pager buttons came out as blank stubs.
     *@
     <link rel="stylesheet" href="@Assets["FiGet.Web.styles.css"]" />
-    @if (!string.IsNullOrWhiteSpace(Theme))
+    @if (!string.IsNullOrWhiteSpace(theme))
     {
-        <link rel="stylesheet" href="@($"/themes/{Theme}.css")" />
+        <link rel="stylesheet" href="@($"/themes/{theme}.css")" />
     }
     <HeadOutlet />
     @*
@@ -66,5 +66,19 @@
     [Inject]
     private Microsoft.Extensions.Options.IOptions<FiGet.Web.Configuration.FiGetOptions> Options { get; set; } = default!;
 
-    private string? Theme => Options.Value.Theming.Theme;
+    [Inject]
+    private FiGet.Application.Ports.ISettingStore Settings { get; set; } = default!;
+
+    private string? theme;
+
+    /// <summary>
+    /// A choice made in the admin area beats the configured one, so the look can change without a
+    /// redeploy; configuration is what a fresh instance with no rows still answers with. One row by
+    /// primary key per render - these pages already read feeds from the same database.
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        var stored = await Settings.GetAsync(FiGet.Domain.Entities.SettingKeys.Theme, CancellationToken.None);
+        theme = string.IsNullOrWhiteSpace(stored) ? Options.Value.Theming.Theme : stored;
+    }
 }
