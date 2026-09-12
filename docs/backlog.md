@@ -183,6 +183,28 @@ Four things to decide before building it, none of them obvious:
 - **Which framework group.** A .NET package has dependency groups per target framework and following
   all of them explodes; a PowerShell module has one flat set, which is the case that matters first.
 
+### An unlisted cached copy is listed again for a moment after every restart
+
+Measured 2026-09-12. On start the description cache is empty - it lives in memory, which is deliberate
+after the 101 MB incident - so the first catalogue read has nothing described. `ReconcileWithdrawnAsync`
+then takes the safe branch, where `advertised` is null and only presence counts, and a cached copy the
+gallery unlists is present in the version list. So it gets listed again, until the first described refresh
+puts it back.
+
+Measured rather than guessed, after twice calling it worse than it is: exactly **one re-list and one
+correction per container start**, both for `PowerShellGet 2.2.5.1`, across two deploys. Not a loop, and it
+does correct itself.
+
+It still matters, because inside that window the version can win "latest" again - which is the one thing
+the reconcile exists to prevent, and exactly how 2.2.5.1 kept being served before it was written. The
+window is however long it takes the first described fetch to land, which for a package with 81 versions is
+seconds and for one with 2098 is not.
+
+The cheap fix is to make re-listing require positive evidence: unlist on presence alone, but only list
+again when the upstream actually described the version as listed. Null `advertised` would then mean "no
+news", not "everything is fine". The thorough fix is to let the descriptions survive a restart, which is
+its own entry above, and would close this as a side effect.
+
 ### An audit log: who changed what, and when
 
 Decided 2026-09-12, to be built after the current round of testing settles. Distinct from the request log
