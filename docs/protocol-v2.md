@@ -50,7 +50,19 @@ Not requested at all: `$metadata`, `Packages()`, `Packages(Id=,Version=)`, `GetU
    (`$skip=40`, `80`, `120`, …, several at once and out of order) until pages come back empty. FiGet must
    honour `$skip`/`$top` on `FindPackagesById()` exactly and return an empty feed past the end.
 3. **`id='pattern*'` reaches `FindPackagesById()`.** The reference server answers it (with no entries here) and the client
-   falls back to `Search()`. FiGet must not return 400 for it.
+   falls back to `Search()`, with the `*` stripped from `searchTerm` (empty for a bare `*`). FiGet must not
+   return 400 for it — and must not implement wildcard semantics there either: answering it as a literal id
+   with no entries is what the reference does and what the client is waiting for before it falls back.
+   **Only discovery ever sends a wildcard.** Verified 2026-09-12 against PowerShellGet 2.2.5:
+   `Install-Module` and `Save-Module` reject a wildcard name *client-side* — "the specified name … should
+   not contain any wildcard characters" — before any request is made, while `Find-Module` passes name
+   validation and goes to the network. Pointing all three at a repository that does not exist tells them
+   apart: the first two fail on the name, `Find-Module` fails on the repository. So a wildcard never
+   reaches a download path, and there is nothing to implement for one there.
+   What pulls every `Microsoft.Graph.*` module is `Install-Module Microsoft.Graph`, with no wildcard at
+   all: the meta-module's pinned dependency closure, which the client resolves itself and fetches id by id
+   — 39 downloads in `meta-save-module-old-version.json`. That is dependency resolution, not wildcard
+   expansion, and the two are easy to confuse from the outside.
 4. **`api/v2/` under a feed root may 404.** The client tolerates it.
 5. **Publish-Module checks the feed first**: it calls `FindPackagesById()` and refuses client-side when the
    version already exists or is not higher than the current version, so a duplicate never reaches `PUT`.
