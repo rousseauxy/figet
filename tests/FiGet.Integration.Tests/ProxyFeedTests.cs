@@ -221,6 +221,48 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         Assert.Equal(["1.0.0", "1.1.0"], flat["versions"]!.AsArray().Select(v => (string?)v).ToArray());
     }
 
+    /// <summary>
+    /// A proxied package with more versions than the index inlines. Above 128 the index stops embedding
+    /// leaves and starts advertising page URLs, and those pages were built from what this feed holds
+    /// rather than from the merged list the index had just paged - so every link 404'd and a client
+    /// asking for the package by name was told it does not exist.
+    ///
+    /// The existing paging test could not catch it: it pushes to a curated feed, where local versions are
+    /// the whole truth and the two lists cannot disagree. Found on the live instance instead, where
+    /// dbatools advertised sixteen pages and served none of them.
+    /// </summary>
+    [Fact]
+    public async Task A_paged_registration_on_a_proxy_feed_serves_every_page_it_advertises()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Paged");
+        server.Upstream.AddVersions(id, Enumerable.Range(1, 130).Select(n => $"1.0.{n}"));
+
+        using var client = server.CreateClient();
+        var idLower = id.ToLowerInvariant();
+
+        var index = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(
+            await client.GetAsync($"nuget/proxy/v3/registration/{idLower}/index.json")))!;
+
+        var pages = index["items"]!.AsArray();
+        Assert.True(pages.Count > 1, $"130 versions should page, got {pages.Count}");
+        Assert.All(pages, page => Assert.Null(page!["items"]));
+
+        // Every range the index advertises has to be fetchable, or the index is lying about itself.
+        foreach (var page in pages)
+        {
+            var document = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(
+                await client.GetAsync(new Uri((string)page!["@id"]!))))!;
+            Assert.NotEmpty(document["items"]!.AsArray());
+        }
+
+        // And the per-version documents, for a version nobody has cached: the leaf a page points at, and
+        // the catalog entry the NuGet provider follows to resolve a version.
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/registration/{idLower}/1.0.130.json"));
+        var entry = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(
+            await client.GetAsync($"nuget/proxy/v3/catalog/{idLower}/1.0.130.json")))!;
+        Assert.Equal("1.0.130", (string?)entry["version"]);
+    }
+
     [Fact]
     public async Task Downloading_through_the_v3_flat_container_caches_the_package()
     {

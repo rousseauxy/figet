@@ -123,7 +123,15 @@ public static class NuGetV3Endpoints
             Json);
     }
 
-    private static async Task<IResult> RegistrationPageAsync(HttpContext http, string feed, string id, string lower, string upper, IPackageStore store, CancellationToken cancellationToken)
+    /// <summary>
+    /// One page of a registration index, for a package with more versions than the index inlines.
+    ///
+    /// Merged, like the index that links here. It used to read only what this feed holds, which on a proxy
+    /// feed is a different list from the one the index paged: the index advertised ranges spanning upstream
+    /// versions, and this answered 404 for every one of them. A client asking for a package by name then
+    /// reports that it does not exist - dbatools, 16 pages, none of them inlined, none of them fetchable.
+    /// </summary>
+    private static async Task<IResult> RegistrationPageAsync(HttpContext http, string feed, string id, string lower, string upper, IPackageStore store, ConnectorService connector, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -131,14 +139,14 @@ public static class NuGetV3Endpoints
             return error;
         }
 
-        var package = await store.GetPackageAsync(request!.Feed.Key, id.ToLowerInvariant(), includeDependencies: true, cancellationToken);
-        if (package is null)
+        var (package, list) = await MergedAsync(store, connector, request!.Feed, id, includeDependencies: true, cancellationToken);
+        if (list.Count == 0)
         {
             return Results.NotFound();
         }
 
         var urls = new UrlSet(PublicUrls.Feed(http, request.Feed.Name), package.IdLower);
-        var chunk = VersionListBuilder.BuildLocal(package.Versions, includeSemVer2: true)
+        var chunk = list
             .Chunk(RegistrationPageSize)
             .FirstOrDefault(c =>
                 c[0].Version.ToNormalizedString().Equals(lower, StringComparison.OrdinalIgnoreCase)
@@ -154,7 +162,11 @@ public static class NuGetV3Endpoints
             Json);
     }
 
-    private static async Task<IResult> RegistrationLeafAsync(HttpContext http, string feed, string id, string version, IPackageStore store, CancellationToken cancellationToken)
+    /// <summary>
+    /// The leaf for one version. Merged for the same reason the page is: a version this feed has not
+    /// cached still appears in the index that links here, so answering 404 for it makes the index lie.
+    /// </summary>
+    private static async Task<IResult> RegistrationLeafAsync(HttpContext http, string feed, string id, string version, IPackageStore store, ConnectorService connector, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -163,13 +175,19 @@ public static class NuGetV3Endpoints
         }
 
         var versionLower = PackageIngestionService.NormalizeLower(version);
-        var row = versionLower is null ? null : await store.GetVersionAsync(request!.Feed.Key, id.ToLowerInvariant(), versionLower, cancellationToken);
+        if (versionLower is null)
+        {
+            return Results.NotFound();
+        }
+
+        var (package, list) = await MergedAsync(store, connector, request!.Feed, id, includeDependencies: false, cancellationToken);
+        var row = list.FirstOrDefault(e => e.Payload!.NormalizedVersionLower == versionLower)?.Payload;
         if (row is null)
         {
             return Results.NotFound();
         }
 
-        var urls = new UrlSet(PublicUrls.Feed(http, request!.Feed.Name), row.Package!.IdLower);
+        var urls = new UrlSet(PublicUrls.Feed(http, request.Feed.Name), package.IdLower);
         return Results.Json(
             new RegistrationLeaf(
                 urls.Leaf(row.NormalizedVersionLower),
@@ -189,7 +207,7 @@ public static class NuGetV3Endpoints
     /// and the metadata from it; pointing it anywhere else makes every version silently not match. This is a
     /// per-version document only, not the catalog resource (no pages, no commit log).
     /// </summary>
-    private static async Task<IResult> CatalogEntryAsync(HttpContext http, string feed, string id, string version, IPackageStore store, CancellationToken cancellationToken)
+    private static async Task<IResult> CatalogEntryAsync(HttpContext http, string feed, string id, string version, IPackageStore store, ConnectorService connector, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -198,14 +216,21 @@ public static class NuGetV3Endpoints
         }
 
         var versionLower = PackageIngestionService.NormalizeLower(version);
-        var package = versionLower is null ? null : await store.GetPackageAsync(request!.Feed.Key, id.ToLowerInvariant(), includeDependencies: true, cancellationToken);
-        var row = package?.Versions.FirstOrDefault(v => v.NormalizedVersionLower == versionLower);
-        if (package is null || row is null)
+        if (versionLower is null)
         {
             return Results.NotFound();
         }
 
-        var urls = new UrlSet(PublicUrls.Feed(http, request!.Feed.Name), package.IdLower);
+        // Merged: the comment above is why. A version the provider cannot read here is a version it
+        // silently refuses to install, and on a proxy feed most versions are not cached yet.
+        var (package, list) = await MergedAsync(store, connector, request!.Feed, id, includeDependencies: true, cancellationToken);
+        var row = list.FirstOrDefault(e => e.Payload!.NormalizedVersionLower == versionLower)?.Payload;
+        if (row is null)
+        {
+            return Results.NotFound();
+        }
+
+        var urls = new UrlSet(PublicUrls.Feed(http, request.Feed.Name), package.IdLower);
         return Results.Json(BuildLeafItem(urls, package, row).CatalogEntry, Json);
     }
 
