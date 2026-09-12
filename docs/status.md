@@ -1535,3 +1535,32 @@ Two tests, one per protocol, both on a version nothing has cached.
 sweeps it. Dependencies add to what it holds: Microsoft.Graph averages about 2 KB of dependency text per
 version, so roughly 210 KB across a hundred versions. Small next to the tags already held, but it is
 growth on something already unbounded, and the 101 MB incident came from this same cache.
+
+### Verified live, and a sixth tail that lied
+
+Deployed and checked against packages this server has never cached, which is the only honest test: a
+populated answer can then only have come from the upstream.
+
+    Az.Storage           ->  Az.Accounts:[1.8.0, ):
+    ExchangeOnlineManagement 3.10.1 ->  PackageManagement:[1.0.0.1, ):|PowerShellGet:[1.0.0.1, ):
+    Microsoft.Entra 1.3.0    ->  all nine sub-modules, pinned [1.3.0, 1.3.0]
+
+Byte-identical to what the gallery answers for the same versions, on both protocols - v2 through
+`d:Dependencies`, v3 through `dependencyGroups` in the registration.
+
+That also settles the open risk: the gallery is a **v2** upstream, and the tests only ever proved the
+mapping against a stub. NuGet's v2 metadata path does populate `DependencySets`, so the fix works against
+the real thing and not just against the fixture.
+
+`MicrosoftTeams` answers with no dependencies here - and the gallery answers the same. Correct, not a gap.
+
+**The sixth tail.** `ExchangeOnlineManagement` looked broken on v2 long after its refresh had landed: the
+last entries in the document carried no dependencies while v3 showed them. The document is ascending, our
+default page is 40 entries, and the tail of the first page is version 1.0.1 and 2.0.1 - releases that
+genuinely declare nothing. The 3.x releases that do declare dependencies were simply not on the page I
+sampled. Checking the version by name rather than the end of the list showed it had been right all along.
+
+Six times today a truncated view has produced a defect that was not there: `grep -c` counting lines, a
+`grep -B2` walking into a neighbouring entry, a log tail read as a flap, a line count read as traffic, and
+twice a version list read from its end. The rule that has worked every single time is to check the
+specific value - this version, this field - and never the tail.
