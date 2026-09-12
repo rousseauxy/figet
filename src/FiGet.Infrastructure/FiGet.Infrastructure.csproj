@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The adapters: everything that actually touches a database, a disk or another server.
+
+    Persistence/  the EF context and the stores behind IFeedStore, IPackageStore and friends
+    Storage/      IPackageStorage over the file system
+    Upstream/     IUpstreamClient over NuGet's own client library, which speaks both v2 and v3
+    Packages/     IPackageIndexer, reading metadata out of a .nupkg with NuGet.Packaging
+
+    This is where the heavy references live, and that is the point: they are here so they are not
+    anywhere else. The provider-specific migration assemblies (FiGet.Infrastructure.Sqlite and
+    .SqlServer) reference this project for the DbContext and add nothing but their own migrations.
+  -->
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" />
+    <PackageReference Include="NuGet.Packaging" />
+    <PackageReference Include="NuGet.Protocol" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FiGet.Domain\FiGet.Domain.csproj" />
+    <ProjectReference Include="..\FiGet.Application\FiGet.Application.csproj" />
+  </ItemGroup>
+
+</Project>

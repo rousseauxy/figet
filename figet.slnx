@@ -1,19 +1,19 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/FiGet.Core/FiGet.Core.csproj" />
+    <Project Path="src/FiGet.Application/FiGet.Application.csproj" />
+    <Project Path="src/FiGet.Domain/FiGet.Domain.csproj" />
     <Project Path="src/FiGet.Http/FiGet.Http.csproj" />
-    <Project Path="src/FiGet.Persistence.Sqlite/FiGet.Persistence.Sqlite.csproj" />
-    <Project Path="src/FiGet.Persistence.SqlServer/FiGet.Persistence.SqlServer.csproj" />
-    <Project Path="src/FiGet.Persistence/FiGet.Persistence.csproj" />
+    <Project Path="src/FiGet.Infrastructure/FiGet.Infrastructure.csproj" />
+    <Project Path="src/FiGet.Infrastructure.Sqlite/FiGet.Infrastructure.Sqlite.csproj" />
+    <Project Path="src/FiGet.Infrastructure.SqlServer/FiGet.Infrastructure.SqlServer.csproj" />
     <Project Path="src/FiGet.Protocol.V2/FiGet.Protocol.V2.csproj" />
     <Project Path="src/FiGet.Protocol.V3/FiGet.Protocol.V3.csproj" />
-    <Project Path="src/FiGet.Storage/FiGet.Storage.csproj" />
     <Project Path="src/FiGet.Web/FiGet.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/FiGet.Core.Tests/FiGet.Core.Tests.csproj" />
     <Project Path="tests/FiGet.Integration.Tests/FiGet.Integration.Tests.csproj" />
     <Project Path="tests/FiGet.Testing/FiGet.Testing.csproj" />
+    <Project Path="tests/FiGet.Unit.Tests/FiGet.Unit.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/FiGet.Fixtures/FiGet.Fixtures.csproj" />

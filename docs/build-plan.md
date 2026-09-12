@@ -75,15 +75,23 @@ Later, on demand: Chocolatey, then npm and PyPI, which are separate protocols.
 ```
 figet.slnx
 src/
-  FiGet.Core/            Domain + services. No ASP.NET, no EF references.
+  FiGet.Domain/          Entities and pure rules. One package reference, NuGet.Versioning, because
+                         version comparison is the domain and not a detail. No EF, no ASP.NET, no
+                         NuGet.Protocol or NuGet.Packaging.
                          Entities: Feed, FeedUpstream, Package, PackageVersion, PackageDependency,
                                    AssetDirectory, Asset, User, Role, ApiKey, AuditEntry, CachedUpstreamIndex
-                         Services: IPackageIndexer (nupkg -> PackageVersion), IVersionListService (§5),
-                                   IConnectorService, ISearchService, IRetentionService, IAuthorizationService
-  FiGet.Persistence/     EF Core DbContext + configurations (provider-neutral)
-  FiGet.Persistence.SqlServer/   migrations for SQL Server
-  FiGet.Persistence.Sqlite/      migrations for SQLite
-  FiGet.Storage/         IPackageStorage/IAssetStorage + FileSystem implementation
+                         Rules:    VersionListBuilder (§5), SearchQueryParser, FeedNames
+  FiGet.Application/     What the server does, against ports. References Domain only.
+                         Ports/      IPackageStore, IFeedStore, IAccessTokenStore, IPackageStorage,
+                                     IUpstreamClient, IUpstreamIndexStore, IPackageIndexer
+                         Services:   ConnectorService (§5), PackageIngestionService, AccessTokenService
+  FiGet.Infrastructure/  The adapters behind those ports:
+                         Persistence/  EF Core DbContext + configurations (provider-neutral) + EF stores
+                         Storage/      IPackageStorage on the file system
+                         Upstream/     IUpstreamClient over NuGet.Protocol (v2 and v3 upstreams)
+                         Packages/     IPackageIndexer over NuGet.Packaging
+  FiGet.Infrastructure.SqlServer/   migrations for SQL Server
+  FiGet.Infrastructure.Sqlite/      migrations for SQLite
   FiGet.Storage.S3/      S3-compatible implementation (phase 6)
   FiGet.Http/            shared ASP.NET Core helpers: feed resolution and access checks, credential
                          extraction, public URLs, upload buffering (used by every protocol project)

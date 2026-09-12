@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    What the server does, expressed against ports rather than against EF, HTTP or NuGet's client library:
+    caching a version from an upstream, ingesting a pushed package, validating a token.
+
+    Domain is the only project reference and should stay that way. Every dependency on the outside world
+    is an interface declared in Ports/ and implemented in FiGet.Infrastructure; the composition root in
+    FiGet.Web is the only place that knows which implementation is which.
+
+    Logging abstractions are allowed, and only abstractions: a workflow wants a logger, and ILogger is a
+    contract, not an implementation. A persistence or vendor SDK reference here means a workflow has
+    absorbed a detail that belonged behind a port — which is the failure this layer exists to prevent.
+  -->
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FiGet.Domain\FiGet.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

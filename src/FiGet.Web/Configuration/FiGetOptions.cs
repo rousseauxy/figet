@@ -1,4 +1,4 @@
-using FiGet.Core.Entities;
+using FiGet.Domain.Entities;
 
 namespace FiGet.Web.Configuration;
 

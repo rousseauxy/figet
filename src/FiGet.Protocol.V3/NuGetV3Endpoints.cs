@@ -3,13 +3,12 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using FiGet.Core.Connectors;
-using FiGet.Core.Entities;
-using FiGet.Core.Packages;
-using FiGet.Core.Search;
-using FiGet.Core.Storage;
-using FiGet.Core.Stores;
-using FiGet.Core.Versions;
+using FiGet.Application.Connectors;
+using FiGet.Application.Packages;
+using FiGet.Application.Ports;
+using FiGet.Domain.Entities;
+using FiGet.Domain.Search;
+using FiGet.Domain.Versions;
 using FiGet.Http;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -67,7 +66,7 @@ public static class NuGetV3Endpoints
 
     private static async Task<IResult> ServiceIndexAsync(HttpContext http, string feed, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Read, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
         {
             return error;
@@ -92,7 +91,7 @@ public static class NuGetV3Endpoints
 
     private static async Task<IResult> RegistrationIndexAsync(HttpContext http, string feed, string id, IPackageStore store, ConnectorService connector, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Read, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
         {
             return error;
@@ -126,7 +125,7 @@ public static class NuGetV3Endpoints
 
     private static async Task<IResult> RegistrationPageAsync(HttpContext http, string feed, string id, string lower, string upper, IPackageStore store, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Read, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
         {
             return error;
@@ -157,7 +156,7 @@ public static class NuGetV3Endpoints
 
     private static async Task<IResult> RegistrationLeafAsync(HttpContext http, string feed, string id, string version, IPackageStore store, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Read, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
         {
             return error;
@@ -192,7 +191,7 @@ public static class NuGetV3Endpoints
     /// </summary>
     private static async Task<IResult> CatalogEntryAsync(HttpContext http, string feed, string id, string version, IPackageStore store, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Read, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
         {
             return error;
@@ -212,7 +211,7 @@ public static class NuGetV3Endpoints
 
     private static async Task<IResult> FlatContainerVersionsAsync(HttpContext http, string feed, string id, IPackageStore store, ConnectorService connector, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Read, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
         {
             return error;
@@ -232,7 +231,7 @@ public static class NuGetV3Endpoints
 
     private static async Task<IResult> FlatContainerFileAsync(HttpContext http, string feed, string id, string version, string file, IPackageStore store, IPackageStorage storage, ConnectorService connector, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Read, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
         {
             return error;
@@ -286,7 +285,7 @@ public static class NuGetV3Endpoints
 
     private static async Task<IResult> SearchAsync(HttpContext http, string feed, IPackageStore store, ConnectorService connector, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Read, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
         {
             return error;
@@ -386,7 +385,7 @@ public static class NuGetV3Endpoints
 
     private static async Task<IResult> AutocompleteAsync(HttpContext http, string feed, IPackageStore store, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Read, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
         {
             return error;
@@ -418,7 +417,7 @@ public static class NuGetV3Endpoints
 
     private static async Task<IResult> PushAsync(HttpContext http, string feed, PackageIngestionService ingestion, IOptions<UploadOptions> upload, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Push, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Push, cancellationToken);
         if (error is not null)
         {
             return error;
@@ -429,7 +428,7 @@ public static class NuGetV3Endpoints
 
     private static async Task<IResult> PushSymbolsAsync(HttpContext http, string feed, PackageIngestionService ingestion, IOptions<UploadOptions> upload, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Push, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Push, cancellationToken);
         if (error is not null)
         {
             return error;
@@ -440,7 +439,7 @@ public static class NuGetV3Endpoints
 
     private static async Task<IResult> DeleteAsync(HttpContext http, string feed, string id, string version, PackageIngestionService ingestion, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Delete, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Delete, cancellationToken);
         if (error is not null)
         {
             return error;
@@ -451,7 +450,7 @@ public static class NuGetV3Endpoints
 
     private static async Task<IResult> RelistAsync(HttpContext http, string feed, string id, string version, PackageIngestionService ingestion, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Delete, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Delete, cancellationToken);
         if (error is not null)
         {
             return error;
@@ -462,7 +461,7 @@ public static class NuGetV3Endpoints
 
     private static async Task<IResult> SymbolFileAsync(HttpContext http, string feed, string file, string key, string file2, IPackageStore store, IPackageStorage storage, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Read, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
         {
             return error;
@@ -542,7 +541,7 @@ public static class NuGetV3Endpoints
     private static async Task<(Package Package, IReadOnlyList<VersionListEntry<PackageVersion>> List)> MergedAsync(
         IPackageStore store,
         ConnectorService connector,
-        Core.Entities.Feed feed,
+        Domain.Entities.Feed feed,
         string id,
         bool includeDependencies,
         CancellationToken cancellationToken)

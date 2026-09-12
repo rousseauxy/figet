@@ -8,12 +8,16 @@
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
   </ItemGroup>
+  <!--
+    The composition root, and the only project allowed to see every layer at once: it is where the
+    ports declared in FiGet.Application are bound to the adapters in FiGet.Infrastructure.
+  -->
   <ItemGroup>
-    <ProjectReference Include="..\FiGet.Core\FiGet.Core.csproj" />
-    <ProjectReference Include="..\FiGet.Persistence\FiGet.Persistence.csproj" />
-    <ProjectReference Include="..\FiGet.Persistence.SqlServer\FiGet.Persistence.SqlServer.csproj" />
-    <ProjectReference Include="..\FiGet.Persistence.Sqlite\FiGet.Persistence.Sqlite.csproj" />
-    <ProjectReference Include="..\FiGet.Storage\FiGet.Storage.csproj" />
+    <ProjectReference Include="..\FiGet.Domain\FiGet.Domain.csproj" />
+    <ProjectReference Include="..\FiGet.Application\FiGet.Application.csproj" />
+    <ProjectReference Include="..\FiGet.Infrastructure\FiGet.Infrastructure.csproj" />
+    <ProjectReference Include="..\FiGet.Infrastructure.SqlServer\FiGet.Infrastructure.SqlServer.csproj" />
+    <ProjectReference Include="..\FiGet.Infrastructure.Sqlite\FiGet.Infrastructure.Sqlite.csproj" />
     <ProjectReference Include="..\FiGet.Http\FiGet.Http.csproj" />
     <ProjectReference Include="..\FiGet.Protocol.V2\FiGet.Protocol.V2.csproj" />
     <ProjectReference Include="..\FiGet.Protocol.V3\FiGet.Protocol.V3.csproj" />

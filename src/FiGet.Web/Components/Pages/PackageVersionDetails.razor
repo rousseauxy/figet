@@ -1,9 +1,9 @@
 @page "/feeds/{Name}/packages/{Id}/{Version}"
 @using System.IO.Compression
 @using System.Security.Claims
-@using FiGet.Core.Connectors
-@using FiGet.Core.Storage
-@using FiGet.Core.Versions
+@using FiGet.Application.Connectors
+@using FiGet.Application.Ports
+@using FiGet.Domain.Versions
 @inject IFeedStore Feeds
 @inject IPackageStore Packages
 @inject IPackageStorage Storage

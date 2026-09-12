@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1707;CA2201;CA1861;xUnit1051</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+  <!--
+    All three layers are referenced explicitly, not transitively: LayerBoundaryTests asserts on each
+    assembly's own reference list, so it has to be able to load each one by name.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FiGet.Domain\FiGet.Domain.csproj" />
+    <ProjectReference Include="..\..\src\FiGet.Application\FiGet.Application.csproj" />
+    <ProjectReference Include="..\..\src\FiGet.Infrastructure\FiGet.Infrastructure.csproj" />
+    <ProjectReference Include="..\FiGet.Testing\FiGet.Testing.csproj" />
+  </ItemGroup>
+</Project>

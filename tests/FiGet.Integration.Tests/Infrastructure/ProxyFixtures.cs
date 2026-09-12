@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
-using FiGet.Core.Connectors;
-using FiGet.Core.Entities;
+using FiGet.Application.Connectors;
+using FiGet.Application.Ports;
+using FiGet.Domain.Entities;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;

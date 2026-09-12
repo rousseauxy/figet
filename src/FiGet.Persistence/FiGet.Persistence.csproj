@@ -1,9 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\FiGet.Core\FiGet.Core.csproj" />
-  </ItemGroup>
-</Project>

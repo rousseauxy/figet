@@ -1,5 +1,5 @@
-using FiGet.Core.Entities;
-using FiGet.Core.Versions;
+using FiGet.Domain.Entities;
+using FiGet.Domain.Versions;
 using NuGet.Versioning;
 
 namespace FiGet.Protocol.V2;

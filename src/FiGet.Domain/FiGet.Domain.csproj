@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The bottom layer: entities, and the rules that are true about packages no matter how this server
+    stores or serves them — the merged version list, version ordering, search-query parsing, feed naming.
+
+    One package reference, deliberately: NuGet.Versioning. Version comparison is not an implementation
+    detail here, it is the domain itself — "which version is latest" is the rule this whole server exists
+    to get right, and expressing it against anything other than NuGet's own comparer would mean answering
+    clients differently from every other NuGet server.
+
+    Nothing else belongs here. No EF Core: persistence attributes are expressed in the DbContext. No
+    ASP.NET: a rule about versions must never be able to read an HttpContext. No NuGet.Protocol or
+    NuGet.Packaging: those talk to upstream servers and read files off disk, which is what a layer above
+    is for. LayerBoundaryTests asserts this against the compiled assembly, because the compiler is
+    perfectly happy to let any of it in.
+  -->
+
+  <ItemGroup>
+    <PackageReference Include="NuGet.Versioning" />
+  </ItemGroup>
+
+</Project>

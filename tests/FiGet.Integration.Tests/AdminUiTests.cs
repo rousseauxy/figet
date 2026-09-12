@@ -111,7 +111,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         var fields = HiddenFields(form);
         fields[FieldName(form, "anonymous-read")] = "true";
         fields[FieldName(form, "allow-overwrite")] = "true";
-        fields[FieldName(form, "delete-behaviour")] = nameof(FiGet.Core.Entities.PackageDeletionBehavior.HardDelete);
+        fields[FieldName(form, "delete-behaviour")] = nameof(FiGet.Domain.Entities.PackageDeletionBehavior.HardDelete);
 
         using var content = new FormUrlEncodedContent(fields);
         var saved = await HttpAssert.SuccessBodyAsync(await client.PostAsync($"/feeds/{feed}/settings", content));
@@ -120,7 +120,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         var stored = await FindFeedAsync(feed);
         Assert.True(stored!.AnonymousRead);
         Assert.True(stored.AllowOverwrite);
-        Assert.Equal(FiGet.Core.Entities.PackageDeletionBehavior.HardDelete, stored.DeletionBehavior);
+        Assert.Equal(FiGet.Domain.Entities.PackageDeletionBehavior.HardDelete, stored.DeletionBehavior);
     }
 
     [Fact]
@@ -189,18 +189,18 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
     private async Task<string> CreateFeedAsync(string name, bool anonymousRead)
     {
         await using var scope = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.CreateAsyncScope(server.Services);
-        var feeds = (FiGet.Core.Stores.IFeedStore)scope.ServiceProvider.GetService(typeof(FiGet.Core.Stores.IFeedStore))!;
+        var feeds = (FiGet.Application.Ports.IFeedStore)scope.ServiceProvider.GetService(typeof(FiGet.Application.Ports.IFeedStore))!;
         var created = await feeds.CreateAsync(
-            new FiGet.Core.Entities.Feed { Name = name, NameLower = name, AnonymousRead = anonymousRead, CreatedUtc = DateTime.UtcNow },
+            new FiGet.Domain.Entities.Feed { Name = name, NameLower = name, AnonymousRead = anonymousRead, CreatedUtc = DateTime.UtcNow },
             CancellationToken.None);
         Assert.True(created, $"Could not create the feed '{name}'.");
         return name;
     }
 
-    private async Task<FiGet.Core.Entities.Feed?> FindFeedAsync(string name)
+    private async Task<FiGet.Domain.Entities.Feed?> FindFeedAsync(string name)
     {
         await using var scope = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.CreateAsyncScope(server.Services);
-        var feeds = (FiGet.Core.Stores.IFeedStore)scope.ServiceProvider.GetService(typeof(FiGet.Core.Stores.IFeedStore))!;
+        var feeds = (FiGet.Application.Ports.IFeedStore)scope.ServiceProvider.GetService(typeof(FiGet.Application.Ports.IFeedStore))!;
         return await feeds.FindAsync(name, CancellationToken.None);
     }
 
@@ -228,8 +228,8 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
     private async Task<string> CreatePushTokenAsync()
     {
         await using var scope = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.CreateAsyncScope(server.Services);
-        var tokens = (FiGet.Core.Tokens.AccessTokenService)scope.ServiceProvider.GetService(typeof(FiGet.Core.Tokens.AccessTokenService))!;
-        return (await tokens.CreateAsync("ui-push", FiGet.Core.Entities.TokenScopes.Push, null, null, CancellationToken.None)).Secret;
+        var tokens = (FiGet.Application.Tokens.AccessTokenService)scope.ServiceProvider.GetService(typeof(FiGet.Application.Tokens.AccessTokenService))!;
+        return (await tokens.CreateAsync("ui-push", FiGet.Domain.Entities.TokenScopes.Push, null, null, CancellationToken.None)).Secret;
     }
 
     [GeneratedRegex("<input[^>]*type=\"hidden\"[^>]*name=\"(?<name>[^\"]+)\"[^>]*value=\"(?<value>[^\"]*)\"", RegexOptions.CultureInvariant)]

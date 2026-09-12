@@ -120,8 +120,8 @@ lacking the scope gets 403. Push, Delete and Admin scopes include Read.
 
 ```
 dotnet tool restore
-dotnet ef migrations add <Name> --project src/FiGet.Persistence.Sqlite --output-dir Migrations
-dotnet ef migrations add <Name> --project src/FiGet.Persistence.SqlServer --output-dir Migrations
+dotnet ef migrations add <Name> --project src/FiGet.Infrastructure.Sqlite --output-dir Migrations
+dotnet ef migrations add <Name> --project src/FiGet.Infrastructure.SqlServer --output-dir Migrations
 ```
 
 Always add a migration to both. CI fails when either provider's model snapshot drifts from the model.

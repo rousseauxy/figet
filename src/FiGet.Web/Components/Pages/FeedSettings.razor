@@ -1,7 +1,7 @@
 @page "/feeds/{Name}/settings"
 @attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
 @using System.ComponentModel.DataAnnotations
-@using FiGet.Core.Storage
+@using FiGet.Application.Ports
 @inject IFeedStore Feeds
 @inject IPackageStorage Storage
 @inject NavigationManager Navigation

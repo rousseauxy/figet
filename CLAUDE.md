@@ -41,7 +41,7 @@ is private and the forge mirror is read-only.
 - `dotnet build`, `dotnet test` from the repo root must pass before any push. Run the SQL Server half
   locally when persistence changes:
   `FIGET_TEST_SQLSERVER="Server=(localdb)\MSSQLLocalDB;Trusted_Connection=True;TrustServerCertificate=True" dotnet test`.
-- A migration goes into both `FiGet.Persistence.Sqlite` and `FiGet.Persistence.SqlServer`
+- A migration goes into both `FiGet.Infrastructure.Sqlite` and `FiGet.Infrastructure.SqlServer`
   (`dotnet tool restore`, then `dotnet ef migrations add <Name> --project <provider project> --output-dir Migrations`).
 - Stop any running FiGet instance before building: a running `FiGet.Web.exe` locks its output and the
   build keeps the old binary.
@@ -53,8 +53,25 @@ is private and the forge mirror is read-only.
 ## Layout
 
 ```
-src/        one project per concern, see build plan §3
+src/        layered, see build plan §3
 tests/      unit and integration tests (dotnet test), FiGet.Compat/ for real-client scripts
-docs/       build plan, protocol notes, configuration reference
+docs/       build plan, protocol notes, configuration reference, decisions/ for ADRs
 deploy/     Dockerfile, compose example, Helm chart (later phases)
 ```
+
+## Layers
+
+Dependencies point one way only, and `LayerBoundaryTests` fails the build when one leaks:
+
+| Project | Holds | May reference |
+|---|---|---|
+| `FiGet.Domain` | Entities and the rules that are true regardless of how anything is stored or served: the merged version list, version ordering, search-query parsing, feed naming | `NuGet.Versioning`, nothing else |
+| `FiGet.Application` | What the server does — caching from an upstream, ingesting a push, validating a token — against the ports in `Ports/` | Domain, logging **abstractions** |
+| `FiGet.Infrastructure` | The adapters: EF context and stores, filesystem storage, the upstream client over `NuGet.Protocol`, the `NuGet.Packaging` indexer | Domain, Application, anything it needs |
+| `FiGet.Infrastructure.Sqlite` / `.SqlServer` | Nothing but migrations for that provider | Infrastructure |
+| `FiGet.Http`, `FiGet.Protocol.V2`, `FiGet.Protocol.V3` | ASP.NET helpers and the two protocol surfaces | Domain, Application — never EF |
+| `FiGet.Web` | The composition root: the only project that binds ports to adapters | everything |
+
+A new dependency on the outside world is an interface in `FiGet.Application/Ports/` and an
+implementation in `FiGet.Infrastructure/`, wired up in `FiGetApp.ConfigureServices`. If a boundary test
+fails, the question is not how to make it pass but what leaked in and which layer it belonged to.

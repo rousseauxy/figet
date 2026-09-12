@@ -1,8 +1,8 @@
 @page "/feeds/{Name}"
 @using System.Security.Claims
-@using FiGet.Core.Connectors
-@using FiGet.Core.Search
-@using FiGet.Core.Versions
+@using FiGet.Application.Connectors
+@using FiGet.Domain.Search
+@using FiGet.Domain.Versions
 @inject IFeedStore Feeds
 @inject IPackageStore Packages
 @inject ConnectorService Connector

@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Xml;
-using FiGet.Core.Entities;
+using FiGet.Domain.Entities;
 
 namespace FiGet.Protocol.V2;
 

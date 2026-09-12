@@ -195,13 +195,13 @@ public abstract class NuGetV3Tests
             HttpAssert.Status(HttpStatusCode.Forbidden, await PushRawAsync("public", badKey, "figet_not_a_real_token"));
         }
 
-        var readOnly = await CreateTokenAsync(FiGet.Core.Entities.TokenScopes.Read, feed: null);
+        var readOnly = await CreateTokenAsync(FiGet.Domain.Entities.TokenScopes.Read, feed: null);
         using (var readKey = TestPackages.Create(id, "1.0.0"))
         {
             HttpAssert.Status(HttpStatusCode.Forbidden, await PushRawAsync("public", readKey, readOnly));
         }
 
-        var pushPrivateOnly = await CreateTokenAsync(FiGet.Core.Entities.TokenScopes.Push, feed: "private");
+        var pushPrivateOnly = await CreateTokenAsync(FiGet.Domain.Entities.TokenScopes.Push, feed: "private");
         using (var wrongFeed = TestPackages.Create(id, "1.0.0"))
         {
             HttpAssert.Status(HttpStatusCode.Forbidden, await PushRawAsync("public", wrongFeed, pushPrivateOnly));
@@ -230,7 +230,7 @@ public abstract class NuGetV3Tests
             HttpAssert.Status(HttpStatusCode.Unauthorized, await anonymous.GetAsync($"nuget/private/v3/flatcontainer/{id.ToLowerInvariant()}/index.json"));
         }
 
-        var reader = await CreateTokenAsync(FiGet.Core.Entities.TokenScopes.Read, feed: "private");
+        var reader = await CreateTokenAsync(FiGet.Domain.Entities.TokenScopes.Read, feed: "private");
         using (var authenticated = server.CreateClient(reader))
         {
             await HttpAssert.SuccessBodyAsync(await authenticated.GetAsync($"nuget/private/v3/flatcontainer/{id.ToLowerInvariant()}/index.json"));
@@ -501,18 +501,18 @@ public abstract class NuGetV3Tests
     private async Task PushWithClientAsync(string feed, Stream package) =>
         HttpAssert.Status(HttpStatusCode.Created, await PushRawAsync(feed, package, FiGetServerFixture.AdminToken));
 
-    private async Task<string> CreateTokenAsync(FiGet.Core.Entities.TokenScopes scopes, string? feed)
+    private async Task<string> CreateTokenAsync(FiGet.Domain.Entities.TokenScopes scopes, string? feed)
     {
         await using var scope = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.CreateAsyncScope(server.Services);
         var services = scope.ServiceProvider;
         int? feedKey = null;
         if (feed is not null)
         {
-            var feeds = (FiGet.Core.Stores.IFeedStore)services.GetService(typeof(FiGet.Core.Stores.IFeedStore))!;
+            var feeds = (FiGet.Application.Ports.IFeedStore)services.GetService(typeof(FiGet.Application.Ports.IFeedStore))!;
             feedKey = (await feeds.FindAsync(feed, CancellationToken.None))!.Key;
         }
 
-        var tokens = (FiGet.Core.Tokens.AccessTokenService)services.GetService(typeof(FiGet.Core.Tokens.AccessTokenService))!;
+        var tokens = (FiGet.Application.Tokens.AccessTokenService)services.GetService(typeof(FiGet.Application.Tokens.AccessTokenService))!;
         return (await tokens.CreateAsync("test-" + scopes, scopes, feedKey, null, CancellationToken.None)).Secret;
     }
 

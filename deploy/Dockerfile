@@ -9,14 +9,14 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
-COPY src/FiGet.Core/FiGet.Core.csproj src/FiGet.Core/
+COPY src/FiGet.Domain/FiGet.Domain.csproj src/FiGet.Domain/
+COPY src/FiGet.Application/FiGet.Application.csproj src/FiGet.Application/
+COPY src/FiGet.Infrastructure/FiGet.Infrastructure.csproj src/FiGet.Infrastructure/
+COPY src/FiGet.Infrastructure.Sqlite/FiGet.Infrastructure.Sqlite.csproj src/FiGet.Infrastructure.Sqlite/
+COPY src/FiGet.Infrastructure.SqlServer/FiGet.Infrastructure.SqlServer.csproj src/FiGet.Infrastructure.SqlServer/
 COPY src/FiGet.Http/FiGet.Http.csproj src/FiGet.Http/
-COPY src/FiGet.Persistence/FiGet.Persistence.csproj src/FiGet.Persistence/
-COPY src/FiGet.Persistence.Sqlite/FiGet.Persistence.Sqlite.csproj src/FiGet.Persistence.Sqlite/
-COPY src/FiGet.Persistence.SqlServer/FiGet.Persistence.SqlServer.csproj src/FiGet.Persistence.SqlServer/
 COPY src/FiGet.Protocol.V2/FiGet.Protocol.V2.csproj src/FiGet.Protocol.V2/
 COPY src/FiGet.Protocol.V3/FiGet.Protocol.V3.csproj src/FiGet.Protocol.V3/
-COPY src/FiGet.Storage/FiGet.Storage.csproj src/FiGet.Storage/
 COPY src/FiGet.Web/FiGet.Web.csproj src/FiGet.Web/
 RUN dotnet restore src/FiGet.Web/FiGet.Web.csproj
 

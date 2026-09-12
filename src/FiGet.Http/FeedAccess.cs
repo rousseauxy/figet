@@ -1,8 +1,8 @@
 using System.Net.Http.Headers;
 using System.Text;
-using FiGet.Core.Entities;
-using FiGet.Core.Stores;
-using FiGet.Core.Tokens;
+using FiGet.Application.Ports;
+using FiGet.Application.Tokens;
+using FiGet.Domain.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 

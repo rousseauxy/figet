@@ -331,3 +331,76 @@ feed challenging for credentials.
   the shapes they carry are covered by hand-written tests, but nothing reads the fixture files yet.
 - Run the real Windows PowerShell 5.1 client against this surface (section 7.2). That needs the compat
   scripts pointed at a running instance.
+
+## Architecture: Domain, Application, Infrastructure — 2026-09-12
+
+**State: done and verified. The layering the build plan has described since before the first line of code
+is now enforced by a test instead of by habit.**
+
+Section 3 said "No ASP.NET, no EF references" from the start, and the rule mostly held — entities stayed
+plain, EF lived in its own project, the host was the only composition root. It did not hold completely:
+`NuGetUpstreamClient`, an HTTP client for other people's servers, sat in the same assembly as the
+entities. Nothing failed when it landed there, which is the whole problem. A boundary that only exists
+in a document is a boundary that drifts.
+
+### What moved
+
+| Was | Is | Why |
+|---|---|---|
+| `FiGet.Core/Entities`, `Versions`, `Search`, `Feeds`, `Packages/IndexedPackage` | `FiGet.Domain` | Entities and rules that hold regardless of storage or protocol |
+| `FiGet.Core/Stores`, `Storage`, `Connectors/IUpstreamClient`, the indexer interface | `FiGet.Application/Ports` | Every dependency on the outside world, stated as an interface |
+| `FiGet.Core/Connectors/ConnectorService`, `Packages/PackageIngestionService`, `Tokens` | `FiGet.Application` | What the server does, against those ports |
+| `FiGet.Persistence` + `FiGet.Storage` + `NuGetUpstreamClient` + `PackageIndexer` | `FiGet.Infrastructure` | One project for the adapters: EF, disk, upstream HTTP, nupkg reading |
+| `FiGet.Persistence.Sqlite` / `.SqlServer` | `FiGet.Infrastructure.Sqlite` / `.SqlServer` | Names had to follow the project they extend; they still hold nothing but migrations |
+| `FiGet.Core.Tests` | `FiGet.Unit.Tests` | It never mirrored one assembly, and now mirrors none |
+
+`FiGet.Http`, `FiGet.Protocol.V2`, `FiGet.Protocol.V3` and `FiGet.Web` kept their names. The protocol
+projects now reference Domain and Application only, so neither can reach EF even by accident.
+
+### The guard
+
+`tests/FiGet.Unit.Tests/LayerBoundaryTests.cs` asserts on each assembly's **compiled** reference list,
+not on the project file alone, because that is the only statement that cannot be argued with: an
+assembly lists what it actually binds to. Domain must not reference ASP.NET, EF Core,
+`Microsoft.Extensions.*`, `NuGet.Protocol` or `NuGet.Packaging`, and must reference no other FiGet
+project. Application must not reference ASP.NET, EF Core, `NuGet.Protocol` or `NuGet.Packaging`, and its
+project file must reference Domain and nothing else. Logging **abstractions** are deliberately allowed in
+Application: a contract, not an implementation.
+
+### Evidence
+
+Run on the commit that adds this section:
+
+| Check | Result |
+|---|---|
+| `dotnet build` | 0 errors, 0 warnings |
+| `dotnet test` | 149 total, 0 failed, 29 skipped (the SQL Server half) |
+| Boundary tests actually ran | 137 tests before, 149 after, 0 failed — the 12 new cases were discovered, not skipped |
+| `dotnet ef migrations has-pending-model-changes`, both providers | "No changes have been made to the model since the last migration" |
+| `git status` | Every move recorded as a rename, so `git log --follow` still works |
+
+The migration check is the one that mattered most: every entity's CLR name inside both model snapshots
+changed from `FiGet.Core.Entities.*` to `FiGet.Domain.Entities.*`, and the model still matches.
+
+### Decisions taken while doing it
+
+- **Domain may reference `NuGet.Versioning`, and nothing else.** Version comparison is the domain, not a
+  detail; our own comparer would mean disagreeing with nuget.org about which version is latest, silently.
+  Recorded as `docs/decisions/0001` because the plausible-looking next step — "then `NuGet.Packaging` is
+  fine too" — is wrong, and the reasoning is not visible from the code.
+- **Renaming the migration assemblies is safe for live databases.** `MigrationsAssembly` is derived from
+  `typeof(...).Assembly.GetName().Name` rather than a literal, and `__EFMigrationsHistory` stores
+  migration ids, not assembly names. Checked before the rename, not after.
+- **`docs/decisions/` starts here**, with the same three-part test used elsewhere: the reason is not
+  visible from the code, the obvious-looking change is wrong, and rediscovering it costs a day. Anything
+  failing one of those is a code comment instead.
+
+### Reading the older sections of this log
+
+Entries above this one name paths under `src/FiGet.Core`, `src/FiGet.Persistence` and `src/FiGet.Storage`.
+They were accurate when written and are left alone; the table above translates them.
+
+### Next
+
+Unchanged from "Next, in this order": the design-system port, then the admin area, then the themed
+dropdown.

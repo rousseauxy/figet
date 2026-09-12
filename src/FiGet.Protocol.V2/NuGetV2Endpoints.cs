@@ -1,11 +1,10 @@
 using System.Globalization;
-using FiGet.Core.Entities;
-using FiGet.Core.Packages;
-using FiGet.Core.Connectors;
-using FiGet.Core.Search;
-using FiGet.Core.Storage;
-using FiGet.Core.Stores;
-using FiGet.Core.Versions;
+using FiGet.Application.Connectors;
+using FiGet.Application.Packages;
+using FiGet.Application.Ports;
+using FiGet.Domain.Entities;
+using FiGet.Domain.Search;
+using FiGet.Domain.Versions;
 using FiGet.Http;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
