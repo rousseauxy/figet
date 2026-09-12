@@ -522,3 +522,97 @@ and the load balancer in the target environment provides it, so that objection d
 
 The admin area, now with interactive rendering available for it, followed by the themed dropdown as part
 of that rather than as a separate rebuild.
+
+## Review feedback, and an interactive grid for signed-in readers — 2026-09-12
+
+Everything here came from using the deployed instance, which is why it is worth writing down separately
+from the port that preceded it: none of it was visible while building.
+
+### What the review found
+
+- **The source filter moved into the search bar** as a dropdown, rather than a row of pills beneath it.
+  It auto-submits, so choosing stays one action. A native select's popup list is drawn by the operating
+  system and cannot be fully themed; everything around it is, and it sits inside the bar so the seam
+  does not show.
+- **A package's tabs now match a version's** — Overview, Metadata, Dependencies, Files, plus All
+  versions. That also gets the raw tag dump off the overview: on a module publishing one tag per
+  exported command it ran to thousands of characters and buried the four tags anybody reads. It is on
+  the Metadata tab as chips, folded, exactly as the version page already did it.
+- **Overview keeps Version, Authors and Published** on both levels.
+- **The package icon is shown.** It was stored and never rendered. It comes from whoever published the
+  package and points somewhere we do not control, so a failed load removes the element rather than
+  leaving a broken-image box — an air-gapped install would otherwise show one on every row.
+- **A dark and light toggle.** The stylesheet already answered the system preference; this records an
+  explicit choice, which has to beat it. The attribute is applied by an inline script in `<head>`,
+  before first paint, or every navigation would flash the other theme first.
+
+### Two defects it also found
+
+- **Upstream-only packages were not links.** The feed list rendered the id as plain text unless the
+  package was held locally, while `/feeds/{feed}/packages/{id}` worked perfectly well for one that is
+  only upstream. A colleague found it by reaching the page by hand and noticing the search would not
+  take him there — so the single case a proxy feed exists for was the one case that could not be
+  clicked.
+- **`display: flex` on a `<td>`.** It overrides `display: table-cell`, which takes the cell out of the
+  row: the actions column became a wide empty gutter, the row borders stopped short of it, and the
+  downloads column was pushed off the edge. Fixed by styling the cell as a cell and shrinking it to its
+  content.
+
+### Interactive rendering, for signed-in readers only
+
+Decided with the user. Signed-in readers get a QuickGrid that searches and pages without reloading;
+anonymous readers keep the static table. The split is deliberate: the public view is reachable without
+credentials, and a circuit is server state held for as long as somebody keeps the page open, so it is
+not somewhere to allocate it. `blazor.web.js` is therefore emitted only when signed in — the read-only
+view still downloads no framework at all.
+
+Three consequences worth recording, because none is obvious from the markup:
+
+- **There is no `HttpContext` in a circuit**, so anything derived from the request is passed in by the
+  statically rendered page above.
+- **Scoped services live as long as the circuit**, so resolving `IPackageStore` directly would hold one
+  DbContext open per connected reader. Every query takes its own scope through `IServiceScopeFactory`
+  and disposes it. The sibling application solved the same problem with `AddDbContextFactory` and warns
+  in a comment that registering that *and* `AddDbContext` cost real money; taking a scope needs no
+  second registration at all.
+- **Pull became a circuit call rather than a form post**, because there is no `HttpContext` to mint an
+  antiforgery token. The static table lost its admin branch entirely: signed-in readers get the grid, so
+  that code was unreachable.
+
+`ReconnectModal` ports across with it. Session affinity keeps a circuit on one replica, but a pod
+restart or a rolling deploy still drops it, and without the dialog the page looks alive and ignores
+every click.
+
+**What this does not do: sortable columns.** QuickGrid sorts for free only when given an `IQueryable`.
+This grid is fed by `IPackageStore.SearchAsync`, a port with skip, take and a filter but no ordering,
+and pointing the grid at EF directly would put queries in the composition root and undo the layering.
+The honest fix is a sort parameter on the port plus both EF implementations; it is in `docs/backlog.md`.
+
+### The guard that caught itself being useless
+
+Three tests now assert the split: the anonymous view ships no framework and no prerender marker, signing
+in brings both, and the reconnect dialog exists only where a circuit does.
+
+The first run failed two of them, and both failures were worth having. One was a flaky assertion of mine
+(whether a feed holds packages depends on what other tests in the shared fixture have pushed). The other
+was real: the cascading `HttpContext` is **not** populated on the root component, though it reaches the
+pages inside `Routes` — so the check answered "anonymous" for everybody and the framework would never
+have shipped in production. `AuthorizeView` is the signal that works that far up.
+
+Then the fix exposed a third problem. `MapStaticAssets` fingerprints served names, so the script is
+requested as `blazor.web.<hash>.js` and the literal `blazor.web.js` appears nowhere. The positive
+assertion failed loudly — but the negative one had been **passing for the wrong reason** and would have
+gone on passing no matter what the page contained. A test that cannot fail is worse than no test, and
+this repo has now been bitten by that fingerprinting twice.
+
+| Check | Result |
+|---|---|
+| `dotnet build` | 0 errors, 0 warnings |
+| `dotnet test` | 159 total, 0 failed, 29 skipped (156 before) |
+
+### Also
+
+`docs/backlog.md` now exists, holding what is not built and why — including a role above admin, raised
+2026-09-12. Recorded with the observation that the obvious form of it restricts nothing: an admin who
+can create tokens can create an *admin* token and use that, so "admins cannot delete tokens" only means
+something if nobody may mint a token carrying more than they hold.

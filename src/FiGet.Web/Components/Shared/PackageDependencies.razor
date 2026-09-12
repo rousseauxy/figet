@@ -1,0 +1,56 @@
+@*
+    The Dependencies tab, shared by the package page (its latest version) and the version page.
+    Dependencies are read from the package itself, so there are none to show until it is held here.
+*@
+
+@if (Dependencies.Count == 0)
+{
+    <p class="fg-empty">
+        @(IsLocal
+            ? "This version declares no dependencies."
+            : "Known once the package is here: dependencies are read from the package itself.")
+    </p>
+}
+else
+{
+    @foreach (var group in Dependencies.GroupBy(dependency => dependency.TargetFramework))
+    {
+        <h2>@(string.IsNullOrWhiteSpace(group.Key) ? "Any framework" : group.Key)</h2>
+
+        @if (group.All(dependency => dependency.Id is null))
+        {
+            @* A group with no entries is how a nuspec says "this target needs nothing". *@
+            <p class="fg-muted">No dependencies for this target.</p>
+        }
+        else
+        {
+            <div class="fg-table-wrap">
+                <table class="fg-table">
+                    <thead>
+                        <tr><th>Package</th><th>Version range</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var dependency in group.Where(d => d.Id is not null).OrderBy(d => d.Ordinal))
+                        {
+                            <tr>
+                                <td><a href="/feeds/@FeedName/packages/@dependency.Id">@dependency.Id</a></td>
+                                <td class="fg-num">@(string.IsNullOrWhiteSpace(dependency.VersionRange) ? "any" : dependency.VersionRange)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<PackageDependency> Dependencies { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public string FeedName { get; set; } = "";
+
+    [Parameter]
+    public bool IsLocal { get; set; }
+}

@@ -39,32 +39,35 @@
     <button type="button" class="fg-copy" data-copy="@SourceUrl" title="Copy this URL" aria-label="Copy the v3 source URL">Copy</button>
 </p>
 
-<form method="get" class="fg-search">
-    <input type="search" name="q" value="@Q" placeholder="Search id, title, tags, description" aria-label="Search packages" />
-    @if (Src.Length > 0)
-    {
-        @* Keeps the current filter when a new search is submitted. *@
-        <input type="hidden" name="src" value="@Src" />
-    }
-    <button type="submit" class="fg-btn fg-btn-primary">Search</button>
+@if (IsAdmin)
+{
+    @* Signed in: the grid searches and pages without reloading. It is interactive, so it is rendered
+       only here — an anonymous reader gets the static table below and no framework at all. *@
+    <PackageGrid FeedName="@feed.Name" IsProxy="IsProxy" />
+    return;
+}
+
+<div class="fg-search-row">
+    <form method="get" class="fg-search-bar">
+        <input type="search" name="q" value="@Q" placeholder="Search id, title, tags, description" aria-label="Search packages" />
+        @if (IsProxy)
+        {
+            @* Inside the bar rather than under it: where a result may come from is part of the search,
+               not a separate question. app.js submits on change so choosing is one action. *@
+            <select name="src" data-autosubmit aria-label="Where the package comes from">
+                <option value="" selected="@(Src.Length == 0)">Everywhere</option>
+                <option value="local" selected="@(Src == "local")">Pushed here</option>
+                <option value="cached" selected="@(Src == "cached")">Cached</option>
+                <option value="upstream" selected="@(Src == "upstream")">Upstream only</option>
+            </select>
+        }
+        <button type="submit">Search</button>
+    </form>
     @if (Q?.Length > 0 || Src.Length > 0)
     {
         <a class="fg-btn fg-btn-ghost" href="/feeds/@feed.Name">Clear</a>
     }
-</form>
-
-@if (IsProxy)
-{
-    @* Links rather than a dropdown: these pages are statically rendered, so a filter that is a link
-       needs no script, is bookmarkable, and matches the rest of the design system. *@
-    <div class="fg-toolbar">
-        <span class="fg-label">Source</span>
-        <a class="fg-pill @(Src.Length == 0 ? "active" : "")" href="@FilterLink("")">Everywhere</a>
-        <a class="fg-pill @(Src == "local" ? "active" : "")" href="@FilterLink("local")">Pushed here</a>
-        <a class="fg-pill @(Src == "cached" ? "active" : "")" href="@FilterLink("cached")">Cached</a>
-        <a class="fg-pill @(Src == "upstream" ? "active" : "")" href="@FilterLink("upstream")">Upstream only</a>
-    </div>
-}
+</div>
 
 <p class="fg-result-count">
     @rows.Count shown@(total > rows.Count ? $" of {total}" : "")@(string.IsNullOrWhiteSpace(Q) ? "" : $" matching “{Q}”").
@@ -97,21 +100,16 @@ else
                 @foreach (var row in rows)
                 {
                     <tr>
-                        <td>
-                            @if (row.Local)
-                            {
-                                <a href="/feeds/@feed.Name/packages/@row.Id">@row.Id</a>
-                            }
-                            else
-                            {
-                                @row.Id
-                            }
-                        </td>
+                        @* Always a link, including for a package only an upstream holds: its page lists
+                           every version the upstreams report and describes them, which is the whole point
+                           of a proxy feed. Leaving those rows as plain text made the one case a proxy
+                           exists for the one case you could not click. *@
+                        <td><a href="/feeds/@feed.Name/packages/@row.Id">@row.Id</a></td>
                         <td class="fg-num">@row.Latest</td>
-                        <td class="fg-num">@(row.Versions > 0 ? row.Versions.ToString(CultureInfo.InvariantCulture) : "—")</td>
+                        <td class="fg-num">@(row.Versions > 0 ? row.Versions.ToString(CultureInfo.InvariantCulture) : Display.None)</td>
                         <td><span class="fg-badge @SourceBadge(row.Source)">@row.Source</span></td>
-                        <td class="fg-num">@(row.Local ? row.Downloads.ToString("N0", CultureInfo.InvariantCulture) : "—")</td>
-                        <td class="fg-num">@(row.Published is null ? "—" : row.Published.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC")</td>
+                        <td class="fg-num">@(row.Local ? Display.Count(row.Downloads) : Display.None)</td>
+                        <td class="fg-num">@Display.Date(row.Published)</td>
                         <td class="fg-cell-actions">
                             @if (IsAdmin && !row.Local)
                             {
@@ -269,24 +267,6 @@ else
         "Cached" => "fg-badge-info",
         _ => "fg-badge-plain",
     };
-
-    private string FilterLink(string src)
-    {
-        var link = $"/feeds/{Uri.EscapeDataString(Name)}";
-        var query = new List<string>();
-        if (!string.IsNullOrWhiteSpace(Q))
-        {
-            query.Add("q=" + Uri.EscapeDataString(Q));
-        }
-
-        if (src.Length > 0)
-        {
-            query.Add("src=" + Uri.EscapeDataString(src));
-        }
-
-        // Deliberately drops the page: page 7 of the old filter is not page 7 of the new one.
-        return query.Count == 0 ? link : link + "?" + string.Join('&', query);
-    }
 
     private string PageLink(int page)
     {

@@ -10,10 +10,48 @@
         <link rel="stylesheet" href="@($"/themes/{Theme}.css")" />
     }
     <HeadOutlet />
+    @*
+        Applied before the first paint, and deliberately inline rather than in app.js: a deferred script
+        runs after the page has already been drawn, so every navigation would flash the other theme.
+        Only an explicit choice is recorded here — with nothing stored, the stylesheet's media query
+        answers the operating system on its own.
+    *@
+    <script>
+        (function () {
+            try {
+                var chosen = localStorage.getItem("figet-theme");
+                if (chosen === "light" || chosen === "dark") {
+                    document.documentElement.setAttribute("data-theme", chosen);
+                }
+            } catch (error) {
+                // A browser that refuses storage simply follows the system preference.
+            }
+        })();
+    </script>
 </head>
 <body>
     <Routes />
     <script src="@Assets["app.js"]"></script>
+    @*
+        Only for a signed-in reader. The interactive views are the ones behind a sign-in, so an anonymous
+        visitor to the read-only view downloads no framework at all — which is the point of leaving the
+        public pages statically rendered in the first place.
+
+        The reconnect dialog comes with it: session affinity keeps a circuit on one replica, but a restart
+        or a rolling deploy still drops it, and without this the page would simply stop responding with no
+        explanation.
+
+        AuthorizeView rather than the cascading HttpContext: that cascade reaches the pages inside Routes
+        but is NOT populated on this root component, so asking it here silently answered "anonymous" for
+        everybody and the framework never shipped at all. The authentication state is cascaded app-wide by
+        AddCascadingAuthenticationState, so it is the signal that actually works this far up.
+    *@
+    <AuthorizeView>
+        <Authorized>
+            <ReconnectModal />
+            <script src="@Assets["_framework/blazor.web.js"]"></script>
+        </Authorized>
+    </AuthorizeView>
 </body>
 </html>
 

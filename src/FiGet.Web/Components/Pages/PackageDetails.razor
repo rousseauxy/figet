@@ -4,6 +4,7 @@
 @using FiGet.Domain.Versions
 @inject IFeedStore Feeds
 @inject IPackageStore Packages
+@inject IPackageStorage Storage
 @inject ConnectorService Connector
 
 <PageTitle>@Id · FiGet</PageTitle>
@@ -24,124 +25,86 @@
 </p>
 
 <div class="fg-page-head">
+    @if (Display.Link(shown.IconUrl) is { } icon)
+    {
+        <img class="fg-icon" src="@icon" alt="" loading="lazy" data-fallback />
+    }
     <h1>@displayId</h1>
     <span class="fg-version">@shown.NormalizedVersion</span>
+    <span class="fg-badge @OriginBadge(latest!)">@Origin(latest!)</span>
 </div>
 
+@* The same tabs as a single version, because the questions are the same ones: what is it, what does it
+   say about itself, what does it need, what is inside. They answer for the version named above. *@
 <nav class="fg-tabs">
-    <a class="fg-tab @(All ? "" : "active")" href="/feeds/@feed.Name/packages/@displayId">Overview</a>
-    <a class="fg-tab @(All ? "active" : "")" href="/feeds/@feed.Name/packages/@displayId?all=true">All versions</a>
+    <a class="fg-tab @Active("")" href="@TabLink("")">Overview</a>
+    <a class="fg-tab @Active("metadata")" href="@TabLink("metadata")">Metadata</a>
+    <a class="fg-tab @Active("dependencies")" href="@TabLink("dependencies")">Dependencies</a>
+    @if (LatestIsLocal)
+    {
+        <a class="fg-tab @Active("files")" href="@TabLink("files")">Files</a>
+    }
+    <a class="fg-tab @Active("versions")" href="@TabLink("versions")">All versions</a>
 </nav>
 
-@if (!All)
+@switch (CurrentTab)
 {
-    @if (!string.IsNullOrWhiteSpace(shown.Description))
-    {
-        <p class="fg-lede">@shown.Description</p>
-    }
+    case "metadata":
+        <PackageMetadata DisplayId="@displayId" Row="shown" Origin="@Origin(latest!)" IsLocal="LatestIsLocal" />
+        break;
 
-    <div class="fg-panel">
-        <dl class="fg-facts">
-            <dt>Authors</dt><dd>@(string.IsNullOrWhiteSpace(shown.Authors) ? "—" : shown.Authors)</dd>
-            <dt>Tags</dt><dd>@(string.IsNullOrWhiteSpace(shown.Tags) ? "—" : shown.Tags)</dd>
-            <dt>Project</dt>
-            <dd>
-                @if (Uri.TryCreate(shown.ProjectUrl, UriKind.Absolute, out var project) && project.Scheme is "https" or "http")
-                {
-                    <a href="@project" rel="noopener noreferrer">@project</a>
-                }
-                else
-                {
-                    <span>—</span>
-                }
-            </dd>
-            <dt>Licence</dt><dd>@(shown.LicenseExpression is { Length: > 0 } expr ? expr : (string.IsNullOrWhiteSpace(shown.LicenseUrl) ? "—" : shown.LicenseUrl))</dd>
-        </dl>
-    </div>
+    case "dependencies":
+        <PackageDependencies Dependencies="dependencies" FeedName="@feed.Name" IsLocal="LatestIsLocal" />
+        break;
 
-    <h2>Install the latest</h2>
-    <pre><code>Install-Module -Name @displayId -RequiredVersion @shown.NormalizedVersion -Repository @feed.Name</code></pre>
-    <pre><code>Install-PSResource -Name @displayId -Version @shown.NormalizedVersion -Repository @feed.Name</code></pre>
-    <pre><code>dotnet add package @displayId --version @shown.NormalizedVersion --source @(feedUrl)/v3/index.json</code></pre>
+    case "files":
+        <PackageFiles Files="files" />
+        break;
 
-    <h2>Recent versions</h2>
-}
-else
-{
-    <h2>Every version of @displayId</h2>
-}
-
-<div class="fg-table-wrap">
-    <table class="fg-table">
-        <thead>
-            <tr>
-                <th>Version</th>
-                <th>Source</th>
-                <th>State</th>
-                <th>Published</th>
-                <th>Size</th>
-                <th>Downloads</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var entry in Rows)
+    case "versions":
+        <h2>Every version of @displayId</h2>
+        @VersionTable(Rows)
+        <nav class="fg-pager">
+            @if (Page > 1)
             {
-                var row = entry.Payload!;
-                var local = entry.Source == VersionSource.Local;
-                <tr class="@(row.Listed ? "" : "is-inactive")">
-                    <td class="fg-num"><a href="/feeds/@feed.Name/packages/@displayId/@row.NormalizedVersion">@row.NormalizedVersion</a></td>
-                    <td><span class="fg-badge @OriginBadge(entry)">@Origin(entry)</span></td>
-                    <td>
-                        @(row.Listed ? "Listed" : "Unlisted")
-                        @if (entry.IsAbsoluteLatestVersion) { <span class="fg-badge fg-badge-accent">latest</span> }
-                        @if (entry.IsLatestVersion && !entry.IsAbsoluteLatestVersion) { <span class="fg-badge fg-badge-accent">latest stable</span> }
-                    </td>
-                    <td class="fg-num">@(local ? row.PublishedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC" : "—")</td>
-                    <td class="fg-num">@(local ? FormatSize(row.Size) : "—")</td>
-                    <td class="fg-num">@row.Downloads.ToString("N0", CultureInfo.InvariantCulture)</td>
-                    <td class="fg-cell-actions">
-                        @if (local)
-                        {
-                            <a class="fg-btn fg-btn-sm" href="@(feedUrl)/package/@displayId/@row.NormalizedVersion">Download</a>
-                        }
-                        else if (IsAdmin)
-                        {
-                            <form method="post" action="/admin/feeds/@feed.Name/pull">
-                                <AntiforgeryToken />
-                                <input type="hidden" name="id" value="@displayId" />
-                                <input type="hidden" name="version" value="@row.NormalizedVersion" />
-                                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                                <button type="submit" class="fg-btn fg-btn-sm">Pull</button>
-                            </form>
-                        }
-                    </td>
-                </tr>
+                <a class="fg-btn fg-btn-sm" href="@TabLink("versions", Page - 1)">← Newer</a>
             }
-        </tbody>
-    </table>
-</div>
+            <span class="fg-pager-info">
+                @(Skip + 1) to @(Skip + Rows.Count()) of @versions.Count versions, newest first
+            </span>
+            @if (Skip + PageSize < versions.Count)
+            {
+                <a class="fg-btn fg-btn-sm" href="@TabLink("versions", Page + 1)">Older →</a>
+            }
+        </nav>
+        break;
 
-@if (!All && versions.Count > RecentCount)
-{
-    <p class="fg-result-count"><a href="/feeds/@feed.Name/packages/@displayId?all=true">Show all @versions.Count versions</a>.</p>
-}
+    default:
+        @if (!string.IsNullOrWhiteSpace(shown.Description))
+        {
+            <p class="fg-lede">@shown.Description</p>
+        }
 
-@if (All)
-{
-    <nav class="fg-pager">
-        @if (Page > 1)
+        <div class="fg-panel">
+            <dl class="fg-facts">
+                <dt>Version</dt><dd class="fg-num">@shown.NormalizedVersion</dd>
+                <dt>Authors</dt><dd>@(string.IsNullOrWhiteSpace(shown.Authors) ? Display.None : shown.Authors)</dd>
+                <dt>Published</dt><dd class="fg-num">@Display.Date(shown.PublishedUtc)</dd>
+            </dl>
+        </div>
+
+        <h2>Install the latest</h2>
+        <pre><code>Install-Module -Name @displayId -RequiredVersion @shown.NormalizedVersion -Repository @feed.Name</code></pre>
+        <pre><code>Install-PSResource -Name @displayId -Version @shown.NormalizedVersion -Repository @feed.Name</code></pre>
+        <pre><code>dotnet add package @displayId --version @shown.NormalizedVersion --source @(feedUrl)/v3/index.json</code></pre>
+
+        <h2>Recent versions</h2>
+        @VersionTable(versions.Reverse().Take(RecentCount))
+        @if (versions.Count > RecentCount)
         {
-            <a class="fg-btn fg-btn-sm" href="@PageLink(Page - 1)">← Newer</a>
+            <p class="fg-result-count"><a href="@TabLink("versions")">Show all @versions.Count versions</a>.</p>
         }
-        <span class="fg-pager-info">
-            @(Skip + 1) to @(Skip + Rows.Count()) of @versions.Count versions, newest first
-        </span>
-        @if (Skip + PageSize < versions.Count)
-        {
-            <a class="fg-btn fg-btn-sm" href="@PageLink(Page + 1)">Older →</a>
-        }
-    </nav>
+        break;
 }
 
 @code {
@@ -157,8 +120,78 @@ else
     private Feed? feed;
     private string displayId = "";
     private PackageVersion? shown;
+    private VersionListEntry<PackageVersion>? latest;
     private IReadOnlyList<VersionListEntry<PackageVersion>> versions = [];
+    private IReadOnlyList<PackageDependency> dependencies = [];
+    private IReadOnlyList<PackageFileEntry>? files;
     private string feedUrl = "";
+
+    /// <summary>
+    /// The version list, rendered the same way on the overview and on the full list. One definition so
+    /// the two cannot drift, which they had already started to do when they were written out twice.
+    /// </summary>
+    private RenderFragment<IEnumerable<VersionListEntry<PackageVersion>>> VersionTable => rows =>
+        @<div class="fg-table-wrap">
+            <table class="fg-table">
+                <thead>
+                    <tr>
+                        <th>Version</th>
+                        <th>Source</th>
+                        <th>State</th>
+                        <th>Published</th>
+                        <th>Size</th>
+                        <th>Downloads</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var entry in rows)
+                    {
+                        var row = entry.Payload!;
+                        var local = entry.Source == VersionSource.Local;
+                        <tr class="@(row.Listed ? "" : "is-inactive")">
+                            <td class="fg-num"><a href="/feeds/@feed!.Name/packages/@displayId/@row.NormalizedVersion">@row.NormalizedVersion</a></td>
+                            <td><span class="fg-badge @OriginBadge(entry)">@Origin(entry)</span></td>
+                            <td>
+                                @* Only what is worth saying: nearly every row is listed, so printing it
+                                   on all of them buried the two flags that actually differ. *@
+                                @if (!row.Listed)
+                                {
+                                    <span class="fg-badge fg-badge-warn">unlisted</span>
+                                }
+                                @if (entry.IsAbsoluteLatestVersion)
+                                {
+                                    <span class="fg-badge fg-badge-accent">latest</span>
+                                }
+                                else if (entry.IsLatestVersion)
+                                {
+                                    <span class="fg-badge fg-badge-accent">latest stable</span>
+                                }
+                            </td>
+                            <td class="fg-num">@(local ? Display.Date(row.PublishedUtc) : Display.None)</td>
+                            <td class="fg-num">@(local ? Display.Size(row.Size) : Display.None)</td>
+                            <td class="fg-num">@Display.Count(row.Downloads)</td>
+                            <td class="fg-cell-actions">
+                                @if (local)
+                                {
+                                    <a class="fg-btn fg-btn-sm" href="@(feedUrl)/package/@displayId/@row.NormalizedVersion">Download</a>
+                                }
+                                else if (IsAdmin)
+                                {
+                                    <form method="post" action="/admin/feeds/@feed!.Name/pull">
+                                        <AntiforgeryToken />
+                                        <input type="hidden" name="id" value="@displayId" />
+                                        <input type="hidden" name="version" value="@row.NormalizedVersion" />
+                                        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                                        <button type="submit" class="fg-btn fg-btn-sm">Pull</button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>;
 
     [Parameter]
     public string Name { get; set; } = "";
@@ -166,6 +199,10 @@ else
     [Parameter]
     public string Id { get; set; } = "";
 
+    [SupplyParameterFromQuery(Name = "tab")]
+    private string? Tab { get; set; }
+
+    /// <summary>The old link shape for the full list, kept so anything already bookmarked still works.</summary>
     [SupplyParameterFromQuery(Name = "all")]
     private bool All { get; set; }
 
@@ -179,14 +216,28 @@ else
 
     private string ReturnUrl => HttpContext.Request.Path + HttpContext.Request.QueryString;
 
+    private string CurrentTab => All ? "versions" : (Tab ?? "").Trim().ToLowerInvariant();
+
+    private bool LatestIsLocal => latest!.Source == VersionSource.Local;
+
     private int Skip => (Math.Max(1, Page) - 1) * PageSize;
 
     /// <summary>Newest first, because that is the version being looked for.</summary>
-    private IEnumerable<VersionListEntry<PackageVersion>> Rows =>
-        All ? versions.Reverse().Skip(Skip).Take(PageSize) : versions.Reverse().Take(RecentCount);
+    private IEnumerable<VersionListEntry<PackageVersion>> Rows => versions.Reverse().Skip(Skip).Take(PageSize);
 
-    private string PageLink(int page) =>
-        $"/feeds/{Uri.EscapeDataString(Name)}/packages/{Uri.EscapeDataString(displayId)}?all=true&page={page}";
+    private string Active(string tab) => CurrentTab == tab ? "active" : "";
+
+    private string TabLink(string tab, int? page = null)
+    {
+        var link = $"/feeds/{Uri.EscapeDataString(Name)}/packages/{Uri.EscapeDataString(displayId)}";
+        if (tab.Length == 0)
+        {
+            return link;
+        }
+
+        link += "?tab=" + tab;
+        return page is null ? link : link + "&page=" + page.Value.ToString(CultureInfo.InvariantCulture);
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -211,7 +262,7 @@ else
             ? []
             : await Connector.UpstreamCandidatesAsync(feed, idLower, HttpContext.RequestAborted);
 
-        var package = await Packages.GetPackageAsync(feed.Key, idLower, includeDependencies: false, HttpContext.RequestAborted);
+        var package = await Packages.GetPackageAsync(feed.Key, idLower, includeDependencies: true, HttpContext.RequestAborted);
         var local = package?.Versions ?? [];
         if (local.Count == 0 && upstream.Count == 0)
         {
@@ -221,12 +272,19 @@ else
 
         displayId = package?.Id ?? Id;
         feedUrl = PublicUrls.Feed(HttpContext, feed.Name);
-        versions = VersionListBuilder
+        versions = [.. VersionListBuilder
             .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream), includeSemVer2: true)
-            .Where(e => e.Payload is not null)
-            .ToList();
+            .Where(entry => entry.Payload is not null)];
 
-        shown = (versions.Latest(includePrerelease: true) ?? versions[^1]).Payload;
+        latest = versions.Latest(includePrerelease: true) ?? versions[^1];
+        shown = latest.Payload;
+        dependencies = [.. shown!.Dependencies.OrderBy(dependency => dependency.Ordinal)];
+
+        if (LatestIsLocal && CurrentTab == "files")
+        {
+            var key = new PackageStorageKey(feed.NameLower, displayId.ToLowerInvariant(), shown.NormalizedVersionLower);
+            files = await PackageFileReader.ReadAsync(Storage, key, HttpContext.RequestAborted);
+        }
     }
 
     /// <summary>Where this version is right now: pushed here, cached from an upstream, or only upstream.</summary>
@@ -242,12 +300,5 @@ else
         VersionSource.Local when entry.Payload!.Origin == PackageOrigin.Cached => "fg-badge-info",
         VersionSource.Local => "fg-badge-accent",
         _ => "fg-badge-plain",
-    };
-
-    private static string FormatSize(long bytes) => bytes switch
-    {
-        >= 1024 * 1024 => (bytes / 1024d / 1024d).ToString("0.0", CultureInfo.InvariantCulture) + " MB",
-        >= 1024 => (bytes / 1024d).ToString("0", CultureInfo.InvariantCulture) + " KB",
-        _ => bytes.ToString(CultureInfo.InvariantCulture) + " B",
     };
 }

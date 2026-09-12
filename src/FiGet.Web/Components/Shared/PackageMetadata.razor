@@ -1,0 +1,102 @@
+@*
+    The Metadata tab, shared by the package page (showing its latest version) and the version page.
+
+    Tags live here rather than on the overview because a PowerShell module publishes one tag per exported
+    command: the raw list runs to thousands of characters and buries the four tags anybody reads.
+*@
+
+<div class="fg-panel">
+    <dl class="fg-facts">
+        <dt>Id</dt><dd>@DisplayId</dd>
+        <dt>Version</dt>
+        <dd class="fg-num">
+            @Row.NormalizedVersion@(Row.OriginalVersion == Row.NormalizedVersion ? "" : $" (published as {Row.OriginalVersion})")
+        </dd>
+        <dt>Authors</dt><dd>@(string.IsNullOrWhiteSpace(Row.Authors) ? Display.None : Row.Authors)</dd>
+        <dt>Origin</dt><dd>@Origin</dd>
+        <dt>Published</dt><dd class="fg-num">@Display.Date(Row.PublishedUtc)</dd>
+        <dt>Size</dt><dd class="fg-num">@(IsLocal ? Display.Size(Row.Size) : Display.None)</dd>
+        <dt>Downloads</dt><dd class="fg-num">@Display.Count(Row.Downloads)</dd>
+        <dt>Licence</dt>
+        <dd>
+            @if (Row.LicenseExpression is { Length: > 0 } expression)
+            {
+                @expression
+            }
+            else if (Display.Link(Row.LicenseUrl) is { } licence)
+            {
+                <a href="@licence" rel="noopener noreferrer">@licence</a>
+            }
+            else
+            {
+                <span>@Display.None</span>
+            }
+        </dd>
+        <dt>Project</dt>
+        <dd>
+            @if (Display.Link(Row.ProjectUrl) is { } project)
+            {
+                <a href="@project" rel="noopener noreferrer">@project</a>
+            }
+            else
+            {
+                <span>@Display.None</span>
+            }
+        </dd>
+        <dt>Hash</dt>
+        <dd class="fg-num">@(string.IsNullOrWhiteSpace(Row.Hash) ? Display.None : Row.HashAlgorithm + " " + Row.Hash)</dd>
+    </dl>
+</div>
+
+<h2>Tags</h2>
+@if (Tags.Count == 0)
+{
+    <p class="fg-muted">None.</p>
+}
+else
+{
+    <div class="fg-chips">
+        @foreach (var tag in Tags.Where(tag => !IsGenerated(tag)))
+        {
+            <span class="fg-chip">@tag</span>
+        }
+    </div>
+
+    @if (Tags.Any(IsGenerated))
+    {
+        <details class="fg-more">
+            <summary>@Tags.Count(IsGenerated) command and function tags</summary>
+            <div class="fg-chips">
+                @foreach (var tag in Tags.Where(IsGenerated))
+                {
+                    <span class="fg-chip">@tag</span>
+                }
+            </div>
+        </details>
+    }
+}
+
+@code {
+    /// <summary>Tags a PowerShell module generates, one per exported command. Folded away, never dropped.</summary>
+    private static readonly string[] GeneratedTagPrefixes =
+        ["PSCommand_", "PSFunction_", "PSCmdlet_", "PSDscResource_", "PSRoleCapability_", "PSWorkflow_"];
+
+    [Parameter, EditorRequired]
+    public string DisplayId { get; set; } = "";
+
+    [Parameter, EditorRequired]
+    public PackageVersion Row { get; set; } = default!;
+
+    /// <summary>Where this version is: pushed here, cached from an upstream, or upstream only.</summary>
+    [Parameter, EditorRequired]
+    public string Origin { get; set; } = "";
+
+    [Parameter]
+    public bool IsLocal { get; set; }
+
+    private List<string> Tags =>
+        [.. Row.Tags.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+
+    private static bool IsGenerated(string tag) =>
+        GeneratedTagPrefixes.Any(prefix => tag.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+}

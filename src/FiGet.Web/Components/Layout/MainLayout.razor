@@ -9,6 +9,16 @@
                 <AuthorizeView Policy="@FiGetApp.AdminPolicy">
                     <Authorized>
                         <a href="/tokens">Tokens</a>
+                    </Authorized>
+                </AuthorizeView>
+
+                @* Static SSR cannot know the reader's choice, so the button is stateless and app.js
+                   flips the attribute the stylesheet keys off. Without script the page still follows
+                   the operating system's preference, which is what it did before the button existed. *@
+                <button type="button" class="fg-theme-btn" data-theme-toggle title="Switch between light and dark" aria-label="Switch between light and dark">◐</button>
+
+                <AuthorizeView Policy="@FiGetApp.AdminPolicy">
+                    <Authorized>
                         <form method="post" action="/account/logout" class="fg-signed-in">
                             <AntiforgeryToken />
                             <span class="fg-who">@context.User.Identity?.Name</span>

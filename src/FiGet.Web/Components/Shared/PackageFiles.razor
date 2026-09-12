@@ -1,0 +1,35 @@
+@*
+    The Files tab: what is inside the stored .nupkg, read on demand. Only reachable for a version held
+    here, because there is nothing to open for one that still lives upstream.
+*@
+
+@if (Files is null)
+{
+    <p class="fg-empty">The package file could not be read.</p>
+}
+else
+{
+    <p class="fg-result-count">@Files.Count file@(Files.Count == 1 ? "" : "s") inside the package.</p>
+    <div class="fg-table-wrap">
+        <table class="fg-table">
+            <thead>
+                <tr><th>Path</th><th>Size</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var file in Files)
+                {
+                    <tr>
+                        <td><code>@file.Path</code></td>
+                        <td class="fg-num">@Display.Size(file.Length)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    /// <summary>Null means the stored file was missing or unreadable, which is not the same as empty.</summary>
+    [Parameter]
+    public IReadOnlyList<PackageFileEntry>? Files { get; set; }
+}

@@ -114,7 +114,10 @@ public static class FiGetApp
         services.AddAntiforgery();
 
         services.AddSingleton<IThemeService, ThemeService>();
-        services.AddRazorComponents();
+        // Interactive rendering exists for the signed-in views only; every public page stays statically
+        // rendered and ships no framework. A circuit is server state held per connected reader, and the
+        // public surface is reachable without credentials, so it is not somewhere to allocate it.
+        services.AddRazorComponents().AddInteractiveServerComponents();
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
 
         if (builder.Configuration.GetValue<bool>("FiGet:Logging:Json") || builder.Configuration.GetValue<bool>("DOTNET_RUNNING_IN_CONTAINER"))
@@ -167,7 +170,7 @@ public static class FiGetApp
         app.MapAccountEndpoints();
         app.MapAdminEndpoints();
         app.MapStaticAssets();
-        app.MapRazorComponents<App>();
+        app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
         await InitializeAsync(app);
         return app;

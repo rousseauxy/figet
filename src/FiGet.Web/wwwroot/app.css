@@ -234,6 +234,21 @@ pre code { padding: 0; background: none; }
 .fg-navbar .fg-signed-in { display: flex; align-items: center; gap: 0.6rem; }
 .fg-navbar .fg-signed-in .fg-who { color: var(--chrome-muted); font-size: 0.8rem; }
 
+/* One glyph, no state: the server renders this page statically and cannot know which theme the
+   reader chose, so the button says what it does rather than what is currently on. */
+.fg-theme-btn {
+  background: transparent;
+  border: 1px solid var(--chrome-border);
+  border-radius: var(--r-pill);
+  color: var(--chrome-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0.28rem 0.55rem;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.fg-theme-btn:hover { color: var(--chrome-text); background: var(--chrome-hover); }
+
 /* A button that has to read as a link: sign-out posts, because a GET sign-out is reachable
    from any page a reader visits. */
 .fg-linklike {
@@ -271,8 +286,21 @@ pre code { padding: 0; background: none; }
 .fg-crumbs a:hover { color: var(--accent); }
 .fg-crumb-sep { color: var(--text-3); margin: 0 0.35rem; }
 
-.fg-page-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.fg-page-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .fg-page-head h1 { margin-bottom: 0; }
+
+/* The publisher's icon. Removed by app.js when it fails to load, which an air-gapped install
+   guarantees, so nothing here has to style a broken image. */
+.fg-icon {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  border-radius: var(--r-1);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 2px;
+  flex: 0 0 auto;
+}
 .fg-version {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -311,6 +339,9 @@ pre code { padding: 0; background: none; }
 }
 .fg-panel > h2:first-child { margin-top: 0; }
 .fg-panel-danger { border-color: var(--danger); }
+
+/* Sign-in is the one page that is a single narrow column rather than a full-width view. */
+.fg-signin { max-width: 26rem; margin: 3rem auto; }
 
 .fg-panel-grid {
   display: grid;
@@ -361,8 +392,16 @@ pre code { padding: 0; background: none; }
 /* Versions, sizes and counts line up when they are tabular. */
 .fg-num, .fg-table td.fg-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-.fg-cell-actions { display: flex; gap: 0.4rem; align-items: center; }
+/* A table cell, not a flex container: `display: flex` here overrides `display: table-cell`, which
+   takes the cell out of the row and leaves the column a wide empty gutter with borders that stop
+   short of it. Width 1% is the usual trick for "shrink to content" in a full-width table. */
+.fg-table td.fg-cell-actions {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
 .fg-cell-actions form { display: inline; margin: 0; }
+.fg-cell-actions > * + * { margin-left: 0.4rem; }
 
 /* ── Toolbar above a list ───────────────────────────────────────── */
 .fg-toolbar {
@@ -384,6 +423,20 @@ pre code { padding: 0; background: none; }
   flex-wrap: wrap;
 }
 .fg-pager-info { font-size: 0.78rem; color: var(--text-2); white-space: nowrap; }
+
+/* The grid's own paginator, which renders its markup rather than ours. */
+.fg-pager .paginator { display: flex; align-items: center; gap: 0.6rem; font-size: 0.78rem; color: var(--text-2); }
+.fg-pager .paginator button {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.15rem 0.6rem;
+}
+.fg-pager .paginator button:hover:not(:disabled) { background: var(--hover); }
+.fg-pager .paginator button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* ── Buttons ────────────────────────────────────────────────────── */
 .fg-btn {
@@ -542,9 +595,64 @@ legend {
 .fg-form { display: grid; gap: 0.5rem; max-width: 34rem; }
 .fg-form button { justify-self: start; }
 
-.fg-search { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-.fg-search input[type=search] { flex: 1 1 18rem; }
-.fg-search select { width: auto; flex: 0 0 auto; }
+/* One bordered bar holding the query, the filter and the button, so the filter reads as part of
+   the search rather than as a separate control sitting under it. */
+.fg-search-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+
+.fg-search-bar {
+  display: flex;
+  flex: 1 1 28rem;
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-2);
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.fg-search-bar:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.fg-search-bar input[type=search] {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.5rem 0.8rem;
+  font-size: 0.9rem;
+}
+.fg-search-bar input[type=search]:focus { outline: none; box-shadow: none; }
+
+/* The one control a stylesheet cannot fully own: the popup list is drawn by the operating system.
+   Everything around it is styled and it sits inside the bar, so the seam does not show. */
+.fg-search-bar select {
+  width: auto;
+  flex: 0 0 auto;
+  border: none;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--inset);
+  color: var(--text);
+  padding: 0 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+.fg-search-bar select:focus { outline: none; box-shadow: none; }
+
+.fg-search-bar button {
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 0;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 0.82rem;
+  padding: 0 1.1rem;
+  cursor: pointer;
+}
+.fg-search-bar button:hover { background: var(--accent-strong); }
 
 /* ── Alerts and validation ──────────────────────────────────────── */
 .fg-alert {
