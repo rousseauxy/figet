@@ -680,11 +680,11 @@ cold measurement of a large package:
 | Az.Accounts, Pester | 119–144 | ~1.0s | 0.13s |
 | PnP.PowerShell | 2098 | **22.99s** | 0.23s |
 
-Twenty-three seconds to render a page that shows ten rows. `UpstreamCandidatesAsync` describes every
-version — description, authors and tags for all 2098 — before the page selects the handful it displays.
-The version *list* genuinely is needed in full, because that is what makes exactly one version latest; the
-*descriptions* are only needed for the rows actually rendered. With a five-minute TTL this is the normal
-path, not a cold-start curiosity. Backlogged.
+Twenty-three seconds to render a page that shows ten rows. Attributed here, from reading the code, to the
+describe pass: `UpstreamCandidatesAsync` fills in description, authors and tags for all 2098 versions
+before the page selects the handful it displays. **That attribution was half right, and the half it got
+wrong was the half that mattered** — see "The 23-second page was two walks, not one describe" below.
+With a five-minute TTL this is the normal path, not a cold-start curiosity.
 
 ### Two traps met while diagnosing, both mine
 
@@ -767,3 +767,60 @@ image matches `figet:dev`; zero error lines.
 here holds more than fifty packages — upstream searches cap at fifty too — so the branch never ran. The
 markup and styling are the same ones the anonymous version list already renders with two thousand
 versions; what is untested is the `@onclick` wiring into `GoToAsync`.
+
+## The 23-second page was two walks, not one describe — 2026-09-12
+
+The backlog's fix was to describe lazily: stop describing inside `UpstreamCandidatesAsync` and let each
+caller ask for the rows it renders. Before building it, the premise was measured against the real galleries
+with a throwaway probe instead of inferred from the code. It did not survive.
+
+Per call, cold; `pnp.powershell` on the PowerShell Gallery (v2), `awssdk.core` on nuget.org (v3):
+
+| Call | v2, 2098 versions | v2, 7 versions | v3, 1504 versions |
+|---|---|---|---|
+| `GetAllVersionsAsync` (versions only) | 13.4s | 0.22s | **0.17s** |
+| `GetMetadataAsync`, unlisted excluded (the describe) | 8.5s | 0.17s | 3.7s |
+| **both, as the connector did** | **21.9s** | 0.39s | 3.9s |
+| `GetMetadataAsync`, unlisted included | **8.4s** | 0.15s | 3.2s |
+| per-version describe, 11 rows, in parallel | 0.33s | 0.31s | 0.66s |
+
+Three things follow, and only the first was in the backlog:
+
+1. **The version list is not the cheap half.** On a v2 gallery `GetAllVersionsAsync` alone is 13.4 of the
+   21.9 seconds. Describing lazily would have removed the 8.5s and left the 13.4s, so the page would still
+   have taken thirteen seconds and the agreed fix would have looked like a failure.
+2. **On v2 both calls are the same walk.** `RemoteV2FindPackageByIdResource` and
+   `PackageMetadataResourceV2Feed` both page through `FindPackagesById()`; v2 has no versions-only endpoint
+   to be cheap about. Asking separately paid for that walk twice. One walk with `includeUnlisted: true`
+   returns all 2098 versions *with* their descriptions, misses none, and costs 8.4s — less than either half
+   cost on its own.
+3. **On v3 the opposite holds.** The flat container answers versions in 0.17s while the registration walk
+   costs 3.2s, so there they really are different endpoints and describing lazily is worth about 19x.
+
+The fix is therefore protocol-shaped, which is why it lives in the adapter and not in the workflow: one
+walk on v2, and on v3 the version list still comes from the resource that decides what can be downloaded.
+
+### What changed
+
+`IUpstreamClient.GetVersionsAsync` and `GetMetadataAsync` became one `GetCatalogAsync` returning an
+`UpstreamCatalog` of versions and descriptions, cached together. They have to be cached together: the
+version list lives in the database and the descriptions in memory, so after a restart the list is fresh and
+the descriptions are gone, and taking only the first would serve a listing of blank rows.
+
+Measured effect on the upstream calls a cold `PnP.PowerShell` page makes: **21.9s to 8.4s**. The remaining
+8.4s is the walk itself and cannot be made smaller from this side; what removes it from the user's path is
+caching it for longer than five minutes and refreshing behind the request, which is now the backlog item.
+
+Guarded by `An_upstream_listing_is_described_without_a_second_call`: the stub upstream counts catalogue
+fetches, the listing shows the description, and the count is one. Counting is the only way to see this from
+inside a test, because both shapes produce identical output.
+
+### Two findings recorded rather than acted on
+
+- **2062 of PnP.PowerShell's 2098 versions are unlisted upstream.** The gallery advertises 36. FiGet marks
+  every upstream candidate `Listed: true`, so it shows all 2098 — about sixty times what `Find-Module`
+  would. The walk now returns the real flag, so honouring it is cheap, but it changes what every proxy
+  listing shows, so it is a decision rather than a quiet fix.
+- **Some callers need no descriptions at all.** `/v3/flatcontainer/{id}/index.json` returns a bare version
+  array, and a registration index above 128 versions inlines no leaves. On v2 that saves nothing, because
+  the walk is the cost either way; on v3 it is the 0.17s-versus-3.2s difference.

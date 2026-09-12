@@ -9,43 +9,48 @@ Ordered roughly by when it is likely to be worth doing, not by importance.
 
 ## Next
 
-### Describe only the versions being rendered
+### Keep the upstream catalogue long enough to matter
 
-Measured 2026-09-12 on the live instance, cold (the container had just restarted, so both upstream caches
-were empty):
+The two-walk defect is fixed (docs/status.md, "The 23-second page was two walks, not one describe"), which
+took the upstream calls behind a cold `PnP.PowerShell` page from 21.9s to 8.4s. The remaining 8.4s is the
+walk itself: 2098 versions out of a v2 gallery, which has no versions-only endpoint to be cheap about.
 
-| Package | Versions | Cold | Warm |
-|---|---|---|---|
-| AdminByRequest | 7 | 0.57s | — |
-| Az.Accounts, Pester | 119–144 | ~1.0s | 0.13s |
-| PnP.PowerShell | 2098 | **22.99s** | 0.23s |
+It cannot be made smaller from this side, so it has to be paid less often. Today it is paid every five
+minutes per package: `UpstreamIndexTtl` defaults to five minutes, and the descriptions live in a singleton
+that empties on every restart and is shared with no other replica.
 
-Twenty-three seconds to render a page that shows ten rows. `ConnectorService.UpstreamCandidatesAsync`
-calls `GetMetadataAsync` for the whole id and fills in description, authors and tags for **every** version
-before the page picks the handful it displays. On a v2 gallery that is a paged walk of several megabytes.
+Two changes, in this order:
 
-The distinction that matters: the version **list** genuinely is needed in full, because computing exactly
-one latest entry across local and upstream versions is the rule this server exists to get right (section
-5). The **descriptions** are not — they are needed for the rows actually rendered, which is ten on the
-overview and fifty on a page of the full list.
+1. **Serve the cached catalogue while refreshing behind the request.** A version list five minutes old is a
+   fine answer; blocking a page for eight seconds to avoid it is not. Only the first ever view of a package
+   should wait. The care it needs is real: fire-and-forget work in a request wants its own scope, its own
+   cancellation, and de-duplication, so twenty readers do not start twenty walks of the same package.
+2. **Put the descriptions in the database beside the version list**, where the version list already is.
+   That survives a restart and is shared between replicas, neither of which is true today. Needs a
+   migration, which is why it is second.
 
-This is not a cold-start curiosity. `UpstreamIndexTtl` defaults to five minutes and nothing overrides it,
-so any package not visited within that window pays it again.
+### Ask upstreams only for what the caller will serve
 
-Three ways to fix it, and they are not exclusive:
+Raised 2026-09-12, from the observation that a client calling the API usually needs only versions. True,
+and the shapes agree: `/v3/flatcontainer/{id}/index.json` returns a bare version array, and a registration
+index above 128 versions inlines no leaves, so neither needs a description at all.
 
-1. **Describe lazily** — the honest fix. Stop describing inside `UpstreamCandidatesAsync`; expose a call
-   that describes a named set of versions, and have each caller ask for the rows it is about to render.
-   The v2 Atom feed and the v3 registration pages page their output too, so they want the same treatment
-   rather than a UI-only patch.
-2. **Cache the metadata in the database** instead of in memory. Today it lives in a singleton with the same
-   TTL, so it is refetched after every restart and separately by every replica — neither of which is
-   acceptable once this runs as more than one pod.
-3. **Raise the TTL**, which reduces how often the cost is paid without reducing the cost. Worth considering
-   alongside, not instead.
+Worth doing only against a **v3** upstream, where versions cost 0.17s and descriptions 3.2s. Against a v2
+gallery it saves nothing, and asking for versions alone is actually *dearer* than asking for both (13.4s
+versus 8.4s), because both come from the same paged walk. Since the feed that hurts is v2-backed this is a
+real but secondary win. Shape: a describe-what-you-render call on the port, with the four callers asking
+for their own rows.
 
-Start with 1: it removes the work rather than remembering it, and the cost it removes grows with exactly
-the packages people care about most.
+One thing it cannot drop: a v2 Atom entry carries `Tags`, and PowerShellGet reads `PSEdition_Desktop` /
+`PSEdition_Core` from them to decide whether a version can run at all. Descriptions are cosmetic there;
+tags are not.
+
+### Decide whether unlisted upstream versions should be listed
+
+The gallery advertises 36 versions of PnP.PowerShell; FiGet shows 2098, because every upstream candidate is
+marked `Listed: true` whatever the upstream said. `Find-Module` against the gallery shows 36. The catalogue
+walk now carries the real flag, so honouring it is a small change — but it changes what every proxy listing
+shows, and which versions can be found at all, so it is a decision and not a fix to slip in.
 
 ### The admin area, with its own side menu
 
