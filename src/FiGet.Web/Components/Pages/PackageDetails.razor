@@ -107,9 +107,33 @@ else
     <p class="muted"><a href="/feeds/@feed.Name/packages/@displayId?all=true">Show all @versions.Count versions</a>.</p>
 }
 
+@if (All)
+{
+    <p class="muted">
+        @(Skip + 1) to @(Skip + Rows.Count()) of @versions.Count versions, newest first.
+    </p>
+
+    <nav class="pager">
+        @if (Page > 1)
+        {
+            <a href="@PageLink(Page - 1)">← Newer</a>
+        }
+        @if (Skip + PageSize < versions.Count)
+        {
+            <a href="@PageLink(Page + 1)">Older →</a>
+        }
+    </nav>
+}
+
 @code {
     /// <summary>How many versions the overview shows before sending you to the full list.</summary>
     private const int RecentCount = 10;
+
+    /// <summary>
+    /// How many the full list shows at a time. A package with two thousand versions is not unusual on a
+    /// gallery, and rendering all of them is a download rather than a page.
+    /// </summary>
+    private const int PageSize = 50;
 
     private Feed? feed;
     private string displayId = "";
@@ -126,6 +150,9 @@ else
     [SupplyParameterFromQuery(Name = "all")]
     private bool All { get; set; }
 
+    [SupplyParameterFromQuery(Name = "page")]
+    private int Page { get; set; }
+
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
 
@@ -133,12 +160,18 @@ else
 
     private string ReturnUrl => HttpContext.Request.Path + HttpContext.Request.QueryString;
 
+    private int Skip => (Math.Max(1, Page) - 1) * PageSize;
+
     /// <summary>Newest first, because that is the version being looked for.</summary>
     private IEnumerable<VersionListEntry<PackageVersion>> Rows =>
-        All ? versions.Reverse() : versions.Reverse().Take(RecentCount);
+        All ? versions.Reverse().Skip(Skip).Take(PageSize) : versions.Reverse().Take(RecentCount);
+
+    private string PageLink(int page) =>
+        $"/feeds/{Uri.EscapeDataString(Name)}/packages/{Uri.EscapeDataString(displayId)}?all=true&page={page}";
 
     protected override async Task OnInitializedAsync()
     {
+        Page = Math.Max(1, Page);
         feed = await Feeds.FindAsync(Name, HttpContext.RequestAborted);
         if (feed is not null && !feed.AnonymousRead && !IsAdmin)
         {

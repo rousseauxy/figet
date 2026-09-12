@@ -254,6 +254,8 @@ Since then, driven by using it:
 - **Versions nobody has cached are described.** The upstream's description, authors and tags travel with
   them, which matters because a PowerShell client reads `PSEdition_Desktop` against `PSEdition_Core` to
   decide whether a version can run at all.
+- **The full version list is paged**, fifty at a time, newest first. A gallery package can have two
+  thousand versions, and rendering all of them was a download rather than a page.
 - **A version has tabs**: Overview, Metadata, Dependencies, and Files for a version held here. Tags moved
   into Metadata as chips, with the generated ones folded away: a PowerShell module publishes one tag per
   exported command, so the list runs to thousands and reads as noise inline. Dependencies come from the
@@ -264,13 +266,20 @@ Since then, driven by using it:
 
 ### Next, in this order
 
-1. **An admin area with its own side menu.** The management controls sit among the public pages today.
+1. **The design-system port.** The full token set and component classes, so a theme pack restyles every
+   control rather than the handful of colours the base stylesheet defines today, and every page is
+   rewritten onto those classes. First because everything built after it is then built once, in the
+   final visual language, instead of being restyled later.
+   Decided: packs are **YAML**, the same as the reference implementation, so a pack moves between the two
+   applications unchanged. That means a YAML dependency here and converting the sample pack; the loader
+   and the token names already match, only the parser changes.
+   The port also covers the lists: the version list, the feed list and the search results get the same
+   treatment as the record list in the reference application, rather than the plain tables they use now.
+2. **An admin area with its own side menu.** The management controls sit among the public pages today.
    Feeds, tokens, upstreams and appearance belong behind one nav, leaving the public pages read-only.
-2. **The design-system port.** The token set and component classes, so a theme pack restyles every
-   control rather than the handful of colours the base stylesheet defines today.
-3. **The themed dropdown.** The one used elsewhere here is an interactive component and these pages are
+3. **The themed dropdown.** The one used elsewhere is an interactive component and these pages are
    statically rendered, so it needs rebuilding as a script-driven listbox with the same look, unless the
-   admin pages are made interactive instead.
+   admin pages are made interactive instead. Last because it only matters once the admin forms exist.
 
 Not doing, decided: per-feed version filtering (section 9). Still open from earlier phases: the packages
 management API, replaying the recorded fixtures as tests, the real PowerShell 5.1 client run, per-version
