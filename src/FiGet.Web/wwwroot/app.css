@@ -430,19 +430,9 @@ pre code { padding: 0; background: none; }
 }
 .fg-pager-info { font-size: 0.78rem; color: var(--text-2); white-space: nowrap; }
 
-/* The grid's own paginator, which renders its markup rather than ours. */
-.fg-pager .paginator { display: flex; align-items: center; gap: 0.6rem; font-size: 0.78rem; color: var(--text-2); }
-.fg-pager .paginator button {
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-pill);
-  color: var(--text);
-  cursor: pointer;
-  font-size: 0.75rem;
-  padding: 0.15rem 0.6rem;
-}
-.fg-pager .paginator button:hover:not(:disabled) { background: var(--hover); }
-.fg-pager .paginator button:disabled { opacity: 0.4; cursor: not-allowed; }
+/* No rules for the grid's own paginator: it is not used. Styling it meant fighting scoped selectors
+   that outrank plain ones, and the background this set wiped out the arrows it draws — which is what
+   turned the pager into blank circles. The grid now uses the same fg-btn pager as everything else. */
 
 /* ── Buttons ────────────────────────────────────────────────────── */
 .fg-btn {

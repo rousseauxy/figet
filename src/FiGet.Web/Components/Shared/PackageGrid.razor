@@ -58,7 +58,7 @@
 </p>
 
 <div class="fg-table-wrap">
-    <QuickGrid TGridItem="Row" ItemsProvider="provider" Pagination="pagination" Class="fg-table" @ref="grid">
+    <QuickGrid TGridItem="Row" ItemsProvider="provider" Class="fg-table" @ref="grid">
         <TemplateColumn Title="Package" Context="row">
             <a href="/feeds/@FeedName/packages/@row.Id">@row.Id</a>
         </TemplateColumn>
@@ -92,14 +92,36 @@
     </QuickGrid>
 </div>
 
-<div class="fg-pager">
-    <Paginator State="pagination" />
-</div>
+@if (total > PageSize)
+{
+    @* Ours, not the grid's. Paginator's scoped rules outrank plain selectors, hard-code a #ccc border
+       that ignores the theme, and draw their arrows with a background any override wipes out. This also
+       matches the pager the anonymous view already uses. *@
+    <nav class="fg-pager">
+        @if (pageIndex > 0)
+        {
+            <button type="button" class="fg-btn fg-btn-sm" @onclick="() => GoToAsync(pageIndex - 1)">← Previous</button>
+        }
+        <span class="fg-pager-info">
+            @(pageIndex * PageSize + 1) to @Math.Min((pageIndex + 1) * PageSize, total) of @total
+        </span>
+        @if ((pageIndex + 1) * PageSize < total)
+        {
+            <button type="button" class="fg-btn fg-btn-sm" @onclick="() => GoToAsync(pageIndex + 1)">Next →</button>
+        }
+    </nav>
+}
 
 @code {
     private const int PageSize = 50;
 
-    private readonly PaginationState pagination = new() { ItemsPerPage = PageSize };
+    /// <summary>
+    /// Paged here rather than by the grid, on purpose. Given a <c>PaginationState</c>, QuickGrid pads
+    /// every page out to <c>ItemsPerPage</c> with blank rows that carry no class and no aria-rowindex —
+    /// nothing a stylesheet can select — so five results in a page of fifty drew forty-five empty lines.
+    /// Its own samples do not show this because the padding only happens when Pagination is set.
+    /// </summary>
+    private int pageIndex;
 
     private GridItemsProvider<Row>? provider;
     private QuickGrid<Row>? grid;
@@ -153,7 +175,16 @@
     /// <summary>Back to the first page and re-run: page seven of one search is not page seven of the next.</summary>
     private async Task ResetAsync()
     {
-        await pagination.SetCurrentPageIndexAsync(0);
+        pageIndex = 0;
+        if (grid is not null)
+        {
+            await grid.RefreshDataAsync();
+        }
+    }
+
+    private async Task GoToAsync(int target)
+    {
+        pageIndex = Math.Max(0, target);
         if (grid is not null)
         {
             await grid.RefreshDataAsync();
@@ -178,7 +209,8 @@
         if (source != "upstream")
         {
             var filter = new PackageSearchFilter(SearchQueryParser.Parse(query), IncludePrerelease: true, IncludeSemVer2: true, PackageTypeLower: null);
-            var page = await packages.SearchAsync(feed.Key, filter, request.StartIndex, request.Count ?? PageSize, request.CancellationToken);
+            // The grid is not paging, so its request always starts at zero: the offset is ours to apply.
+            var page = await packages.SearchAsync(feed.Key, filter, pageIndex * PageSize, PageSize, request.CancellationToken);
             count = page.TotalHits;
 
             var found = (await packages.GetPackagesAsync(page.PackageKeys, request.CancellationToken)).ToDictionary(p => p.Key);
