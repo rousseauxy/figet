@@ -1306,3 +1306,66 @@ admin page, with configurable automatic pruning. To be built after the current t
 
 Per-download records carrying cache-versus-upstream origin were considered and deliberately left out of
 that entry: heaviest by volume, and they belong with usage statistics rather than with an audit trail.
+
+## Two versions counted, one shown - and a page size worth choosing - 2026-09-12
+
+Reported from the package page: the admin panel offered to un-cache 2 versions of PowerShellGet while the
+list above it showed 1.
+
+Both numbers were right. `CachedCount` counts every cached version; the table filters to listed ones,
+because this page hides what the gallery hides. PowerShellGet has two cached copies, 2.2.5 and 2.2.5.1, and
+the gallery unlists the second - so it sat inside the "52 unlisted versions hidden" line while the button
+correctly promised to remove both. The panel now says so: "1 of them is not in the list above, because the
+gallery unlists that version". The count itself stays honest about what the action does.
+
+Not covered by a test, and worth stating plainly: the panel is admin-only and needs a version that is both
+cached and unlisted, which means an admin session on a proxy feed - the browser harness and the upstream
+stub live in different fixtures. The same split already left the un-cache endpoint untested. What does
+protect it is that both numbers now read the same `Listed` flag, so they cannot drift apart silently.
+
+### Rows per page
+
+Also asked for: more than 50 rows at a time. The list now offers 50, 100, 250 and 500, carried in a `per`
+query parameter and kept across paging links. Capped deliberately - rows are rendered server-side, and
+PnP.PowerShell has 2098 versions - and a size that is not offered falls back to 50, so a hand-typed
+`per=100000` cannot render the lot. Two integration tests pin the default and the fallback.
+
+Verified live on dbatools, which has 990 listed versions: the chooser renders, `per=250` gives "1 to 250 of
+990 versions", and `per=9999` gives "1 to 50 of 990".
+
+### The cold-start window, measured at last
+
+Chasing the above turned up something better evidenced. After a restart the description cache is empty, so
+every version looks listed until the first described refresh lands. Watched deliberately across a deploy:
+at 20:48:20 PnP.PowerShell read "1 to 50 of 2098 versions" with no hidden line; at 20:48:47 the same page
+read "1 to 36 of 36 versions, 2062 unlisted hidden". Twenty-seven seconds.
+
+I had called this twice before and got it wrong both times - first "flapping", then "minutes for a large
+package". It is one cycle per restart, it corrects itself, and it is under thirty seconds. Recorded in
+docs/backlog.md with the fix worth making: re-listing should require positive evidence, so a cold cache
+means "no news" rather than "everything is fine".
+
+### Used in production before the write-up was finished
+
+Fifteen minutes after the deploy, the request log answered a question about itself. Rows were disappearing
+from the database between two of my own queries, and rather than guess, the new log said what happened:
+
+    "Method":"POST","Path":"/admin/feeds/gallery/packages/uncache"
+    caller=203.0.113.10 who=user:tester
+    "Un-cached 1 version(s) of PowerShellGet from feed gallery; it follows its upstreams again."
+
+The tester used the un-cache button. It worked, it wrote its line, and the row count moved. That is also the
+live proof of attribution that was missing earlier: the token path stayed unverified because tokens are
+stored hashed and none should be minted to test with, but the signed-in path shows plainly as
+`who=user:tester`.
+
+His session: 80 requests, 79 answered 200 and one 302 - the un-cache post redirecting back. No errors.
+
+PowerShellGet is cached again already, both versions, files and all. That is the intended behaviour and
+the panel says so: un-caching is not a delete, and the next download fetches the versions back.
+
+One honest loose end. The panel offered to remove 2 versions and the action removed 1. The count is a
+snapshot taken when the page renders, and the action removes whatever is cached when it runs, so the two
+can differ if the cache changes in between - which it does constantly on a feed somebody is testing
+against. The exact interleaving cannot be reconstructed from the log and is not worth inventing. The
+action is right either way: it removes the cached versions that exist at the moment it runs.

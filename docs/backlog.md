@@ -183,7 +183,7 @@ Four things to decide before building it, none of them obvious:
 - **Which framework group.** A .NET package has dependency groups per target framework and following
   all of them explodes; a PowerShell module has one flat set, which is the case that matters first.
 
-### An unlisted cached copy is listed again for a moment after every restart
+### Versions the gallery hides look listed for a moment after every restart
 
 Measured 2026-09-12. On start the description cache is empty - it lives in memory, which is deliberate
 after the 101 MB incident - so the first catalogue read has nothing described. `ReconcileWithdrawnAsync`
@@ -191,14 +191,20 @@ then takes the safe branch, where `advertised` is null and only presence counts,
 gallery unlists is present in the version list. So it gets listed again, until the first described refresh
 puts it back.
 
-Measured rather than guessed, after twice calling it worse than it is: exactly **one re-list and one
-correction per container start**, both for `PowerShellGet 2.2.5.1`, across two deploys. Not a loop, and it
-does correct itself.
+It is wider than cached copies. Upstream versions carry their listed flag from the same descriptions, so
+while those are cold the whole listing shows versions the gallery hides. Observed deliberately on a
+restart rather than inferred: at 20:48:20, seconds after start, `PnP.PowerShell` read "1 to 50 of 2098
+versions" with no hidden line at all; at 20:48:47 the same page read "1 to 36 of 36 versions, 2062 unlisted
+hidden". Same data, same image, 27 seconds apart.
 
-It still matters, because inside that window the version can win "latest" again - which is the one thing
-the reconcile exists to prevent, and exactly how 2.2.5.1 kept being served before it was written. The
-window is however long it takes the first described fetch to land, which for a package with 81 versions is
-seconds and for one with 2098 is not.
+Two earlier descriptions of this were wrong and are corrected here. It is not a loop - it is one cycle per
+container start, one re-list and one correction. And the window is **short**, not minutes: it opens when a
+package is first viewed after a restart and closes when that view's background refresh lands, which for the
+2098-version package took under 30 seconds.
+
+It still matters because inside that window an unlisted version can win "latest" - the one thing the
+reconcile exists to prevent, and exactly how `PowerShellGet 2.2.5.1` kept being served before it was
+written.
 
 The cheap fix is to make re-listing require positive evidence: unlist on presence alone, but only list
 again when the upstream actually described the version as listed. Null `advertised` would then mean "no
