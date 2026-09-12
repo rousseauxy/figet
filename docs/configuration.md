@@ -58,6 +58,7 @@ Applies to every proxy feed. Upstreams themselves are configured per feed, above
 | --- | --- | --- |
 | `UpstreamIndexTtl` | `00:05:00` | How old one upstream's cached catalogue for a package may get before it is fetched again. Not an expiry: a catalogue older than this is still served immediately and refreshed behind the request, so only the first ever view of a package waits for the upstream. A new upstream release becomes visible to the reader after this window, on the view that follows the refresh. |
 | `UpstreamTimeout` | `00:00:30` | How long one upstream call may take before that upstream counts as unavailable for this request. Listing a package with hundreds of versions on a v2 gallery is a paged walk of several megabytes, so this is not the latency of one request. A timeout is treated as "the upstream did not answer": the last known list is served and nothing is considered withdrawn. |
+| `MaxDescribedPackages` | `500` | Package ids one replica keeps upstream descriptions in memory for before dropping the oldest. The descriptions are the large part and every replica holds its own copy, so this decides the memory a busy instance settles at. Lowering it costs listings their description text until the next refresh, never their correctness. |
 
 ## FiGet:Theming
 
@@ -115,6 +116,21 @@ somebody asks what happened, and the volume is a few lines a day rather than a f
 
 Console only for now. A container log rotates and is lost; the database table and admin page this wants
 eventually are described in `docs/backlog.md`.
+
+## What survives a restart
+
+The version list an upstream reported has always been in the database. Two facts *about* those versions
+are now stored beside it, because both change what a client is told:
+
+| Stored | Why |
+|---|---|
+| Which versions the upstream does not advertise | Without it every hidden version looks listed until the first refresh lands, and can win "latest" again. |
+| What each version depends on | A client reads this to decide what else to install. While it was missing, a first install of an uncached module brought none of its dependencies. |
+
+Descriptions, summaries and tags are deliberately **not** stored. They are two orders of magnitude larger —
+a hundred megabytes against tens of kilobytes for the facts above — and persisting them is what caused the
+out-of-memory incident recorded in `docs/status.md`. They live in memory, and a restart simply leaves
+listings undescribed until the first refresh fills them in.
 
 ## Standard ASP.NET Core and OpenTelemetry settings that matter
 

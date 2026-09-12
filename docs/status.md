@@ -1564,3 +1564,55 @@ Six times today a truncated view has produced a defect that was not there: `grep
 `grep -B2` walking into a neighbouring entry, a log tail read as a flap, a line count read as traffic, and
 twice a version list read from its end. The rule that has worked every single time is to check the
 specific value - this version, this field - and never the tail.
+
+## The facts that matter now survive a restart - 2026-09-13
+
+Three defects had one cause: the version list an upstream reported lived in the database, but everything it
+said *about* those versions lived only in memory. After every restart the descriptions were gone, so until
+the first refresh landed a hidden version looked listed, a package with two thousand versions offered all
+of them instead of the thirty-six the gallery advertises, and - the one a colleague actually hit - an
+uncached version declared no dependencies, so a first install brought none of them with it.
+
+Two facts are now written beside the version list: which versions the upstream does not advertise, and what
+each version depends on. Nothing else. Descriptions, summaries and tags stay in memory, because those are
+the hundred megabytes that caused the out-of-memory incident recorded above - against tens of kilobytes for
+these. The encoding is one line per version: the version, a tab, then `id:range:framework` joined by pipes,
+which is the triple the v2 protocol already puts on the wire. A range carries spaces and commas but never a
+tab, colon or pipe, so it round-trips without escaping.
+
+One rule guards the write: **descriptions empty leaves both columns alone**. An upstream that answered
+without describing anything has said nothing new, not that the package suddenly depends on nothing. Without
+that, one undescribed refresh would erase exactly what this exists to keep.
+
+The migration adds both columns `nullable: false` with `defaultValue: ""` in a single `AddColumn`, on both
+providers. Deliberately not the scaffolded add-nullable-then-alter: that is what broke startup this
+morning, and `MigrateOnStartup` means a bad migration turns a working container into one that never comes
+up.
+
+### The memory this was supposed to save
+
+Persisting the facts does not shrink memory on its own, and the ask came from operators who watch pod
+limits. So the cache is bounded: `FiGet:Connector:MaxDescribedPackages`, 500 ids per replica, dropping the
+oldest-written beyond that. It was an unbounded dictionary that evicted only a key somebody happened to
+read while stale - nothing swept it, and every replica held its own copy.
+
+Bounding is safe now in a way it was not before. What a listing needs to be correct is in the database;
+what the cache holds is the text beside it. An evicted entry costs a listing its description until the next
+refresh, never its meaning. That ordering matters: the bound would have been a bug before the persistence.
+
+Oldest-written rather than least-recently-used, because `Get` does not touch the timestamp and making it do
+so would mean a write on every read of a cache whose point is to be cheap.
+
+### Also
+
+`FindPackagesById` defaults to 100 entries instead of 40 when a client does not ask, matching the gallery.
+Every client this exists for sends `$top` explicitly, so this is about answering like the thing we replace.
+
+### A trap that caught me three times in one file
+
+Writing C# escape sequences through a shell heredoc: `'\n'` and `'\t'` arrived as a real newline and a real
+tab inside character literals, which is "Newline in constant" and "Empty character literal". I fixed it,
+reintroduced it in the fix, and reintroduced it again in the constants meant to remove it. What worked was
+building the characters with `chr(10)` and `chr(9)` for the *searches*, and using an editing tool that
+passes strings through untouched for the *replacements*. The note in memory about this was right; I applied
+it to half the problem.
