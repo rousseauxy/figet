@@ -1616,3 +1616,35 @@ reintroduced it in the fix, and reintroduced it again in the constants meant to 
 building the characters with `chr(10)` and `chr(9)` for the *searches*, and using an editing tool that
 passes strings through untouched for the *replacements*. The note in memory about this was right; I applied
 it to half the problem.
+
+### And I put the flapping straight back in - 2026-09-13
+
+Minutes after deploying the persistence, a number I had been asserting was zero came back as one:
+
+    22:06:42  container started
+    22:06:45  PnP.PowerShell 1.9.61-nightly is offered upstream again
+    22:07:25  PnP.PowerShell 1.9.61-nightly was withdrawn upstream
+
+Three seconds after a restart, a version the gallery hides was listed again - and for the forty seconds
+until its first refresh it was eligible to be "latest". That is precisely the defect fixed this morning,
+reintroduced by the change meant to make restarts safe.
+
+The cause is a default value. The migration sets both new columns to empty, so a row written before they
+existed is indistinguishable from a row whose upstream hides nothing: both are `""`. The store parsed empty
+into an empty *set*, the connector read "not null" as "we were told", and an empty set says nothing is
+hidden - so every hidden version was re-listed. All 71 existing rows were in that state, and each would
+have done it on every restart until refreshed.
+
+Empty now means "we were not told". Only content counts as having been told, and absence is reported as
+null so it flows down the "no news" path that already existed. A package that genuinely hides nothing and
+declares nothing reads as no news until a refresh describes it - conservative, and it changes no flag,
+which is the only direction that cannot cause this.
+
+Proven by falsification rather than by going green: with the old reading the new test fails, with the fix
+it passes.
+
+**What this cost and what it is worth.** Two ideas that are the same value in the database - "none" and
+"unknown" - were the same string, and I did not notice until production told me. The persistence itself
+was tested, deployed and verified working; this hid underneath it, in the default on a column. Worth
+remembering next time a migration adds one: the default is a value, and somebody downstream will read
+meaning into it.
