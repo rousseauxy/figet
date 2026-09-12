@@ -63,11 +63,20 @@
     [Inject]
     private IOptions<FiGetOptions> Options { get; set; } = default!;
 
+    /// <summary>The SDK stamps this when a project names no version of its own.</summary>
+    private const string UnstampedVersion = "1.0.0";
+
+    /// <summary>Shown when nothing has said what this is. Saying so beats inventing a release number.</summary>
+    private const string NoVersion = "version not set";
+
     /// <summary>
     /// What is running, shown at the foot of the menu. A configured value wins, so a deployment can stamp
-    /// the image tag it built; otherwise the assembly's informational version, which is what a local run
-    /// has. The build metadata after "+" is dropped: it is a commit hash, and it is not what anyone
-    /// reading a menu wants.
+    /// the image tag it built; otherwise the assembly's informational version, with the build metadata
+    /// after "+" dropped because it is a commit hash and not what anyone reading a menu wants.
+    ///
+    /// <c>1.0.0</c> counts as nothing said. The SDK writes it whenever a project names no version, so
+    /// taking it at face value would have every unversioned build - every local run, and this server until
+    /// somebody stamps one - announce itself as a first release.
     /// </summary>
     private string Version
     {
@@ -81,7 +90,8 @@
 
             var assembly = typeof(FiGetApp).Assembly
                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-            return string.IsNullOrWhiteSpace(assembly) ? "dev" : assembly!.Split('+')[0];
+            var stamped = string.IsNullOrWhiteSpace(assembly) ? "" : assembly!.Split('+')[0];
+            return stamped.Length == 0 || stamped == UnstampedVersion ? NoVersion : stamped;
         }
     }
 }
