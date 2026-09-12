@@ -19,18 +19,35 @@ public sealed class EfUpstreamIndexStore(FiGetDbContext db) : IUpstreamIndexStor
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.FeedUpstreamKey == feedUpstreamKey && c.IdLower == idLower, cancellationToken);
 
-        // Coalesced here, at the boundary that reads the database: the column was added nullable, so
-        // every row written before it exists comes back null however the property is declared, and one
-        // `.Length` on it took out every registration index for a cached package.
-        return row is null
-            ? null
-            : new CachedUpstreamCatalog(
-                ParseVersions(row),
-                row.FetchedUtc,
-                row.Stale,
-                row.Id ?? "",
-                ParseUnlisted(row.UnlistedVersions),
-                ParseDependencies(row.Dependencies));
+        if (row is null)
+        {
+            return null;
+        }
+
+        // Empty columns are ambiguous: a row written before these existed looks exactly like a row whose
+        // upstream hides nothing and declares nothing. They must mean opposite things - the first is "no
+        // news", the second is "we asked, and the answer was none" - so absence is reported as null and
+        // only content counts as having been told.
+        //
+        // Getting this wrong is not theoretical. The migration defaults these to empty, and reading an
+        // empty set as "nothing is hidden" re-listed a version the gallery hides three seconds after a
+        // restart, which is the exact defect the reconciliation rules exist to prevent.
+        //
+        // The cost is a package that genuinely hides nothing and depends on nothing: it reads as "no
+        // news" until a refresh describes it, so nothing is re-listed on its behalf. That is the safe
+        // direction - it changes no flag - and one refresh later it is moot.
+        var told = row.UnlistedVersions.Length > 0 || row.Dependencies.Length > 0;
+
+        return new CachedUpstreamCatalog(
+            ParseVersions(row),
+            row.FetchedUtc,
+            row.Stale,
+            // Coalesced at the boundary that reads the database: this column was added nullable, so a row
+            // written before it existed comes back null however the property is declared, and one
+            // `.Length` on it took out every registration index for a cached package.
+            row.Id ?? "",
+            told ? ParseUnlisted(row.UnlistedVersions) : null,
+            told ? ParseDependencies(row.Dependencies) : null);
     }
 
     public async Task SaveAsync(

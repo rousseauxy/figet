@@ -675,6 +675,62 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         }
     }
 
+    /// <summary>
+    /// A row written before the facts columns existed must not re-list a version the upstream hides.
+    ///
+    /// Found in production within minutes of deploying the persistence. The migration defaults both
+    /// columns to empty, so every row already in the database looked like an upstream that hides nothing -
+    /// and three seconds after a restart a hidden nightly was listed again, eligible to be "latest", until
+    /// its first refresh forty seconds later put it back. That is the defect reconciliation exists to
+    /// prevent, arriving through the back door of a default value.
+    ///
+    /// Empty now means "we were not told", not "we were told nothing is hidden".
+    /// </summary>
+    [Fact]
+    public async Task A_row_written_before_the_facts_existed_does_not_relist_a_hidden_version()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.OldRow");
+        AddUpstream(id, "1.0.0");
+        AddUpstream(id, "1.1.0");
+
+        using var client = server.CreateClient();
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.1.0"));
+
+        AddUpstreamUnlisted(id, "1.1.0");
+        await ForgetUpstreamListingsAsync();
+        var settled = await FindAsync("proxy", id);
+        Assert.Equal("false", Property(settled.Single(e => Property(e, "Version") == "1.1.0"), "Listed"));
+
+        // Exactly what the migration leaves behind: the version list, and both facts blank.
+        await BlankStoredFactsAsync(id);
+        await ForgetDescriptionsAsync(id);
+
+        server.Upstream.Describes = false;
+        try
+        {
+            var entries = await FindAsync("proxy", id);
+            Assert.Equal("false", Property(entries.Single(e => Property(e, "Version") == "1.1.0"), "Listed"));
+            Assert.Equal("1.0.0", Property(entries.Single(e => Property(e, "IsLatestVersion") == "true"), "Version"));
+        }
+        finally
+        {
+            server.Upstream.Describes = true;
+        }
+    }
+
+    /// <summary>Blanks the stored facts, leaving a row shaped like one the migration has just added them to.</summary>
+    private async Task BlankStoredFactsAsync(string id)
+    {
+        await using var scope = server.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<FiGetDbContext>();
+        var idLower = id.ToLowerInvariant();
+        await db.CachedUpstreamIndexes
+            .Where(c => c.IdLower == idLower)
+            .ExecuteUpdateAsync(
+                u => u.SetProperty(c => c.UnlistedVersions, "").SetProperty(c => c.Dependencies, ""),
+                TestContext.Current.CancellationToken);
+    }
+
     /// <summary>Drops the in-memory descriptions for an id, which is what a restart does to them.</summary>
     private async Task ForgetDescriptionsAsync(string id)
     {
