@@ -146,6 +146,30 @@
         }
     });
 
+    // ── The signed-in menu ───────────────────────────────────────────────────────────────────────
+    // Opening the menu is the browser's job - it is a <details> so that it works with no script at all.
+    // Closing it when the reader looks elsewhere is not something <details> does on its own.
+
+    function closeMenus(except) {
+        var menus = document.querySelectorAll("details[data-nav-menu][open]");
+        for (var i = 0; i < menus.length; i++) {
+            if (menus[i] !== except) {
+                menus[i].removeAttribute("open");
+            }
+        }
+    }
+
+    document.addEventListener("click", function (event) {
+        var inside = event.target.closest ? event.target.closest("details[data-nav-menu]") : null;
+        closeMenus(inside);
+    });
+
+    document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+            closeMenus(null);
+        }
+    });
+
     // ── Icons that fail to load ──────────────────────────────────────────────────────────────────
     // A package icon is a URL chosen by whoever published the package, and it points at somewhere we do
     // not control — often unreachable from an air-gapped install. A broken image should leave no trace

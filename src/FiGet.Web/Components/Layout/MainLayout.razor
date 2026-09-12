@@ -1,4 +1,7 @@
 @inherits LayoutComponentBase
+@using System.Reflection
+@using Microsoft.Extensions.Options
+@using FiGet.Web.Configuration
 
 <div class="fg-shell">
     <nav class="fg-navbar">
@@ -6,14 +9,6 @@
             <a class="fg-navbar-brand" href="/">FiGet</a>
             <div class="fg-nav-links">
                 <a href="/">Feeds</a>
-                @* One door into everything that changes something. The public pages below it are
-                   read-only, which is what lets them be served to anyone. *@
-                <AuthorizeView Policy="@FiGetApp.AdminPolicy">
-                    <Authorized>
-                        <a href="/admin/feeds">Admin</a>
-                    </Authorized>
-                </AuthorizeView>
-
                 @* Static SSR cannot know the reader's choice, so the button ships a neutral glyph and
                    app.js paints the real one, flips the attribute the stylesheet keys off, and restores
                    the choice after an enhanced navigation replaces the document. Without script the page
@@ -21,13 +16,34 @@
                    button existed. *@
                 <button type="button" class="fg-theme-btn" data-theme-toggle title="Switch between light and dark" aria-label="Switch between light and dark">◐</button>
 
+                @*
+                    One door into everything that changes something, so the public pages below stay
+                    read-only and can be served to anyone.
+
+                    A <details> rather than a scripted popover. This bar renders on every page, including
+                    the anonymous ones that load no framework at all, so an @@onclick here would be dead
+                    markup - the same trap the theme toggle fell into. Opening is the browser's job;
+                    app.js only closes it again on a click elsewhere.
+                *@
                 <AuthorizeView Policy="@FiGetApp.AdminPolicy">
                     <Authorized>
-                        <form method="post" action="/account/logout" class="fg-signed-in">
-                            <AntiforgeryToken />
-                            <span class="fg-who">@context.User.Identity?.Name</span>
-                            <button type="submit" class="fg-linklike">Sign out</button>
-                        </form>
+                        <details class="fg-nav-dropdown" data-nav-menu>
+                            <summary>
+                                <span>@context.User.Identity?.Name</span>
+                                <span class="fg-nav-dropdown-caret" aria-hidden="true">&#9662;</span>
+                            </summary>
+                            <div class="fg-nav-dropdown-menu">
+                                <a href="/admin/feeds">Admin</a>
+                                <a href="/admin/tokens">Tokens</a>
+                                <hr />
+                                @* A POST, because a GET sign-out is reachable from any page a reader visits. *@
+                                <form method="post" action="/account/logout">
+                                    <AntiforgeryToken />
+                                    <button type="submit">Sign out</button>
+                                </form>
+                                <div class="fg-nav-dropdown-version">@Version</div>
+                            </div>
+                        </details>
                     </Authorized>
                     <NotAuthorized>
                         @* Reading is open on feeds that allow it; signing in is what adds the buttons. *@
@@ -42,3 +58,30 @@
         @Body
     </main>
 </div>
+
+@code {
+    [Inject]
+    private IOptions<FiGetOptions> Options { get; set; } = default!;
+
+    /// <summary>
+    /// What is running, shown at the foot of the menu. A configured value wins, so a deployment can stamp
+    /// the image tag it built; otherwise the assembly's informational version, which is what a local run
+    /// has. The build metadata after "+" is dropped: it is a commit hash, and it is not what anyone
+    /// reading a menu wants.
+    /// </summary>
+    private string Version
+    {
+        get
+        {
+            var configured = Options.Value.Version;
+            if (!string.IsNullOrWhiteSpace(configured))
+            {
+                return configured!;
+            }
+
+            var assembly = typeof(FiGetApp).Assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            return string.IsNullOrWhiteSpace(assembly) ? "dev" : assembly!.Split('+')[0];
+        }
+    }
+}

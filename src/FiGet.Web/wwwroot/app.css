@@ -734,6 +734,73 @@ legend {
 .fg-copy:hover { background: var(--hover); color: var(--text); }
 .fg-copy.copied { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
 
+/* ── The signed-in menu ─────────────────────────────────────────── */
+/* A <details>, not a scripted popover: this bar is rendered by static SSR on every page, including the
+   anonymous ones that load no framework, so opening has to work with no script at all. */
+.fg-nav-dropdown { position: relative; }
+
+.fg-nav-dropdown > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: var(--r-1);
+  color: var(--chrome-muted);
+  font-size: 0.86rem;
+}
+.fg-nav-dropdown > summary::-webkit-details-marker { display: none; }
+.fg-nav-dropdown > summary:hover,
+.fg-nav-dropdown[open] > summary { color: var(--chrome-text); background: var(--chrome-hover); }
+.fg-nav-dropdown-caret { font-size: 0.62rem; }
+
+.fg-nav-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1090;
+  min-width: 210px;
+  padding: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-2);
+}
+
+/* display:contents lifts the button out of the form, so it stays a direct child of the flex column
+   and lines up with the anchors beside it. */
+.fg-nav-dropdown-menu form { display: contents; }
+
+.fg-nav-dropdown-menu a,
+.fg-nav-dropdown-menu button {
+  /* Beats `.fg-navbar a:not(.fg-navbar-brand)`, which paints for the dark chrome this menu sits in
+     front of rather than for the surface it is drawn on. */
+  color: var(--text) !important;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--r-1);
+  cursor: pointer;
+}
+.fg-nav-dropdown-menu a:hover,
+.fg-nav-dropdown-menu button:hover { background: var(--hover); text-decoration: none; }
+
+.fg-nav-dropdown-menu hr { border: none; border-top: 1px solid var(--border); margin: 0.25rem 0; }
+
+.fg-nav-dropdown-version {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.7rem;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+}
+
 /* ── Admin shell (the side navigation of the admin area) ────────── */
 .fg-admin-shell {
   display: grid;

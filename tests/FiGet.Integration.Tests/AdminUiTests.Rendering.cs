@@ -56,6 +56,36 @@ public sealed partial class AdminUiTests
     }
 
     /// <summary>
+    /// The signed-in menu: the one door to everything that changes something, and markup that renders on
+    /// every page. Asserted because nothing else would notice it going missing - the theme toggle sat
+    /// broken in this same bar until somebody used it.
+    ///
+    /// The <c>&lt;summary&gt;</c> is part of the contract, not decoration. This bar is statically rendered
+    /// even for a signed-in reader, so a click handler here would never run; the menu opens because it is
+    /// a disclosure element. Replacing it with a scripted popover fails this test, which is the point.
+    /// </summary>
+    [Fact]
+    public async Task The_signed_in_menu_carries_the_admin_links_and_is_hidden_from_a_stranger()
+    {
+        using var client = CreateBrowser();
+
+        var anonymous = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/public"));
+        Assert.DoesNotContain("fg-nav-dropdown", anonymous, StringComparison.Ordinal);
+        Assert.DoesNotContain("Sign out", anonymous, StringComparison.Ordinal);
+
+        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/public"));
+
+        Assert.Contains("fg-nav-dropdown", page, StringComparison.Ordinal);
+        Assert.Contains("data-nav-menu", page, StringComparison.Ordinal);
+        Assert.Contains("<summary>", page, StringComparison.Ordinal);
+        Assert.Contains("href=\"/admin/feeds\"", page, StringComparison.Ordinal);
+        Assert.Contains("href=\"/admin/tokens\"", page, StringComparison.Ordinal);
+        Assert.Contains("Sign out", page, StringComparison.Ordinal);
+        Assert.Contains("fg-nav-dropdown-version", page, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The reconnect dialog exists only where a circuit does. It is not merely cosmetic: without it a
     /// dropped circuit leaves a page that looks alive and ignores every click.
     /// </summary>

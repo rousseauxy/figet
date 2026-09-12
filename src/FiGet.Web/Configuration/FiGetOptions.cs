@@ -24,6 +24,12 @@ public sealed class FiGetOptions
     public ConnectorOptions Connector { get; set; } = new();
 
     public ThemingOptions Theming { get; set; } = new();
+
+    /// <summary>
+    /// What to show as the running version, for example the image tag a deployment built. Empty: the
+    /// assembly's informational version, which is what a local run has.
+    /// </summary>
+    public string? Version { get; set; }
 }
 
 public sealed class ThemingOptions
