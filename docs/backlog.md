@@ -88,6 +88,32 @@ Four things to decide before building it, none of them obvious:
 - **Per-version registration leaves for upstream-only versions.** A v3 client can list them but cannot
   read a leaf for one that has never been downloaded.
 
+### When the repository goes public: split validation from publishing
+
+Raised 2026-09-12, to be decided when we get there rather than now.
+
+Today `ci.yml` runs on push to `main` and on pull requests, with two jobs: `build-and-test` (both
+database providers, the migration check, the whole suite) and `container`, which builds the image, loads
+it, runs it under an arbitrary UID and curls `/health/ready`. It never publishes anything, because the
+house rule is no images while the repository is private.
+
+The proposal was to run only on a tag, as the sibling application does. Worth writing down what that
+application actually does, because it is not quite that: `build.yml` triggers on `pull_request` and
+`workflow_dispatch` and only validates, while `docker.yml` triggers on `push: tags: docker-*` and is the
+release path. **The tag gates publishing, not testing** — and `build.yml`'s own comment records why the
+pull-request trigger exists at all: *"a broken main was invisible until somebody tagged."*
+
+The trap in copying it literally: **this repository has no pull requests.** Everything goes straight to
+main, so a pull-request-only trigger would mean the suite never runs and main goes unvalidated — exactly
+the failure that comment describes. The push-to-main trigger is currently the only safety net there is.
+
+Cost does not argue either way: public repositories get unlimited Actions minutes against 2,000 a month
+while private, so going public removes the pressure rather than creating it.
+
+Shape to decide on: keep `build-and-test` on push to main; keep the container smoke test there too, since
+it has already caught a real defect (a project added without its `COPY` line in the Dockerfile's restore
+layer); and add a *separate* tag-triggered job that pushes to GHCR once the repository is public.
+
 ## Later
 
 - **Asset directories** (phase 4): `/endpoints/{dir}/content/{path}`, upload through the UI with
