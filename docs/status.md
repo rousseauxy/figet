@@ -1258,3 +1258,41 @@ So the install that "did not cache" never reached this server. It took 386 ms wh
 it took 59.7 s, and PSResourceGet keeps its own package cache: a module it has already downloaded installs
 without asking us again. Unconfirmed until the tester checks - the proxy has no access log, so there is no
 record on our side either way.
+
+## Nothing was logged, so nothing could be answered — 2026-09-12
+
+Asked whether a colleague's tests are visible on our side. They are not: this server had produced **eight
+log lines since start**, none of them a request. `Microsoft.AspNetCore` is pinned to `Warning` in
+appsettings, which suppresses the request-logging category, and nothing wired up HTTP logging. That is why
+"is it reaching us at all" had to be argued from download counters and how long an install took.
+
+### What the server being replaced actually does
+
+Checked rather than assumed, and my assumption was wrong. I first cited its 40,451 log lines as evidence it
+logs all traffic; reading them, every one is scheduler chatter - Execution Dispatch, Failover Detection,
+Drop Path Monitor, at 1,331 lines an hour. **Not one is a package request.** It keeps two separate things,
+both opt-in and off by default: a W3C HTTP request log on disk (`ENABLE_REQUEST_LOGGING=true` in its
+container; 5 MB x 60 files) and a per-feed "record individual downloads" checkbox writing to a table of
+feed, package, version, user, IP and agent - which its own documentation warns reaches gigabytes with no
+built-in pruning.
+
+Neither records whether a request was served from cache or fetched from an upstream. Their own guidance is
+to infer it from `time-taken`. That is the one field that would have answered today's question outright.
+
+### What was added
+
+`FiGet:Logging:Requests`, default off, matching their opt-in posture. One structured line per request:
+method, path, query, status, duration, caller address, forwarded address, who, and user agent. Health
+probes and framework assets are skipped or they would be most of the log.
+
+Both addresses are recorded deliberately. Forwarded headers are honoured only for proxies the runtime
+trusts and the default trusts loopback alone, so behind a reverse proxy on another address the remote
+address is the proxy, not the caller. Logging the raw header beside it means the line is never quietly
+wrong about who asked.
+
+"Who" comes from `FeedAccess`, not from the middleware: that is the single place every protocol request
+resolves a feed and a token, so attribution exists once and names the token rather than an address.
+
+Still open, and deliberately not built into this change: persisting per-download records with a
+cache-versus-upstream flag behind an admin page. That is a schema change and a retention question - the
+warning above is what happens when retention is an afterthought.

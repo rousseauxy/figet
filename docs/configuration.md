@@ -93,6 +93,7 @@ the rare rule a token cannot express.
 | Key | Default | Meaning |
 |---|---|---|
 | `Json` | `false` | Write logs as JSON to the console. Always on when `DOTNET_RUNNING_IN_CONTAINER=true` (set in the image). |
+| `Requests` | `false` | One line per request: method, path, status, duration, caller address, forwarded address, token or user, user agent. Health probes and framework assets are skipped. Off by default because package clients are chatty; turn it on to see whether a client reached this server and what it asked for. |
 
 ## Standard ASP.NET Core and OpenTelemetry settings that matter
 
