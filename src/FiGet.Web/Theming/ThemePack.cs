@@ -1,7 +1,7 @@
 namespace FiGet.Web.Theming;
 
 /// <summary>
-/// A declarative theme, loaded from a JSON file. Token keys map one to one onto the CSS custom
+/// A declarative theme, loaded from a YAML file. Token keys map one to one onto the CSS custom
 /// properties in <c>app.css</c>, so a pack only states what it changes and anything the tokens cannot
 /// express goes in <see cref="CustomCss"/>. Drop a file in the themes directory and pick it in
 /// configuration: no rebuild, no redeploy.

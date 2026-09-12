@@ -2,30 +2,43 @@
 @attribute [AllowAnonymous]
 @using System.ComponentModel.DataAnnotations
 @using System.Security.Claims
+@using FiGet.Application.Tokens
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Authentication.Cookies
-@using FiGet.Application.Tokens
 @inject AccessTokenService Tokens
 @inject NavigationManager Navigation
 
 <PageTitle>Sign in · FiGet</PageTitle>
 
-<section class="narrow">
-    <h1>Sign in</h1>
-    <p class="muted">Paste an admin token. Sign-in with an identity provider arrives in a later release.</p>
+<section class="fg-signin">
+    <div class="fg-card">
+        <div class="fg-card-header">Sign in</div>
+        <div class="fg-card-body">
+            <p class="fg-muted fg-small">
+                Paste an admin token. Sign-in with an identity provider arrives in a later release.
+            </p>
 
-    <EditForm Model="Input!" FormName="login" OnValidSubmit="SignInAsync" method="post">
-        <DataAnnotationsValidator />
-        <label for="token">Admin token</label>
-        <InputText id="token" type="password" autocomplete="off" @bind-Value="Input!.Token" />
-        <ValidationMessage For="() => Input!.Token" />
-        @if (error is not null)
-        {
-            <p class="error">@error</p>
-        }
-        <button type="submit">Sign in</button>
-    </EditForm>
+            <EditForm Model="Input!" FormName="login" OnValidSubmit="SignInAsync" method="post" class="fg-form">
+                <DataAnnotationsValidator />
+                <div class="fg-field">
+                    <label for="token">Admin token</label>
+                    <InputText id="token" type="password" autocomplete="off" @bind-Value="Input!.Token" />
+                    <ValidationMessage For="() => Input!.Token" />
+                </div>
+                @if (error is not null)
+                {
+                    <p class="fg-error">@error</p>
+                }
+                <button type="submit" class="fg-btn fg-btn-primary">Sign in</button>
+            </EditForm>
+        </div>
+    </div>
 </section>
+
+<style>
+    /* One page wants a narrow, centred column; a token in the design system would be worse. */
+    .fg-signin { max-width: 26rem; margin: 3rem auto; }
+</style>
 
 @code {
     private string? error;

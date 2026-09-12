@@ -14,39 +14,48 @@
 @if (feed is null || entry is null)
 {
     <h1>Version not found</h1>
-    <p>
+    <p class="fg-muted">
         <code>@Id</code> <code>@Version</code> is not in feed <code>@Name</code>.
         <a href="/feeds/@Name">Back to the feed</a>.
     </p>
     return;
 }
 
-<p class="crumbs">
-    <a href="/">Feeds</a> / <a href="/feeds/@feed.Name">@feed.Name</a> /
+<p class="fg-crumbs">
+    <a href="/">Feeds</a>
+    <span class="fg-crumb-sep">/</span>
+    <a href="/feeds/@feed.Name">@feed.Name</a>
+    <span class="fg-crumb-sep">/</span>
     <a href="/feeds/@feed.Name/packages/@displayId">@displayId</a>
+    <span class="fg-crumb-sep">/</span>
+    <span>@row.NormalizedVersion</span>
 </p>
-<h1>@displayId <span class="version">@row.NormalizedVersion</span></h1>
 
-<p class="muted">
-    <span class="badge">@origin</span>
+<div class="fg-page-head">
+    <h1>@displayId</h1>
+    <span class="fg-version">@row.NormalizedVersion</span>
+</div>
+
+<div class="fg-toolbar">
+    <span class="fg-badge @OriginBadge">@origin</span>
     @if (!row.Listed)
     {
-        <span class="badge">unlisted</span>
+        <span class="fg-badge fg-badge-warn">unlisted</span>
     }
     @if (entry.IsAbsoluteLatestVersion)
     {
-        <span class="badge">latest</span>
+        <span class="fg-badge fg-badge-accent">latest</span>
     }
     @if (entry.IsLatestVersion && !entry.IsAbsoluteLatestVersion)
     {
-        <span class="badge">latest stable</span>
+        <span class="fg-badge fg-badge-accent">latest stable</span>
     }
-</p>
 
-<div class="actions">
+    <span class="fg-right"></span>
+
     @if (IsLocal)
     {
-        <a class="button" href="@(feedUrl)/package/@displayId/@row.NormalizedVersion">Download</a>
+        <a class="fg-btn fg-btn-primary" href="@(feedUrl)/package/@displayId/@row.NormalizedVersion">Download</a>
     }
     else if (IsAdmin)
     {
@@ -56,88 +65,90 @@
             <input type="hidden" name="id" value="@displayId" />
             <input type="hidden" name="version" value="@row.NormalizedVersion" />
             <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-            <button type="submit">Pull into this feed</button>
+            <button type="submit" class="fg-btn fg-btn-primary">Pull into this feed</button>
         </form>
     }
     else
     {
-        <span class="muted">Held by an upstream. Downloading it through a client caches it here.</span>
+        <span class="fg-muted fg-small">Held by an upstream. Downloading it through a client caches it here.</span>
     }
 </div>
 
-<nav class="tabs">
-    <a class="@Active("")" href="@TabLink("")">Overview</a>
-    <a class="@Active("metadata")" href="@TabLink("metadata")">Metadata</a>
-    <a class="@Active("dependencies")" href="@TabLink("dependencies")">Dependencies</a>
+<nav class="fg-tabs">
+    <a class="fg-tab @Active("")" href="@TabLink("")">Overview</a>
+    <a class="fg-tab @Active("metadata")" href="@TabLink("metadata")">Metadata</a>
+    <a class="fg-tab @Active("dependencies")" href="@TabLink("dependencies")">Dependencies</a>
     @if (IsLocal)
     {
-        <a class="@Active("files")" href="@TabLink("files")">Files</a>
+        <a class="fg-tab @Active("files")" href="@TabLink("files")">Files</a>
     }
 </nav>
 
 @switch (CurrentTab)
 {
     case "metadata":
-        <dl class="facts">
-            <dt>Id</dt><dd>@displayId</dd>
-            <dt>Version</dt><dd>@row.NormalizedVersion@(row.OriginalVersion == row.NormalizedVersion ? "" : $" (published as {row.OriginalVersion})")</dd>
-            <dt>Authors</dt><dd>@(string.IsNullOrWhiteSpace(row.Authors) ? "—" : row.Authors)</dd>
-            <dt>Origin</dt><dd>@origin</dd>
-            <dt>Published</dt><dd>@(row.PublishedUtc == default ? "—" : row.PublishedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC")</dd>
-            <dt>Size</dt><dd>@(IsLocal ? FormatSize(row.Size) : "—")</dd>
-            <dt>Downloads</dt><dd>@row.Downloads.ToString("N0", CultureInfo.InvariantCulture)</dd>
-            <dt>Licence</dt>
-            <dd>
-                @if (row.LicenseExpression is { Length: > 0 } expression)
-                {
-                    @expression
-                }
-                else if (Link(row.LicenseUrl) is { } licence)
-                {
-                    <a href="@licence" rel="noopener noreferrer">@licence</a>
-                }
-                else
-                {
-                    <span>—</span>
-                }
-            </dd>
-            <dt>Project</dt>
-            <dd>
-                @if (Link(row.ProjectUrl) is { } project)
-                {
-                    <a href="@project" rel="noopener noreferrer">@project</a>
-                }
-                else
-                {
-                    <span>—</span>
-                }
-            </dd>
-            <dt>Hash</dt><dd>@(string.IsNullOrWhiteSpace(row.Hash) ? "—" : row.HashAlgorithm + " " + row.Hash)</dd>
-        </dl>
+        <div class="fg-panel">
+            <dl class="fg-facts">
+                <dt>Id</dt><dd>@displayId</dd>
+                <dt>Version</dt><dd class="fg-num">@row.NormalizedVersion@(row.OriginalVersion == row.NormalizedVersion ? "" : $" (published as {row.OriginalVersion})")</dd>
+                <dt>Authors</dt><dd>@(string.IsNullOrWhiteSpace(row.Authors) ? "—" : row.Authors)</dd>
+                <dt>Origin</dt><dd>@origin</dd>
+                <dt>Published</dt><dd class="fg-num">@(row.PublishedUtc == default ? "—" : row.PublishedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC")</dd>
+                <dt>Size</dt><dd class="fg-num">@(IsLocal ? FormatSize(row.Size) : "—")</dd>
+                <dt>Downloads</dt><dd class="fg-num">@row.Downloads.ToString("N0", CultureInfo.InvariantCulture)</dd>
+                <dt>Licence</dt>
+                <dd>
+                    @if (row.LicenseExpression is { Length: > 0 } expression)
+                    {
+                        @expression
+                    }
+                    else if (Link(row.LicenseUrl) is { } licence)
+                    {
+                        <a href="@licence" rel="noopener noreferrer">@licence</a>
+                    }
+                    else
+                    {
+                        <span>—</span>
+                    }
+                </dd>
+                <dt>Project</dt>
+                <dd>
+                    @if (Link(row.ProjectUrl) is { } project)
+                    {
+                        <a href="@project" rel="noopener noreferrer">@project</a>
+                    }
+                    else
+                    {
+                        <span>—</span>
+                    }
+                </dd>
+                <dt>Hash</dt><dd class="fg-num">@(string.IsNullOrWhiteSpace(row.Hash) ? "—" : row.HashAlgorithm + " " + row.Hash)</dd>
+            </dl>
+        </div>
 
         <h2>Tags</h2>
         @if (Tags.Count == 0)
         {
-            <p class="muted">None.</p>
+            <p class="fg-muted">None.</p>
         }
         else
         {
-            <div class="chips">
+            <div class="fg-chips">
                 @foreach (var tag in Tags.Where(t => !IsGenerated(t)))
                 {
-                    <span class="chip">@tag</span>
+                    <span class="fg-chip">@tag</span>
                 }
             </div>
 
             @* A PowerShell module publishes one tag per exported command. Useful to search, useless to read. *@
             @if (Tags.Any(IsGenerated))
             {
-                <details class="more">
+                <details class="fg-more">
                     <summary>@Tags.Count(IsGenerated) command and function tags</summary>
-                    <div class="chips">
+                    <div class="fg-chips">
                         @foreach (var tag in Tags.Where(IsGenerated))
                         {
-                            <span class="chip">@tag</span>
+                            <span class="fg-chip">@tag</span>
                         }
                     </div>
                 </details>
@@ -148,7 +159,7 @@
     case "dependencies":
         @if (dependencies.Count == 0)
         {
-            <p class="muted">
+            <p class="fg-empty">
                 @(IsLocal ? "This version declares no dependencies." : "Known once the package is here: dependencies are read from the package itself.")
             </p>
         }
@@ -159,12 +170,12 @@
                 <h2>@(string.IsNullOrWhiteSpace(group.Key) ? "Any framework" : group.Key)</h2>
                 @if (group.All(d => d.Id is null))
                 {
-                    <p class="muted">No dependencies for this target.</p>
+                    <p class="fg-muted">No dependencies for this target.</p>
                 }
                 else
                 {
-                    <div class="table-wrap">
-                        <table>
+                    <div class="fg-table-wrap">
+                        <table class="fg-table">
                             <thead>
                                 <tr><th>Package</th><th>Version range</th></tr>
                             </thead>
@@ -173,7 +184,7 @@
                                 {
                                     <tr>
                                         <td><a href="/feeds/@feed.Name/packages/@dependency.Id">@dependency.Id</a></td>
-                                        <td>@(string.IsNullOrWhiteSpace(dependency.VersionRange) ? "any" : dependency.VersionRange)</td>
+                                        <td class="fg-num">@(string.IsNullOrWhiteSpace(dependency.VersionRange) ? "any" : dependency.VersionRange)</td>
                                     </tr>
                                 }
                             </tbody>
@@ -187,20 +198,20 @@
     case "files":
         @if (files is null)
         {
-            <p class="muted">The package file could not be read.</p>
+            <p class="fg-empty">The package file could not be read.</p>
         }
         else
         {
-            <p class="muted">@files.Count file@(files.Count == 1 ? "" : "s") inside the package.</p>
-            <div class="table-wrap">
-                <table>
+            <p class="fg-result-count">@files.Count file@(files.Count == 1 ? "" : "s") inside the package.</p>
+            <div class="fg-table-wrap">
+                <table class="fg-table">
                     <thead>
                         <tr><th>Path</th><th>Size</th></tr>
                     </thead>
                     <tbody>
                         @foreach (var file in files)
                         {
-                            <tr><td><code>@file.Path</code></td><td>@FormatSize(file.Length)</td></tr>
+                            <tr><td><code>@file.Path</code></td><td class="fg-num">@FormatSize(file.Length)</td></tr>
                         }
                     </tbody>
                 </table>
@@ -211,7 +222,7 @@
     default:
         @if (!string.IsNullOrWhiteSpace(row.Description))
         {
-            <p class="description">@row.Description</p>
+            <p class="fg-lede">@row.Description</p>
         }
 
         <h2>Install this version</h2>
@@ -258,6 +269,13 @@
     private string ReturnUrl => HttpContext.Request.Path + HttpContext.Request.QueryString;
 
     private string CurrentTab => (Tab ?? "").Trim().ToLowerInvariant();
+
+    private string OriginBadge => entry!.Source switch
+    {
+        VersionSource.Local when row.Origin == PackageOrigin.Cached => "fg-badge-info",
+        VersionSource.Local => "fg-badge-accent",
+        _ => "fg-badge-plain",
+    };
 
     private List<string> Tags =>
         row.Tags.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();

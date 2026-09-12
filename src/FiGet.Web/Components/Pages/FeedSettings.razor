@@ -11,74 +11,82 @@
 @if (feed is null)
 {
     <h1>Feed not found</h1>
-    <p>There is no feed named <code>@Name</code>. <a href="/">Back to feeds</a>.</p>
+    <p class="fg-muted">There is no feed named <code>@Name</code>. <a href="/">Back to feeds</a>.</p>
 }
 else
 {
-    <p class="crumbs"><a href="/">Feeds</a> / <a href="/feeds/@feed.Name">@feed.Name</a></p>
+    <p class="fg-crumbs">
+        <a href="/">Feeds</a>
+        <span class="fg-crumb-sep">/</span>
+        <a href="/feeds/@feed.Name">@feed.Name</a>
+        <span class="fg-crumb-sep">/</span>
+        <span>settings</span>
+    </p>
     <h1>@feed.Name settings</h1>
 
     @if (message is not null)
     {
-        <p class="@(messageIsError ? "error" : "ok")">@message</p>
+        <div class="@(messageIsError ? "fg-alert fg-alert-danger" : "fg-alert fg-alert-ok")">@message</div>
     }
 
-    <div class="settings-grid">
-        <section class="panel">
+    <div class="fg-panel-grid">
+        <section class="fg-panel">
             <h2>Settings</h2>
-            <EditForm Model="Settings!" FormName="feed-settings" OnValidSubmit="SaveAsync" method="post" class="stack">
-                <label class="check"><InputCheckbox id="anonymous-read" @bind-Value="Settings!.AnonymousRead" /> Anyone can read without a token</label>
-                <label class="check"><InputCheckbox id="allow-overwrite" @bind-Value="Settings!.AllowOverwrite" /> Pushing an existing version replaces it</label>
+            <EditForm Model="Settings!" FormName="feed-settings" OnValidSubmit="SaveAsync" method="post" class="fg-form">
+                <label class="fg-check"><InputCheckbox id="anonymous-read" @bind-Value="Settings!.AnonymousRead" /> Anyone can read without a token</label>
+                <label class="fg-check"><InputCheckbox id="allow-overwrite" @bind-Value="Settings!.AllowOverwrite" /> Pushing an existing version replaces it</label>
 
-                <label for="delete-behaviour">Delete behaviour</label>
-                <InputSelect id="delete-behaviour" @bind-Value="Settings!.DeletionBehavior">
-                    <option value="@PackageDeletionBehavior.Unlist">Unlist (recommended)</option>
-                    <option value="@PackageDeletionBehavior.HardDelete">Hard delete</option>
-                </InputSelect>
+                <div class="fg-field">
+                    <label for="delete-behaviour">Delete behaviour</label>
+                    <InputSelect id="delete-behaviour" @bind-Value="Settings!.DeletionBehavior">
+                        <option value="@PackageDeletionBehavior.Unlist">Unlist (recommended)</option>
+                        <option value="@PackageDeletionBehavior.HardDelete">Hard delete</option>
+                    </InputSelect>
+                </div>
 
-                <button type="submit">Save settings</button>
+                <button type="submit" class="fg-btn fg-btn-primary">Save settings</button>
             </EditForm>
 
-            <dl class="facts">
+            <dl class="fg-facts">
                 <dt>Kind</dt><dd>@feed.Kind</dd>
-                <dt>Created</dt><dd>@feed.CreatedUtc.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture)</dd>
-                <dt>Versions</dt><dd>@versionCount.ToString("N0", CultureInfo.InvariantCulture)</dd>
+                <dt>Created</dt><dd class="fg-num">@feed.CreatedUtc.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture)</dd>
+                <dt>Versions</dt><dd class="fg-num">@versionCount.ToString("N0", CultureInfo.InvariantCulture)</dd>
             </dl>
         </section>
 
-        <section class="panel">
+        <section class="fg-panel">
             <h2>Source URLs</h2>
-            <dl class="facts">
+            <dl class="fg-facts">
                 <dt>NuGet v3</dt>
                 <dd>
-                    <div class="url-cell">
+                    <div class="fg-url">
                         <code>@V3Url</code>
-                        <button type="button" class="copy" data-copy="@V3Url" title="Copy this URL" aria-label="Copy the v3 source URL">Copy</button>
+                        <button type="button" class="fg-copy" data-copy="@V3Url" title="Copy this URL" aria-label="Copy the v3 source URL">Copy</button>
                     </div>
                 </dd>
                 <dt>Feed root</dt>
                 <dd>
-                    <div class="url-cell">
+                    <div class="fg-url">
                         <code>@FeedUrl</code>
-                        <button type="button" class="copy" data-copy="@FeedUrl" title="Copy this URL" aria-label="Copy the feed root URL">Copy</button>
+                        <button type="button" class="fg-copy" data-copy="@FeedUrl" title="Copy this URL" aria-label="Copy the feed root URL">Copy</button>
                     </div>
                 </dd>
             </dl>
         </section>
 
-        <section class="panel">
+        <section class="fg-panel">
             <h2>Upstreams</h2>
             @if (feed.Upstreams.Count == 0)
             {
-                <p class="muted">
+                <p class="fg-muted fg-small">
                     None. This feed serves only what was pushed to it. Add an upstream to also offer, and
                     cache on demand, everything another feed holds.
                 </p>
             }
             else
             {
-                <div class="table-wrap">
-                    <table>
+                <div class="fg-table-wrap">
+                    <table class="fg-table">
                         <thead>
                             <tr><th>Name</th><th>Protocol</th><th>URL</th><th></th></tr>
                         </thead>
@@ -87,14 +95,14 @@ else
                             {
                                 <tr>
                                     <td>@upstream.Name</td>
-                                    <td>@upstream.Kind</td>
+                                    <td><span class="fg-badge">@upstream.Kind</span></td>
                                     <td><code>@upstream.Url</code></td>
-                                    <td class="actions">
+                                    <td class="fg-cell-actions">
                                         <form method="post" action="/admin/feeds/@feed.Name/upstreams/remove">
                                             <AntiforgeryToken />
                                             <input type="hidden" name="key" value="@upstream.Key" />
                                             <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                                            <button type="submit" class="danger" title="Stop using this upstream">Remove</button>
+                                            <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger" title="Stop using this upstream">Remove</button>
                                         </form>
                                     </td>
                                 </tr>
@@ -102,51 +110,66 @@ else
                         </tbody>
                     </table>
                 </div>
-                <p class="muted">
+                <p class="fg-muted fg-small">
                     Removing an upstream keeps the packages already cached from it: they were downloaded,
                     and something out there depends on them.
                 </p>
             }
 
-            <form method="post" action="/admin/feeds/@feed.Name/upstreams/add" class="stack">
+            <h3>Add an upstream</h3>
+            <form method="post" action="/admin/feeds/@feed.Name/upstreams/add" class="fg-form">
                 <AntiforgeryToken />
                 <input type="hidden" name="returnUrl" value="@ReturnUrl" />
 
-                <label for="upstream-name">Name</label>
-                <input id="upstream-name" name="name" required placeholder="for example: powershellgallery" />
+                <div class="fg-field">
+                    <label for="upstream-name">Name</label>
+                    <input id="upstream-name" name="name" required placeholder="for example: powershellgallery" />
+                </div>
 
-                <label for="upstream-url">URL</label>
-                <input id="upstream-url" name="url" required placeholder="https://www.powershellgallery.com/api/v2" />
+                <div class="fg-field">
+                    <label for="upstream-url">URL</label>
+                    <input id="upstream-url" name="url" required placeholder="https://www.powershellgallery.com/api/v2" />
+                </div>
 
-                <label for="upstream-kind">Protocol</label>
-                <select id="upstream-kind" name="kind">
-                    <option value="V3">v3 service index (ends in index.json)</option>
-                    <option value="V2">v2 feed root (the PowerShell Gallery)</option>
-                </select>
+                <div class="fg-field">
+                    <label for="upstream-kind">Protocol</label>
+                    <select id="upstream-kind" name="kind">
+                        <option value="V3">v3 service index (ends in index.json)</option>
+                        <option value="V2">v2 feed root (the PowerShell Gallery)</option>
+                    </select>
+                </div>
 
-                <label for="upstream-allow">Only these package ids (one regular expression per line, empty allows all)</label>
-                <textarea id="upstream-allow" name="allow" rows="2"></textarea>
+                <div class="fg-field">
+                    <label for="upstream-allow">Only these package ids (one regular expression per line, empty allows all)</label>
+                    <textarea id="upstream-allow" name="allow" rows="2"></textarea>
+                </div>
 
-                <label for="upstream-deny">Never these package ids (one regular expression per line)</label>
-                <textarea id="upstream-deny" name="deny" rows="2"></textarea>
+                <div class="fg-field">
+                    <label for="upstream-deny">Never these package ids (one regular expression per line)</label>
+                    <textarea id="upstream-deny" name="deny" rows="2"></textarea>
+                </div>
 
-                <label for="upstream-credential">Environment variable holding the API key, if the upstream needs one</label>
-                <input id="upstream-credential" name="credentialRef" placeholder="for example: FIGET_UPSTREAM_KEY" />
+                <div class="fg-field">
+                    <label for="upstream-credential">Environment variable holding the API key, if the upstream needs one</label>
+                    <input id="upstream-credential" name="credentialRef" placeholder="for example: FIGET_UPSTREAM_KEY" />
+                </div>
 
-                <button type="submit">Add upstream</button>
+                <button type="submit" class="fg-btn fg-btn-primary">Add upstream</button>
             </form>
         </section>
 
-        <section class="panel danger-zone">
+        <section class="fg-panel fg-panel-danger">
             <h2>Delete this feed</h2>
-            <p class="muted">
+            <p class="fg-muted fg-small">
                 Removes the feed with its @versionCount.ToString("N0", CultureInfo.InvariantCulture) package
                 version(s), their files, and any token scoped to this feed. This cannot be undone.
             </p>
-            <EditForm Model="Confirm!" FormName="delete-feed" OnValidSubmit="DeleteAsync" method="post" class="stack">
-                <label for="confirm-name">Type the feed name to confirm</label>
-                <InputText id="confirm-name" @bind-Value="Confirm!.Name" autocomplete="off" placeholder="@feed.Name" />
-                <button type="submit" class="danger">Delete feed</button>
+            <EditForm Model="Confirm!" FormName="delete-feed" OnValidSubmit="DeleteAsync" method="post" class="fg-form">
+                <div class="fg-field">
+                    <label for="confirm-name">Type the feed name to confirm</label>
+                    <InputText id="confirm-name" @bind-Value="Confirm!.Name" autocomplete="off" placeholder="@feed.Name" />
+                </div>
+                <button type="submit" class="fg-btn fg-btn-danger">Delete feed</button>
             </EditForm>
         </section>
     </div>

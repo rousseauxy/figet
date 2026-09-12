@@ -1,30 +1,30 @@
 @inherits LayoutComponentBase
 
-<header class="topbar">
-    <a class="brand" href="/">FiGet</a>
-    <nav>
-        <a href="/">Feeds</a>
-        <AuthorizeView Policy="@FiGetApp.AdminPolicy">
-            <Authorized>
-                <a href="/tokens">Tokens</a>
-            </Authorized>
-        </AuthorizeView>
+<div class="fg-shell">
+    <nav class="fg-navbar">
+        <div class="fg-navbar-inner">
+            <a class="fg-navbar-brand" href="/">FiGet</a>
+            <div class="fg-nav-links">
+                <a href="/">Feeds</a>
+                <AuthorizeView Policy="@FiGetApp.AdminPolicy">
+                    <Authorized>
+                        <a href="/tokens">Tokens</a>
+                        <form method="post" action="/account/logout" class="fg-signed-in">
+                            <AntiforgeryToken />
+                            <span class="fg-who">@context.User.Identity?.Name</span>
+                            <button type="submit" class="fg-linklike">Sign out</button>
+                        </form>
+                    </Authorized>
+                    <NotAuthorized>
+                        @* Reading is open on feeds that allow it; signing in is what adds the buttons. *@
+                        <a href="/account/login">Sign in</a>
+                    </NotAuthorized>
+                </AuthorizeView>
+            </div>
+        </div>
     </nav>
-    <AuthorizeView Policy="@FiGetApp.AdminPolicy">
-        <Authorized>
-            <form method="post" action="/account/logout" class="logout">
-                <AntiforgeryToken />
-                <span class="muted">@context.User.Identity?.Name</span>
-                <button type="submit" class="link">Sign out</button>
-            </form>
-        </Authorized>
-        <NotAuthorized>
-            @* Reading is open on feeds that allow it; signing in is what adds the buttons. *@
-            <span class="logout"><a href="/account/login">Sign in</a></span>
-        </NotAuthorized>
-    </AuthorizeView>
-</header>
 
-<main>
-    @Body
-</main>
+    <main class="fg-main">
+        @Body
+    </main>
+</div>

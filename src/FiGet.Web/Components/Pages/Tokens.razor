@@ -10,42 +10,63 @@
 <PageTitle>Tokens · FiGet</PageTitle>
 
 <h1>Tokens</h1>
-<p class="muted">
-    Clients send a token as <code>X-NuGet-ApiKey</code> (push), or as the password of Basic authentication (read).
-    Only a hash is stored: a token is shown once, when it is created.
+<p class="fg-lede">
+    Clients send a token as <code>X-NuGet-ApiKey</code> (push), or as the password of Basic authentication
+    (read). Only a hash is stored: a token is shown once, when it is created.
 </p>
 
 @if (created is not null)
 {
-    <div class="secret" role="status">
+    <div class="fg-secret" role="status">
         <p><strong>Token “@created.Token.Name” created.</strong> Copy it now; it will not be shown again.</p>
-        <pre><code>@created.Secret</code></pre>
+        <div class="fg-url">
+            <pre><code>@created.Secret</code></pre>
+            <button type="button" class="fg-copy" data-copy="@created.Secret" title="Copy this token" aria-label="Copy the new token">Copy</button>
+        </div>
     </div>
 }
 
-<div class="table-wrap">
-    <table>
+<div class="fg-table-wrap">
+    <table class="fg-table">
         <thead>
-            <tr><th>Name</th><th>Prefix</th><th>Scopes</th><th>Feed</th><th>Created</th><th>Last used</th><th>Expires</th><th></th></tr>
+            <tr>
+                <th>Name</th>
+                <th>Prefix</th>
+                <th>Scopes</th>
+                <th>Feed</th>
+                <th>Created</th>
+                <th>Last used</th>
+                <th>Expires</th>
+                <th></th>
+            </tr>
         </thead>
         <tbody>
             @foreach (var token in tokens)
             {
                 var active = token.RevokedUtc is null && (token.ExpiresUtc is null || token.ExpiresUtc > now);
-                <tr class="@(active ? "" : "inactive")">
+                <tr class="@(active ? "" : "is-inactive")">
                     <td>@token.Name</td>
                     <td><code>@token.Prefix…</code></td>
-                    <td>@token.Scopes</td>
+                    <td><span class="fg-badge">@token.Scopes</span></td>
                     <td>@(token.Feed?.Name ?? "All feeds")</td>
-                    <td>@Date(token.CreatedUtc)</td>
-                    <td>@Date(token.LastUsedUtc)</td>
-                    <td>@(token.RevokedUtc is not null ? "Revoked" : Date(token.ExpiresUtc, "Never"))</td>
+                    <td class="fg-num">@Date(token.CreatedUtc)</td>
+                    <td class="fg-num">@Date(token.LastUsedUtc)</td>
                     <td>
+                        @if (token.RevokedUtc is not null)
+                        {
+                            <span class="fg-badge fg-badge-danger">Revoked</span>
+                        }
+                        else
+                        {
+                            <span class="fg-num">@Date(token.ExpiresUtc, "Never")</span>
+                        }
+                    </td>
+                    <td class="fg-cell-actions">
                         @if (token.RevokedUtc is null)
                         {
                             <form method="post" @formname="@($"revoke-{token.Key}")" @onsubmit="() => RevokeAsync(token.Key)">
                                 <AntiforgeryToken />
-                                <button type="submit" class="danger">Revoke</button>
+                                <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Revoke</button>
                             </form>
                         }
                     </td>
@@ -56,38 +77,46 @@
 </div>
 
 <h2>Create a token</h2>
-<EditForm Model="NewToken!" FormName="create-token" OnValidSubmit="CreateAsync" method="post" class="stack">
-    <DataAnnotationsValidator />
-    <label for="token-name">Name</label>
-    <InputText id="token-name" @bind-Value="NewToken!.Name" placeholder="for example: ci-publish" />
-    <ValidationMessage For="() => NewToken!.Name" />
+<div class="fg-panel">
+    <EditForm Model="NewToken!" FormName="create-token" OnValidSubmit="CreateAsync" method="post" class="fg-form">
+        <DataAnnotationsValidator />
+        <div class="fg-field">
+            <label for="token-name">Name</label>
+            <InputText id="token-name" @bind-Value="NewToken!.Name" placeholder="for example: ci-publish" />
+            <ValidationMessage For="() => NewToken!.Name" />
+        </div>
 
-    <fieldset>
-        <legend>Scopes</legend>
-        <label class="check"><InputCheckbox @bind-Value="NewToken!.Read" /> Read</label>
-        <label class="check"><InputCheckbox @bind-Value="NewToken!.Push" /> Push (includes read)</label>
-        <label class="check"><InputCheckbox @bind-Value="NewToken!.Delete" /> Delete and relist (includes read)</label>
-        <label class="check"><InputCheckbox @bind-Value="NewToken!.Admin" /> Admin (everything, including this page)</label>
-    </fieldset>
+        <fieldset>
+            <legend>Scopes</legend>
+            <label class="fg-check"><InputCheckbox @bind-Value="NewToken!.Read" /> Read</label>
+            <label class="fg-check"><InputCheckbox @bind-Value="NewToken!.Push" /> Push (includes read)</label>
+            <label class="fg-check"><InputCheckbox @bind-Value="NewToken!.Delete" /> Delete and relist (includes read)</label>
+            <label class="fg-check"><InputCheckbox @bind-Value="NewToken!.Admin" /> Admin (everything, including this page)</label>
+        </fieldset>
 
-    <label for="token-feed">Feed</label>
-    <InputSelect id="token-feed" @bind-Value="NewToken!.FeedName">
-        <option value="">All feeds</option>
-        @foreach (var feed in feeds)
+        <div class="fg-field">
+            <label for="token-feed">Feed</label>
+            <InputSelect id="token-feed" @bind-Value="NewToken!.FeedName">
+                <option value="">All feeds</option>
+                @foreach (var feed in feeds)
+                {
+                    <option value="@feed.Name">@feed.Name</option>
+                }
+            </InputSelect>
+        </div>
+
+        <div class="fg-field">
+            <label for="token-expiry">Expires after (days, empty for never)</label>
+            <InputNumber id="token-expiry" @bind-Value="NewToken!.ExpiresInDays" min="1" />
+        </div>
+
+        @if (error is not null)
         {
-            <option value="@feed.Name">@feed.Name</option>
+            <p class="fg-error">@error</p>
         }
-    </InputSelect>
-
-    <label for="token-expiry">Expires after (days, empty for never)</label>
-    <InputNumber id="token-expiry" @bind-Value="NewToken!.ExpiresInDays" min="1" />
-
-    @if (error is not null)
-    {
-        <p class="error">@error</p>
-    }
-    <button type="submit">Create token</button>
-</EditForm>
+        <button type="submit" class="fg-btn fg-btn-primary">Create token</button>
+    </EditForm>
+</div>
 
 @code {
     private IReadOnlyList<AccessToken> tokens = [];

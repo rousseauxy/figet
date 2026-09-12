@@ -5,10 +5,12 @@
 <PageTitle>Error · FiGet</PageTitle>
 
 <h1>Something went wrong</h1>
-<p>The request could not be completed. The error has been logged.</p>
+<p class="fg-muted">The request could not be completed. The error has been logged.</p>
 @if (!string.IsNullOrEmpty(requestId))
 {
-    <p class="muted">Request id: <code>@requestId</code></p>
+    <dl class="fg-facts">
+        <dt>Request id</dt><dd><code>@requestId</code></dd>
+    </dl>
 }
 
 @code {

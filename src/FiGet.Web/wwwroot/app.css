@@ -1,135 +1,688 @@
+/* ===================================================================
+   FIGET — DESIGN SYSTEM
+   "Paper & graphite" neutrals, one accent, mono for versions and ids.
+   Ported from the sibling application so a theme pack written for one
+   loads unchanged in the other: the token names below are the contract,
+   and /themes/{name}.css overrides them.
+   =================================================================== */
+
+/* ── Tokens ─────────────────────────────────────────────────────── */
 :root {
-  --bg: #f7f7f5;
+  --font-ui: ui-sans-serif, "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --font-display: var(--font-ui);
+
+  --bg: #faf9f7;
   --surface: #ffffff;
-  --text: #1d1f21;
-  --muted: #5f6368;
-  --line: #e2e2de;
+  --inset: #f3f1ec;
+  --hover: #edeae3;
+  --border: #e6e3db;
+  --border-strong: #cfcac0;
+
+  --text: #26241f;
+  --text-2: #6e6a60;
+  --text-3: #9b968c;
+
+  /* Topbar chrome — dark in both themes, so the page beneath it owns the light. */
+  --chrome: #211e19;
+  --chrome-text: #d9d5cb;
+  --chrome-muted: #8f8a7e;
+  --chrome-hover: rgb(255 255 255 / 0.08);
+  --chrome-border: rgb(255 255 255 / 0.14);
+
   --accent: #2f5d8a;
-  --accent-text: #ffffff;
-  --danger: #a33a2e;
-  --ok: #2e6b3f;
-  --code-bg: #f0f0ec;
+  --accent-strong: #24486b;
+  --accent-soft: #e6eef6;
+  /* Text on an accent-filled surface. Dark themes lift the accent, so this flips with it. */
+  --accent-contrast: #ffffff;
+
+  --ok: #2f7d4f;      --ok-soft: #e3f1e8;
+  --warn: #9a6200;    --warn-soft: #f7ecd6;
+  --danger: #b3261e;  --danger-soft: #f9e5e3;
+  --info: #3b6ea5;    --info-soft: #e5edf6;
+
+  --r-1: 6px;
+  --r-2: 10px;
+  --r-pill: 999px;
+  --shadow-1: 0 1px 2px rgb(30 27 20 / 0.06);
+  --shadow-2: 0 8px 28px rgb(30 27 20 / 0.14);
+
   color-scheme: light;
 }
 
+/*
+  Dark is stated twice, on purpose. These pages are statically rendered and ship no script, so the
+  media query is what answers a reader whose system asks for dark. The attribute selector is what an
+  explicit choice sets, and it has to win over the system preference — which a single block cannot do.
+  Theme packs emit the same pair, so a pack overriding dark overrides both.
+*/
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #16181a;
-    --surface: #1e2124;
-    --text: #e6e6e3;
-    --muted: #9aa0a6;
-    --line: #33373b;
+  :root:not([data-theme="light"]) {
+    --bg: #151412;
+    --surface: #1d1b18;
+    --inset: #262320;
+    --hover: #2c2925;
+    --border: #33302a;
+    --border-strong: #45403a;
+
+    --text: #e8e5dd;
+    --text-2: #a39e93;
+    --text-3: #7a756b;
+
+    --chrome: #111009;
+
     --accent: #7fb0e0;
-    --accent-text: #0e1a26;
-    --danger: #e38a7f;
-    --ok: #8cc79b;
-    --code-bg: #262a2e;
+    --accent-strong: #a2c8ec;
+    --accent-soft: #172634;
+    --accent-contrast: #0e1a26;
+
+    --ok: #5cb883;      --ok-soft: #1c2f24;
+    --warn: #dba54b;    --warn-soft: #3a2f1a;
+    --danger: #e5695f;  --danger-soft: #3a201d;
+    --info: #7ba7d4;    --info-soft: #1e2a38;
+
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-2: 0 8px 28px rgb(0 0 0 / 0.55);
+
     color-scheme: dark;
   }
 }
 
+[data-theme="dark"] {
+  --bg: #151412;
+  --surface: #1d1b18;
+  --inset: #262320;
+  --hover: #2c2925;
+  --border: #33302a;
+  --border-strong: #45403a;
+
+  --text: #e8e5dd;
+  --text-2: #a39e93;
+  --text-3: #7a756b;
+
+  --chrome: #111009;
+
+  --accent: #7fb0e0;
+  --accent-strong: #a2c8ec;
+  --accent-soft: #172634;
+  --accent-contrast: #0e1a26;
+
+  --ok: #5cb883;      --ok-soft: #1c2f24;
+  --warn: #dba54b;    --warn-soft: #3a2f1a;
+  --danger: #e5695f;  --danger-soft: #3a201d;
+  --info: #7ba7d4;    --info-soft: #1e2a38;
+
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 8px 28px rgb(0 0 0 / 0.55);
+
+  color-scheme: dark;
+}
+
+/* ── Base ───────────────────────────────────────────────────────── */
 * { box-sizing: border-box; }
 
+html, body { margin: 0; padding: 0; }
+
 body {
-  margin: 0;
-  background: var(--bg);
+  background-color: var(--bg);
   color: var(--text);
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
-a { color: var(--accent); }
-code, pre { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.9em; }
-code { background: var(--code-bg); padding: 0.05em 0.35em; border-radius: 4px; overflow-wrap: anywhere; }
-pre { background: var(--code-bg); padding: 0.75rem 1rem; border-radius: 6px; overflow-x: auto; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-strong); text-decoration: underline; }
+
+h1, h2, h3, h4 { color: var(--text); font-family: var(--font-display); }
+h1 { font-size: 1.35rem; margin: 0 0 0.9rem; font-weight: 700; }
+h2 { font-size: 1.02rem; margin: 1.6rem 0 0.6rem; font-weight: 700; }
+h3 { font-size: 0.92rem; margin: 1.2rem 0 0.5rem; font-weight: 700; }
+
+code, .fg-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+code {
+  background: var(--inset);
+  padding: 0.05em 0.35em;
+  border-radius: var(--r-1);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+pre {
+  background: var(--inset);
+  border: 1px solid var(--border);
+  border-radius: var(--r-1);
+  padding: 0.7rem 0.9rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
 pre code { padding: 0; background: none; }
 
-.topbar {
+::selection { background: var(--accent-soft); }
+
+/* ── Utilities ──────────────────────────────────────────────────── */
+.fg-row   { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.fg-stack { display: flex; flex-direction: column; gap: 0.75rem; }
+.fg-grow  { flex: 1; }
+.fg-right { margin-left: auto; }
+
+.fg-muted { color: var(--text-2); }
+.fg-faint { color: var(--text-3); }
+.fg-small { font-size: 0.78rem; }
+
+/* Uppercase mono label — the recurring pattern for anything that names a value. */
+.fg-label {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.fg-empty { text-align: center; padding: 2rem; color: var(--text-3); font-style: italic; }
+
+/* ── Shell and topbar ───────────────────────────────────────────── */
+.fg-shell { display: flex; flex-direction: column; min-height: 100vh; }
+
+.fg-navbar { background-color: var(--chrome); padding: 0 1.5rem; }
+
+.fg-navbar-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  min-height: 48px;
+  padding: 0.45rem 0;
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  padding: 0.75rem 1.5rem;
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
+  gap: 1rem;
   flex-wrap: wrap;
 }
-.brand { font-weight: 700; font-size: 1.1rem; text-decoration: none; color: var(--text); }
-.topbar nav { display: flex; gap: 1rem; }
-.topbar nav a { text-decoration: none; }
-.logout { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
 
-main { max-width: 72rem; margin: 0 auto; padding: 1.5rem; }
-h1 { font-size: 1.6rem; margin: 0.5rem 0 1rem; }
-h1 .version { color: var(--muted); font-weight: 400; font-size: 1.1rem; }
-h2 { font-size: 1.15rem; margin: 2rem 0 0.75rem; }
-.muted { color: var(--muted); }
-.crumbs { color: var(--muted); margin: 0; }
-.description { max-width: 48rem; }
+.fg-navbar-brand {
+  color: var(--chrome-text);
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 0.9rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  margin-right: auto;
+}
+.fg-navbar-brand:hover { color: #fff; text-decoration: none; }
 
-.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
-table { border-collapse: collapse; width: 100%; }
-th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
-td:last-child, th:last-child { white-space: normal; }
-tbody tr:last-child td { border-bottom: none; }
-th { font-weight: 600; color: var(--muted); font-size: 0.85rem; }
-tr.inactive td { color: var(--muted); }
-.badge { display: inline-block; margin-left: 0.4rem; padding: 0 0.4rem; border-radius: 999px; border: 1px solid var(--line); font-size: 0.75rem; color: var(--muted); }
+.fg-nav-links { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
 
-form.stack, .narrow form { display: grid; gap: 0.5rem; max-width: 32rem; }
-.narrow { max-width: 28rem; margin: 3rem auto; }
-label { font-weight: 600; font-size: 0.9rem; }
-label.check { font-weight: 400; display: flex; gap: 0.5rem; align-items: center; }
-fieldset { border: 1px solid var(--line); border-radius: 6px; padding: 0.5rem 0.75rem; display: grid; gap: 0.25rem; }
-legend { font-weight: 600; font-size: 0.9rem; padding: 0 0.25rem; }
+.fg-navbar a:not(.fg-navbar-brand) {
+  color: var(--chrome-muted);
+  font-size: 0.86rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--r-1);
+}
+.fg-navbar a:not(.fg-navbar-brand):hover {
+  color: var(--chrome-text);
+  background: var(--chrome-hover);
+  text-decoration: none;
+}
+.fg-navbar a.active { background: var(--chrome-hover); color: var(--chrome-text); }
+
+.fg-navbar .fg-signed-in { display: flex; align-items: center; gap: 0.6rem; }
+.fg-navbar .fg-signed-in .fg-who { color: var(--chrome-muted); font-size: 0.8rem; }
+
+/* A button that has to read as a link: sign-out posts, because a GET sign-out is reachable
+   from any page a reader visits. */
+.fg-linklike {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.fg-navbar .fg-linklike { color: var(--chrome-muted); font-size: 0.86rem; }
+.fg-navbar .fg-linklike:hover { color: var(--chrome-text); }
+
+.fg-main {
+  flex: 1;
+  width: 100%;
+  max-width: 1100px;
+  margin: 1.6rem auto;
+  padding: 0 1.5rem;
+}
+
+/* ── Page heading and breadcrumbs ───────────────────────────────── */
+.fg-crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  margin: 0 0 0.5rem;
+  color: var(--text-3);
+}
+.fg-crumbs a { color: var(--text-2); }
+.fg-crumbs a:hover { color: var(--accent); }
+.fg-crumb-sep { color: var(--text-3); margin: 0 0.35rem; }
+
+.fg-page-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.fg-page-head h1 { margin-bottom: 0; }
+.fg-version {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  font-size: 0.95rem;
+  font-weight: 400;
+}
+.fg-lede { color: var(--text-2); max-width: 48rem; margin: 0.4rem 0 1rem; }
+
+/* ── Cards and panels ───────────────────────────────────────────── */
+.fg-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.fg-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--inset);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.fg-card-body { padding: 0.8rem; }
+
+.fg-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-1);
+  padding: 0.9rem 1.1rem;
+}
+.fg-panel > h2:first-child { margin-top: 0; }
+.fg-panel-danger { border-color: var(--danger); }
+
+.fg-panel-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(21rem, 1fr));
+  align-items: start;
+}
+
+/* ── Tables: the record list ────────────────────────────────────── */
+.fg-table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-1);
+  overflow-x: auto;
+}
+
+.fg-table { width: 100%; border-collapse: collapse; }
+
+.fg-table th {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  text-align: left;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--inset);
+  white-space: nowrap;
+}
+
+.fg-table td {
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.fg-table td:last-child, .fg-table th:last-child { white-space: normal; }
+.fg-table tr:last-child td { border-bottom: none; }
+.fg-table tbody tr:hover { background: var(--inset); }
+
+/* An unlisted or revoked row is still readable, just plainly secondary. */
+.fg-table tr.is-inactive td { color: var(--text-3); }
+
+/* Versions, sizes and counts line up when they are tabular. */
+.fg-num, .fg-table td.fg-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.fg-cell-actions { display: flex; gap: 0.4rem; align-items: center; }
+.fg-cell-actions form { display: inline; margin: 0; }
+
+/* ── Toolbar above a list ───────────────────────────────────────── */
+.fg-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 0.7rem;
+}
+
+.fg-result-count { color: var(--text-2); font-size: 0.8rem; margin: 0.6rem 0; }
+
+/* ── Pager ──────────────────────────────────────────────────────── */
+.fg-pager {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0;
+  flex-wrap: wrap;
+}
+.fg-pager-info { font-size: 0.78rem; color: var(--text-2); white-space: nowrap; }
+
+/* ── Buttons ────────────────────────────────────────────────────── */
+.fg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+  color: var(--text);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.32rem 0.85rem;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+.fg-btn:hover { background: var(--hover); text-decoration: none; color: var(--text); }
+.fg-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.fg-btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+.fg-btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); color: var(--accent-contrast); }
+
+.fg-btn-ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+.fg-btn-ghost:hover { background: var(--hover); color: var(--text); }
+
+.fg-btn-danger { background: transparent; border-color: var(--danger); color: var(--danger); }
+.fg-btn-danger:hover { background: var(--danger-soft); color: var(--danger); }
+
+.fg-btn-sm { font-size: 0.72rem; padding: 0.18rem 0.6rem; }
+
+/* ── Pills (filters that are links, because these pages do not post to filter) ── */
+.fg-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  color: var(--text-2);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 0.2rem 0.65rem;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.fg-pill:hover { background: var(--hover); color: var(--text); text-decoration: none; }
+.fg-pill.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-strong); }
+
+.fg-pill-count {
+  font-size: 0.62rem;
+  background: var(--inset);
+  border-radius: var(--r-pill);
+  padding: 0 0.35rem;
+  color: var(--text-2);
+}
+.fg-pill.active .fg-pill-count { background: var(--surface); }
+
+/* ── Badges ─────────────────────────────────────────────────────── */
+.fg-badge {
+  display: inline-block;
+  padding: 0.1rem 0.42rem;
+  border-radius: var(--r-1);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.7rem;
+  font-weight: 500;
+  white-space: nowrap;
+  line-height: 1.5;
+  border: 1px solid transparent;
+  background: var(--inset);
+  color: var(--text-2);
+}
+.fg-badge-accent { background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent); }
+.fg-badge-ok     { background: var(--ok-soft);     color: var(--ok); }
+.fg-badge-warn   { background: var(--warn-soft);   color: var(--warn); }
+.fg-badge-danger { background: var(--danger-soft); color: var(--danger); }
+.fg-badge-info   { background: var(--info-soft);   color: var(--info); }
+.fg-badge-plain  { background: var(--inset); color: var(--text-2); border-color: var(--border-strong); }
+
+/* ── Chips (tags) ───────────────────────────────────────────────── */
+.fg-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.25rem 0; }
+.fg-chip {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+details.fg-more { margin-top: 0.6rem; }
+details.fg-more > summary { cursor: pointer; color: var(--accent); font-size: 0.8rem; }
+details.fg-more[open] > summary { margin-bottom: 0.5rem; }
+
+/* ── Forms ──────────────────────────────────────────────────────── */
+.fg-field { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.7rem; }
+.fg-field > label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
 /* Blazor's InputText renders a bare <input> with no type attribute, so it has to be matched too. */
-input:not([type]), input[type=text], input[type=password], input[type=search], input[type=number], select {
-  font: inherit; color: inherit; background: var(--surface);
-  border: 1px solid var(--line); border-radius: 6px; padding: 0.45rem 0.6rem; width: 100%;
-  max-width: 100%; min-width: 0;
+.fg-input,
+input:not([type]), input[type=text], input[type=password], input[type=search],
+input[type=number], input[type=email], input[type=url], select, textarea {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-1);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  padding: 0.4rem 0.6rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+input:focus, select:focus, textarea:focus, .fg-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+input::placeholder, textarea::placeholder { color: var(--text-3); }
+
 input[type=checkbox] { width: auto; margin: 0; accent-color: var(--accent); }
-button {
-  font: inherit; cursor: pointer; border: none; border-radius: 6px;
-  padding: 0.45rem 0.9rem; background: var(--accent); color: var(--accent-text); justify-self: start;
-}
-button.link { background: none; color: var(--accent); padding: 0; }
-button.danger { background: none; color: var(--danger); border: 1px solid var(--line); padding: 0.2rem 0.6rem; }
-.search { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; max-width: 48rem; }
-.search input[type=search] { flex: 1 1 16rem; }
-.search select { width: auto; flex: 0 0 auto; }
-.search .clear { align-self: center; font-size: 0.9rem; }
-.pager { display: flex; gap: 1rem; margin-top: 1rem; }
-.tabs { display: flex; flex-wrap: wrap; gap: 0.25rem; margin: 0 0 1rem; border-bottom: 1px solid var(--line); }
-.tabs a { padding: 0.4rem 0.9rem; text-decoration: none; border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0; color: var(--muted); }
-.tabs a:hover { color: var(--text); }
-.tabs a.active { background: var(--surface); border-color: var(--line); color: var(--text); font-weight: 600; margin-bottom: -1px; }
-a.button { display: inline-block; text-decoration: none; border-radius: 6px; padding: 0.45rem 0.9rem; background: var(--accent); color: var(--accent-text); }
-h1 .version { color: var(--muted); font-weight: 400; font-size: 1.1rem; }
-.error, .validation-message { color: var(--danger); margin: 0; }
-.ok { color: var(--ok); margin: 0; }
-.secret { border: 1px solid var(--ok); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; background: var(--surface); }
-.facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; }
-.facts dt { color: var(--muted); }
-.facts dd { margin: 0; overflow-wrap: anywhere; }
 
-.actions { display: flex; gap: 0.5rem; align-items: center; }
-.actions form { display: inline; }
-.url-cell { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
-.url-cell code { overflow-wrap: anywhere; }
-button.copy { background: none; color: var(--muted); border: 1px solid var(--line); padding: 0.15rem 0.5rem; font-size: 0.8rem; }
-button.copy:hover { color: var(--text); }
-button.copy.copied { color: var(--ok); border-color: var(--ok); }
-.settings-grid { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); align-items: start; }
-.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.25rem; }
-.panel h2 { margin-top: 0; }
-.panel.danger-zone { border-color: var(--danger); }
+.fg-check { display: flex; gap: 0.5rem; align-items: center; font-size: 0.85rem; }
 
-/* Tags: hundreds of them on a PowerShell module, so they are chips and the generated ones fold away. */
-.chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.25rem 0; }
-.chip {
-  display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px;
-  border: 1px solid var(--line); background: var(--surface); color: var(--muted);
-  font-size: 0.8rem; white-space: nowrap;
+fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--r-1);
+  padding: 0.6rem 0.8rem;
+  display: grid;
+  gap: 0.35rem;
+  margin: 0 0 0.7rem;
 }
-details.more { margin-top: 0.5rem; }
-details.more > summary { cursor: pointer; color: var(--accent); font-size: 0.9rem; }
-details.more[open] > summary { margin-bottom: 0.5rem; }
+legend {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding: 0 0.25rem;
+}
+
+.fg-form { display: grid; gap: 0.5rem; max-width: 34rem; }
+.fg-form button { justify-self: start; }
+
+.fg-search { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.fg-search input[type=search] { flex: 1 1 18rem; }
+.fg-search select { width: auto; flex: 0 0 auto; }
+
+/* ── Alerts and validation ──────────────────────────────────────── */
+.fg-alert {
+  border: 1px solid var(--border);
+  border-radius: var(--r-1);
+  padding: 0.6rem 0.9rem;
+  font-size: 0.82rem;
+  background: var(--inset);
+  color: var(--text);
+  margin: 0 0 0.9rem;
+}
+.fg-alert-info   { background: var(--info-soft);   border-color: var(--info); }
+.fg-alert-warn   { background: var(--warn-soft);   border-color: var(--warn); }
+.fg-alert-danger { background: var(--danger-soft); border-color: var(--danger); }
+.fg-alert-ok     { background: var(--ok-soft);     border-color: var(--ok); }
+
+.validation-message, .fg-error { color: var(--danger); font-size: 0.8rem; margin: 0; }
+.fg-ok { color: var(--ok); margin: 0; }
+.valid.modified:not([type=checkbox]) { outline: 1px solid var(--ok); }
+.invalid { outline: 1px solid var(--danger); }
+
+/* A secret is shown once, so it gets the loudest surface on the page. */
+.fg-secret {
+  border: 1px solid var(--ok);
+  background: var(--ok-soft);
+  border-radius: var(--r-2);
+  padding: 0.8rem 1rem;
+  margin-bottom: 1rem;
+}
+.fg-secret pre { background: var(--surface); }
+
+/* ── Tabs ───────────────────────────────────────────────────────── */
+.fg-tabs {
+  display: flex;
+  gap: 0;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  margin: 0 0 1rem;
+}
+.fg-tab {
+  background: none;
+  border: none;
+  color: var(--text-2);
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+.fg-tab:hover { color: var(--text); text-decoration: none; }
+.fg-tab.active { color: var(--accent-strong); border-bottom-color: var(--accent); }
+
+/* ── Definition lists ───────────────────────────────────────────── */
+.fg-facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1.1rem; margin: 0; }
+.fg-facts dt {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  padding-top: 0.15rem;
+}
+.fg-facts dd { margin: 0; overflow-wrap: anywhere; font-size: 0.85rem; }
+
+/* ── Copyable URL ───────────────────────────────────────────────── */
+.fg-url { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
+.fg-url code { overflow-wrap: anywhere; font-size: 0.78rem; }
+
+.fg-copy {
+  background: var(--inset);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-1);
+  padding: 0.1rem 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.fg-copy:hover { background: var(--hover); color: var(--text); }
+.fg-copy.copied { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+
+/* ── Admin shell (the side navigation of the admin area) ────────── */
+.fg-admin-shell {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 1.8rem;
+  align-items: start;
+}
+
+.fg-admin-nav {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  padding-right: 1rem;
+  border-right: 1px solid var(--border);
+}
+
+.fg-admin-nav-group { display: flex; flex-direction: column; gap: 0.1rem; }
+
+.fg-admin-nav-title {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 0.3rem;
+}
+
+.fg-admin-nav-link {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.84rem;
+  color: var(--text-2);
+  border-radius: var(--r-1);
+  border-left: 3px solid transparent;
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s;
+}
+.fg-admin-nav-link:hover { color: var(--text); background: var(--hover); text-decoration: none; }
+.fg-admin-nav-link.active { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+
+/* Narrow screens have no room for a column: the groups lie down into a strip,
+   headings and all, rather than hiding behind a control that has to be opened. */
+@media (max-width: 900px) {
+  .fg-admin-shell { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .fg-admin-nav {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0 0.8rem;
+  }
+  .fg-panel-grid { grid-template-columns: minmax(0, 1fr); }
+}

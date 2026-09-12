@@ -60,9 +60,15 @@ Applies to every proxy feed. Upstreams themselves are configured per feed, above
 
 ## FiGet:Theming
 
-A theme pack is a JSON file of custom-property overrides, compiled once and served at
+A theme pack is a YAML file of custom-property overrides, compiled once and served at
 `/themes/{name}.css` after `app.css`. Every token has a default in the base stylesheet, so a pack that
 sets three colours is a complete theme.
+
+The token names and the file format are shared with the sibling applications here, so a brand pack is
+written once and dropped into any of them; keys a given application has no use for are ignored rather
+than refused. `wwwroot/themes/graphite.yaml` is the built-in look written out as a pack, and doubles as
+the worked example. A pack may also carry `fonts`, `layout` (corner radii) and a `customCSS` block for
+the rare rule a token cannot express.
 
 | Key | Default | Meaning |
 | --- | --- | --- |

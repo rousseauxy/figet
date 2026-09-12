@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
+using YamlDotNet.Core;
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
 
 namespace FiGet.Web.Theming;
 
@@ -23,17 +25,21 @@ public interface IThemeService
 }
 
 /// <summary>
-/// Loads theme packs (<c>*.json</c>) and compiles each into a small stylesheet of custom-property
+/// Loads theme packs (<c>*.yaml</c>) and compiles each into a small stylesheet of custom-property
 /// overrides, served after <c>app.css</c>. The base stylesheet defines every token with a default, so a
 /// pack that sets three colours is a valid theme and everything it does not mention still looks right.
+///
+/// YAML rather than JSON, and the same token names as the sibling application, so one pack can be
+/// dropped into either without editing: a brand is defined once, not once per product.
 /// </summary>
 public sealed class ThemeService : IThemeService
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
-    {
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true,
-    };
+    private static readonly IDeserializer Yaml = new DeserializerBuilder()
+        .WithNamingConvention(CamelCaseNamingConvention.Instance)
+        // A pack written for the sibling application carries keys this one has no use for, such as its
+        // branding block. Those are ignored rather than refused, which is what makes packs portable.
+        .IgnoreUnmatchedProperties()
+        .Build();
 
     private readonly string directory;
     private readonly ILogger<ThemeService> logger;
@@ -51,10 +57,9 @@ public sealed class ThemeService : IThemeService
     }
 
     public IReadOnlyList<ThemeSummary> Packs =>
-        packs.Values
+        [.. packs.Values
             .Select(entry => new ThemeSummary(entry.Pack.Name, entry.Pack.Label ?? entry.Pack.Name, entry.Pack.Description))
-            .OrderBy(summary => summary.Label, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            .OrderBy(summary => summary.Label, StringComparer.OrdinalIgnoreCase)];
 
     public (string Css, string ETag)? GetCss(string name) =>
         packs.TryGetValue(name, out var entry) ? (entry.Css, entry.ETag) : null;
@@ -70,11 +75,11 @@ public sealed class ThemeService : IThemeService
             return;
         }
 
-        foreach (var file in Directory.GetFiles(directory, "*.json"))
+        foreach (var file in Directory.GetFiles(directory, "*.yaml").Concat(Directory.GetFiles(directory, "*.yml")))
         {
             try
             {
-                var pack = JsonSerializer.Deserialize<ThemePack>(File.ReadAllText(file), Json);
+                var pack = Yaml.Deserialize<ThemePack>(File.ReadAllText(file));
                 if (string.IsNullOrWhiteSpace(pack?.Name))
                 {
                     logger.LogWarning("Theme {File} has no name and was skipped.", Path.GetFileName(file));
@@ -86,7 +91,7 @@ public sealed class ThemeService : IThemeService
                 packs[pack.Name] = (pack, css, tag);
                 logger.LogInformation("Theme loaded: {Theme} from {File}.", pack.Name, Path.GetFileName(file));
             }
-            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is YamlException or IOException or UnauthorizedAccessException)
             {
                 // One broken pack must not stop the others, and never the server.
                 logger.LogError(ex, "Theme {File} could not be read.", Path.GetFileName(file));
@@ -98,7 +103,7 @@ public sealed class ThemeService : IThemeService
     private static string Compile(ThemePack pack)
     {
         var css = new StringBuilder();
-        css.Append("/* theme: ").Append(pack.Name).AppendLine(" — generated, do not edit */");
+        css.Append("/* theme: ").Append(pack.Name).AppendLine(" — generated from YAML, do not edit */");
 
         if (!string.IsNullOrWhiteSpace(pack.Fonts?.FontUrl))
         {
@@ -113,6 +118,10 @@ public sealed class ThemeService : IThemeService
         Add(light, "r-2", pack.Layout?.RadiusLarge);
 
         Block(css, ":root", light);
+
+        // Both selectors, in the order the base stylesheet uses them: the media query answers the
+        // reader's system preference, the attribute answers an explicit choice and must win.
+        Block(css, "@media (prefers-color-scheme: dark) { :root:not([data-theme=\"light\"])", pack.Tokens?.Dark, closeMedia: true);
         Block(css, "[data-theme=\"dark\"]", pack.Tokens?.Dark);
 
         if (!string.IsNullOrWhiteSpace(pack.CustomCss))
@@ -131,7 +140,7 @@ public sealed class ThemeService : IThemeService
         }
     }
 
-    private static void Block(StringBuilder css, string selector, IReadOnlyDictionary<string, string>? tokens)
+    private static void Block(StringBuilder css, string selector, IReadOnlyDictionary<string, string>? tokens, bool closeMedia = false)
     {
         if (tokens is not { Count: > 0 })
         {
@@ -145,6 +154,6 @@ public sealed class ThemeService : IThemeService
             css.Append("  ").Append(name).Append(": ").Append(value).AppendLine(";");
         }
 
-        css.AppendLine("}");
+        css.AppendLine(closeMedia ? "} }" : "}");
     }
 }

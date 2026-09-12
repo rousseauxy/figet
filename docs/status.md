@@ -404,3 +404,70 @@ They were accurate when written and are left alone; the table above translates t
 
 Unchanged from "Next, in this order": the design-system port, then the admin area, then the themed
 dropdown.
+
+## The design-system port — 2026-09-12
+
+**State: done and verified. Every page is on the design system, and a theme pack now restyles all of it
+rather than the handful of colours the old stylesheet defined.**
+
+This was step 1 of "Next, in this order" above. The old `app.css` was 135 lines and ten tokens, which
+meant a theme pack could change the background and the accent and nothing else: buttons, tables, badges
+and tabs were hard-coded. Ported the full token set and the component classes from the sibling
+application, then rewrote all ten pages onto them.
+
+### What changed
+
+| | |
+|---|---|
+| Tokens | The full set: surfaces (`bg`, `surface`, `inset`, `hover`), borders, three text weights, topbar chrome, an accent triad with its contrast colour, four status colours each with a soft variant, radii, shadows and fonts |
+| Components | `fg-` classes for the shell and topbar, cards, panels, tables, toolbars, pagers, buttons, pills, badges, chips, forms, alerts, tabs, breadcrumbs, definition lists and the copyable URL |
+| Packs | **YAML**, via YamlDotNet 16.3.0 — the same version the sibling application pins, so a pack moves between them unchanged. `graphite.json` became `graphite.yaml` on the ported token names |
+| Pages | All ten rewritten: the shell, feed list, feed packages, package, version, settings, tokens, sign-in, error and not-found |
+| Config | `appsettings.json` now lists the `Theming` keys, which existed but were documented only in `docs/configuration.md` |
+
+Dark is stated twice in the base stylesheet and in every compiled pack, deliberately: these pages ship no
+script, so the media query answers a reader whose system asks for dark, and the `[data-theme]` attribute
+answers an explicit choice and has to win over it. One block cannot do both.
+
+### The source filter is now links, not a dropdown
+
+The proxy-feed source filter was a native `<select>`, the one control a stylesheet cannot theme and the
+reason the themed dropdown is a separate step. Under static SSR it is better expressed as pill links
+carrying the query: no script, bookmarkable, and it matches the record list it sits above. That removes
+one native select from the public pages outright, leaving the remaining ones on admin forms — which is
+where step 3 now actually applies.
+
+### One thing the port could not copy
+
+The record list it was modelled on is a **QuickGrid** under `@rendermode InteractiveServer`. These pages
+are statically rendered by design, so the component itself is not available: sorting and paging would
+need a circuit. What was ported is the appearance and the structure — the dense table with mono uppercase
+headers and hover rows, the filter toolbar above it, the pager below — driven by links and form posts
+instead. Worth stating plainly, because "same as the dossier list" is true of the look and not of the
+machinery. Turning interactivity on for these pages remains an open decision, and it is the same decision
+step 3 hangs on.
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| `dotnet build` | 0 errors, 0 warnings |
+| `dotnet test` | 149 total, 0 failed, 29 skipped — unchanged from before the port, so no asserted markup broke |
+| Live run, YAML loader | `Theme loaded: graphite from graphite.yaml` |
+| `GET /themes/graphite.css` | 200, `text/css`, 1,947 bytes, tokens compiled correctly |
+| Compiled pack, dark blocks | Both emitted, braces balanced 4/4, the nested `@media` closing as `} }` |
+| `GET /` | 200, carries both stylesheet links and renders `fg-` classes |
+| Class sweep | Every `class="..."` in every razor file is an `fg-` class or a defined state class |
+
+Trap met while verifying: `dotnet run` ignores `ASPNETCORE_HTTP_PORTS` when `launchSettings.json` exists
+and binds to the profile's URL instead. Pass `--no-launch-profile`. Backgrounding an `&&` chain with a
+trailing `&` also backgrounds the variable assignments in it, and killing that returns the subshell's
+id, not the server's — which leaves a `FiGet.Web` holding the build lock.
+
+### Next
+
+1. **An admin area with its own side menu.** Unchanged, and the stylesheet for it is already in place:
+   `fg-admin-shell`, `fg-admin-nav` and friends were ported with the rest, so that step is markup and
+   routing rather than design.
+2. **The themed dropdown**, which now matters only for the admin forms, and still needs the decision
+   about whether those pages become interactive.

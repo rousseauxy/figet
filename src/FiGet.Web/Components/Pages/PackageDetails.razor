@@ -11,41 +11,53 @@
 @if (feed is null || shown is null)
 {
     <h1>Package not found</h1>
-    <p><code>@Id</code> is not in feed <code>@Name</code>. <a href="/feeds/@Name">Back to the feed</a>.</p>
+    <p class="fg-muted"><code>@Id</code> is not in feed <code>@Name</code>. <a href="/feeds/@Name">Back to the feed</a>.</p>
     return;
 }
 
-<p class="crumbs"><a href="/">Feeds</a> / <a href="/feeds/@feed.Name">@feed.Name</a></p>
-<h1>@displayId <span class="version">@shown.NormalizedVersion</span></h1>
+<p class="fg-crumbs">
+    <a href="/">Feeds</a>
+    <span class="fg-crumb-sep">/</span>
+    <a href="/feeds/@feed.Name">@feed.Name</a>
+    <span class="fg-crumb-sep">/</span>
+    <span>@displayId</span>
+</p>
 
-<nav class="tabs">
-    <a class="@(All ? "" : "active")" href="/feeds/@feed.Name/packages/@displayId">Overview</a>
-    <a class="@(All ? "active" : "")" href="/feeds/@feed.Name/packages/@displayId?all=true">All versions</a>
+<div class="fg-page-head">
+    <h1>@displayId</h1>
+    <span class="fg-version">@shown.NormalizedVersion</span>
+</div>
+
+<nav class="fg-tabs">
+    <a class="fg-tab @(All ? "" : "active")" href="/feeds/@feed.Name/packages/@displayId">Overview</a>
+    <a class="fg-tab @(All ? "active" : "")" href="/feeds/@feed.Name/packages/@displayId?all=true">All versions</a>
 </nav>
 
 @if (!All)
 {
     @if (!string.IsNullOrWhiteSpace(shown.Description))
     {
-        <p class="description">@shown.Description</p>
+        <p class="fg-lede">@shown.Description</p>
     }
 
-    <dl class="facts">
-        <dt>Authors</dt><dd>@(string.IsNullOrWhiteSpace(shown.Authors) ? "—" : shown.Authors)</dd>
-        <dt>Tags</dt><dd>@(string.IsNullOrWhiteSpace(shown.Tags) ? "—" : shown.Tags)</dd>
-        <dt>Project</dt>
-        <dd>
-            @if (Uri.TryCreate(shown.ProjectUrl, UriKind.Absolute, out var project) && project.Scheme is "https" or "http")
-            {
-                <a href="@project" rel="noopener noreferrer">@project</a>
-            }
-            else
-            {
-                <span>—</span>
-            }
-        </dd>
-        <dt>Licence</dt><dd>@(shown.LicenseExpression is { Length: > 0 } expr ? expr : (string.IsNullOrWhiteSpace(shown.LicenseUrl) ? "—" : shown.LicenseUrl))</dd>
-    </dl>
+    <div class="fg-panel">
+        <dl class="fg-facts">
+            <dt>Authors</dt><dd>@(string.IsNullOrWhiteSpace(shown.Authors) ? "—" : shown.Authors)</dd>
+            <dt>Tags</dt><dd>@(string.IsNullOrWhiteSpace(shown.Tags) ? "—" : shown.Tags)</dd>
+            <dt>Project</dt>
+            <dd>
+                @if (Uri.TryCreate(shown.ProjectUrl, UriKind.Absolute, out var project) && project.Scheme is "https" or "http")
+                {
+                    <a href="@project" rel="noopener noreferrer">@project</a>
+                }
+                else
+                {
+                    <span>—</span>
+                }
+            </dd>
+            <dt>Licence</dt><dd>@(shown.LicenseExpression is { Length: > 0 } expr ? expr : (string.IsNullOrWhiteSpace(shown.LicenseUrl) ? "—" : shown.LicenseUrl))</dd>
+        </dl>
+    </div>
 
     <h2>Install the latest</h2>
     <pre><code>Install-Module -Name @displayId -RequiredVersion @shown.NormalizedVersion -Repository @feed.Name</code></pre>
@@ -59,31 +71,39 @@ else
     <h2>Every version of @displayId</h2>
 }
 
-<div class="table-wrap">
-    <table>
+<div class="fg-table-wrap">
+    <table class="fg-table">
         <thead>
-            <tr><th>Version</th><th>Source</th><th>State</th><th>Published</th><th>Size</th><th>Downloads</th><th></th></tr>
+            <tr>
+                <th>Version</th>
+                <th>Source</th>
+                <th>State</th>
+                <th>Published</th>
+                <th>Size</th>
+                <th>Downloads</th>
+                <th></th>
+            </tr>
         </thead>
         <tbody>
             @foreach (var entry in Rows)
             {
                 var row = entry.Payload!;
                 var local = entry.Source == VersionSource.Local;
-                <tr class="@(row.Listed ? "" : "inactive")">
-                    <td><a href="/feeds/@feed.Name/packages/@displayId/@row.NormalizedVersion">@row.NormalizedVersion</a></td>
-                    <td><span class="badge">@Origin(entry)</span></td>
+                <tr class="@(row.Listed ? "" : "is-inactive")">
+                    <td class="fg-num"><a href="/feeds/@feed.Name/packages/@displayId/@row.NormalizedVersion">@row.NormalizedVersion</a></td>
+                    <td><span class="fg-badge @OriginBadge(entry)">@Origin(entry)</span></td>
                     <td>
                         @(row.Listed ? "Listed" : "Unlisted")
-                        @if (entry.IsAbsoluteLatestVersion) { <span class="badge">latest</span> }
-                        @if (entry.IsLatestVersion && !entry.IsAbsoluteLatestVersion) { <span class="badge">latest stable</span> }
+                        @if (entry.IsAbsoluteLatestVersion) { <span class="fg-badge fg-badge-accent">latest</span> }
+                        @if (entry.IsLatestVersion && !entry.IsAbsoluteLatestVersion) { <span class="fg-badge fg-badge-accent">latest stable</span> }
                     </td>
-                    <td>@(local ? row.PublishedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC" : "—")</td>
-                    <td>@(local ? FormatSize(row.Size) : "—")</td>
-                    <td>@row.Downloads.ToString("N0", CultureInfo.InvariantCulture)</td>
-                    <td class="actions">
+                    <td class="fg-num">@(local ? row.PublishedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC" : "—")</td>
+                    <td class="fg-num">@(local ? FormatSize(row.Size) : "—")</td>
+                    <td class="fg-num">@row.Downloads.ToString("N0", CultureInfo.InvariantCulture)</td>
+                    <td class="fg-cell-actions">
                         @if (local)
                         {
-                            <a href="@(feedUrl)/package/@displayId/@row.NormalizedVersion">Download</a>
+                            <a class="fg-btn fg-btn-sm" href="@(feedUrl)/package/@displayId/@row.NormalizedVersion">Download</a>
                         }
                         else if (IsAdmin)
                         {
@@ -92,7 +112,7 @@ else
                                 <input type="hidden" name="id" value="@displayId" />
                                 <input type="hidden" name="version" value="@row.NormalizedVersion" />
                                 <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                                <button type="submit" class="link">Pull</button>
+                                <button type="submit" class="fg-btn fg-btn-sm">Pull</button>
                             </form>
                         }
                     </td>
@@ -104,23 +124,22 @@ else
 
 @if (!All && versions.Count > RecentCount)
 {
-    <p class="muted"><a href="/feeds/@feed.Name/packages/@displayId?all=true">Show all @versions.Count versions</a>.</p>
+    <p class="fg-result-count"><a href="/feeds/@feed.Name/packages/@displayId?all=true">Show all @versions.Count versions</a>.</p>
 }
 
 @if (All)
 {
-    <p class="muted">
-        @(Skip + 1) to @(Skip + Rows.Count()) of @versions.Count versions, newest first.
-    </p>
-
-    <nav class="pager">
+    <nav class="fg-pager">
         @if (Page > 1)
         {
-            <a href="@PageLink(Page - 1)">← Newer</a>
+            <a class="fg-btn fg-btn-sm" href="@PageLink(Page - 1)">← Newer</a>
         }
+        <span class="fg-pager-info">
+            @(Skip + 1) to @(Skip + Rows.Count()) of @versions.Count versions, newest first
+        </span>
         @if (Skip + PageSize < versions.Count)
         {
-            <a href="@PageLink(Page + 1)">Older →</a>
+            <a class="fg-btn fg-btn-sm" href="@PageLink(Page + 1)">Older →</a>
         }
     </nav>
 }
@@ -216,6 +235,13 @@ else
         VersionSource.Local when entry.Payload!.Origin == PackageOrigin.Cached => "Cached",
         VersionSource.Local => "Pushed here",
         _ => "Upstream",
+    };
+
+    private static string OriginBadge(VersionListEntry<PackageVersion> entry) => entry.Source switch
+    {
+        VersionSource.Local when entry.Payload!.Origin == PackageOrigin.Cached => "fg-badge-info",
+        VersionSource.Local => "fg-badge-accent",
+        _ => "fg-badge-plain",
     };
 
     private static string FormatSize(long bytes) => bytes switch
