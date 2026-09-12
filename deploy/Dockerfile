@@ -21,7 +21,23 @@ COPY src/FiGet.Web/FiGet.Web.csproj src/FiGet.Web/
 RUN dotnet restore src/FiGet.Web/FiGet.Web.csproj
 
 COPY src/ src/
-RUN dotnet publish src/FiGet.Web/FiGet.Web.csproj --no-restore -c Release -o /app -p:UseAppHost=false
+
+# Deliberately NOT --no-restore, however wasteful that looks next to the restore layer above.
+# With it, the publish skips the work that composes static web assets, and
+# wwwroot/_framework/blazor.web.js is silently left out of the image. Nothing fails: the build
+# succeeds, the app starts, health checks pass. The page then asks for its own framework script,
+# gets a 404, no circuit is ever created, and every interactive component renders once as dead
+# HTML — a grid that draws itself and then ignores every keystroke. The restore layer is still
+# worth keeping: this re-uses it, so the cost of dropping the flag is small.
+RUN dotnet publish src/FiGet.Web/FiGet.Web.csproj -c Release -o /app -p:UseAppHost=false
+
+# Fail here rather than shipping that 404. The failure is otherwise invisible until somebody
+# signs in and reports that search is broken — there is no error in the log, because nothing
+# threw. On failure, list what WAS emitted: the only useful next question is what is in wwwroot.
+RUN test -f /app/wwwroot/_framework/blazor.web.js \
+    || (echo "FATAL: wwwroot/_framework/blazor.web.js missing from the publish output" \
+        && echo "--- /app/wwwroot ---" && ls -laR /app/wwwroot \
+        && exit 1)
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
