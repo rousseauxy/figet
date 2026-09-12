@@ -1091,8 +1091,19 @@ a client difference, not a route difference.
 a correct `Content-Length` through `Results.Stream(..., enableRangeProcessing: true)`, and it ignores
 `Accept-Encoding` entirely. It predates today's work and would have been failing the whole time.
 
-The remedy is to stop compressing already-compressed media at the proxy - exclude `application/zip` and
-`application/octet-stream` from the compress middleware, or drop compression for this router. It buys
+**Which proxy, settled by test.** Cloudflare was set to DNS-only for the hostname: it then resolved
+straight to the origin, the response carried no `Server: cloudflare` and no `CF-RAY` - and
+`Content-Encoding: gzip` was still there, with `Save-Module` still failing. Cloudflare was never the
+culprit. The middleware is Traefik's, and it is two lines:
+
+```
+rules/middlewares-compress.yaml:12    compress: {}        <- no exclusions, so everything
+rules/chain-no-auth.yml:8               - middlewares-compress
+```
+
+`compress: {}` takes no options, so it compresses every content type, and `chain-no-auth` is the chain
+this host uses. The remedy is to stop compressing already-compressed media there - exclude
+`application/zip` and `application/octet-stream`, or drop compression for this router. It buys
 almost nothing anyway: 24,977 bytes became 23,236, under seven percent, in exchange for breaking the exact
 client this server exists to serve.
 
