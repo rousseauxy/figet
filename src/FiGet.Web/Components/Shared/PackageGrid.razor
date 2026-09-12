@@ -225,6 +225,12 @@
         }
 
         total = count;
+
+        // The provider runs *during* a render, so assigning the count above does not repaint the line
+        // that shows it — it kept saying "0 packages" over a table of results. Queued rather than
+        // called directly, because re-rendering from inside a render is re-entrant.
+        _ = InvokeAsync(StateHasChanged);
+
         return GridItemsProviderResult.From(rows, count);
     }
 

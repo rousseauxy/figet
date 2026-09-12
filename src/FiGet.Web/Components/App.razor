@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
+    @*
+        Component-scoped styles, bundled by the build. Easy to leave out, because a project with no
+        .razor.css files does not need it and nothing complains when it is missing — the page simply
+        renders framework components unstyled. QuickGrid's pager arrives through here, as does the
+        reconnect dialog, which is how the pager buttons came out as blank stubs.
+    *@
+    <link rel="stylesheet" href="@Assets["FiGet.Web.styles.css"]" />
     @if (!string.IsNullOrWhiteSpace(Theme))
     {
         <link rel="stylesheet" href="@($"/themes/{Theme}.css")" />

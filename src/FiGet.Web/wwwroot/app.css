@@ -389,6 +389,11 @@ pre code { padding: 0; background: none; }
 /* An unlisted or revoked row is still readable, just plainly secondary. */
 .fg-table tr.is-inactive td { color: var(--text-3); }
 
+/* The grid pads every page out to its page size with empty placeholder rows, so five results in a
+   page of fifty drew forty-five blank lines. They are marked aria-hidden, which is the handle for
+   removing them without touching the grid's own markup. */
+.fg-table tr[aria-hidden="true"] { display: none; }
+
 /* Versions, sizes and counts line up when they are tabular. */
 .fg-num, .fg-table td.fg-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
