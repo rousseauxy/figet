@@ -862,11 +862,38 @@ knew about, so PnP.PowerShell would have shown 2098 rows with 2062 greyed out, a
 versions" — the newest ten *by version* — would have been ten withdrawn nightlies sitting under a header
 that correctly named the current release.
 
-So the tables now show what the gallery shows. The merged list stays whole, because the latest is computed
-across all of it and an exact version must still resolve; a second, filtered list drives the tables only.
-An admin sees everything, having to be able to find an unlisted version in order to pull, relist or delete
-it. A line says how many are hidden and that they are still installable, rather than leaving a count that
-quietly disagrees with the gallery's.
+So the tables now show what this feed holds, plus the upstream versions still advertised. The merged list
+stays whole, because the latest is computed across all of it and an exact version must still resolve; a
+second, filtered list drives the tables only. A line says how many are hidden and that they remain
+installable, rather than leaving a count that quietly disagrees with the gallery's.
+
+The rule is deliberately **not** "an admin sees everything", which is where this landed first. Role-based
+visibility makes an admin's page disagree with what every client sees, exactly when the question being
+asked is "why did `Install-Module` pick that version" — and it still hands 2098 rows to the one person who
+needs the page to be readable. What an admin actually needs is the versions this feed *holds*, to relist
+or delete them, and those are visible to everyone. A withdrawn version nobody here holds is gallery
+history: hidden until somebody pulls it, then it is local and shows.
 
 Deliberately untouched: `Find-Module`, v3 search and autocomplete, and the flat container. Search was
 already filtering on the flag, and the flat container already serves unlisted versions on purpose.
+
+### What the reference server does, measured
+
+Asked directly rather than assumed, against the reference server on the NAS, whose `modules` feed
+is connector-backed:
+
+```
+GET /nuget/modules/FindPackagesById()?id='PnP.PowerShell'&$inlinecount=allpages
+<m:count>2098</m:count>
+```
+
+**2098 — the same number FiGet returned before the fix.** The reference server does not honour the upstream's listed
+flag either, so what looked like FiGet misbehaving was FiGet matching the reference server. Honouring the flag is
+therefore a step past the server being replaced, not a deviation from it, and parity is the wrong target
+here.
+
+One more thing fell out of the same session, unprompted: the reference server's `Search()` on that feed returns **no
+results** for `pnp.powershell`, while its `FindPackagesById()` returns all 2098 versions of it. Its
+connector can serve the package but its search cannot find it — the failure mode recorded in build plan
+section 4.3 as the reason not to guess the OData subset. FiGet's search finds it, verified live against
+both the v2 API and the anonymous UI.
