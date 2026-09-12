@@ -321,6 +321,42 @@ public static class FiGetApp
             return Back(form["returnUrl"].ToString(), $"/feeds/{Uri.EscapeDataString(feed)}/settings");
         });
 
+        // The two buttons of the unlisted view. Relisting offers a version again; deleting removes it for
+        // good, because unlisting what is already unlisted would do nothing.
+        admin.MapPost("/feeds/{feed}/versions/relist", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            PackageIngestionService ingestion,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            if (target is not null)
+            {
+                await ingestion.RelistAsync(target, form["id"].ToString(), form["version"].ToString(), cancellationToken);
+            }
+
+            return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}/unlisted");
+        });
+
+        admin.MapPost("/feeds/{feed}/versions/delete", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            PackageIngestionService ingestion,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            if (target is not null)
+            {
+                await ingestion.PurgeAsync(target, form["id"].ToString(), form["version"].ToString(), cancellationToken);
+            }
+
+            return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}/unlisted");
+        });
+
         admin.MapPost("/feeds/{feed}/upstreams/remove", async (
             string feed,
             HttpContext http,

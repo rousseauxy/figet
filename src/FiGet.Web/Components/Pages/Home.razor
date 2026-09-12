@@ -1,11 +1,11 @@
 @page "/"
-@using System.ComponentModel.DataAnnotations
 @using System.Security.Claims
-@using FiGet.Domain.Feeds
 @inject IFeedStore Feeds
-@inject TimeProvider Time
 
 <PageTitle>Feeds · FiGet</PageTitle>
+
+@* Read-only on purpose. Everything that changes something lives in the admin area, so this page can be
+   served to anyone and a reader and an admin see the same thing, bar the feeds a reader may not read. *@
 
 <div class="fg-page-head">
     <h1>Feeds</h1>
@@ -28,7 +28,6 @@ else
                     <th>On existing version</th>
                     <th>Delete</th>
                     <th>v3 source URL</th>
-                    <th></th>
                 </tr>
             </thead>
             <tbody>
@@ -47,12 +46,6 @@ else
                                 <button type="button" class="fg-copy" data-copy="@url" title="Copy this URL" aria-label="Copy the v3 source URL of feed @feed.Name">Copy</button>
                             </div>
                         </td>
-                        <td class="fg-cell-actions">
-                            @if (IsAdmin)
-                            {
-                                <a class="fg-btn fg-btn-sm" href="/feeds/@feed.Name/settings">Settings</a>
-                            }
-                        </td>
                     </tr>
                 }
             </tbody>
@@ -62,44 +55,15 @@ else
 
 @if (IsAdmin)
 {
-    <h2>Create a feed</h2>
-    <div class="fg-panel">
-        <EditForm Model="NewFeed!" FormName="create-feed" OnValidSubmit="CreateAsync" method="post" class="fg-form">
-            <DataAnnotationsValidator />
-            <div class="fg-field">
-                <label for="feed-name">Name</label>
-                <InputText id="feed-name" @bind-Value="NewFeed!.Name" placeholder="for example: modules" />
-                <ValidationMessage For="() => NewFeed!.Name" />
-            </div>
-
-            <label class="fg-check"><InputCheckbox @bind-Value="NewFeed!.AnonymousRead" /> Anyone can read without a token</label>
-            <label class="fg-check"><InputCheckbox @bind-Value="NewFeed!.AllowOverwrite" /> Pushing an existing version replaces it</label>
-
-            <div class="fg-field">
-                <label for="feed-delete">Delete behaviour</label>
-                <InputSelect id="feed-delete" @bind-Value="NewFeed!.DeletionBehavior">
-                    <option value="@PackageDeletionBehavior.Unlist">Unlist (recommended)</option>
-                    <option value="@PackageDeletionBehavior.HardDelete">Hard delete</option>
-                </InputSelect>
-            </div>
-
-            @if (message is not null)
-            {
-                <p class="@(messageIsError ? "fg-error" : "fg-ok")">@message</p>
-            }
-            <button type="submit" class="fg-btn fg-btn-primary">Create feed</button>
-        </EditForm>
-    </div>
+    <p class="fg-result-count">Creating feeds, upstreams and tokens lives in the <a href="/admin/feeds">admin area</a>.</p>
 }
 
 @code {
     private IReadOnlyList<Feed> feeds = [];
-    private string? message;
-    private bool messageIsError;
 
     /// <summary>
     /// Reading is open, managing is not: a visitor who has not signed in sees the feeds that allow
-    /// anonymous reads, and none of the buttons.
+    /// anonymous reads, and nothing else.
     /// </summary>
     private bool IsAdmin => HttpContext.User.HasClaim(ClaimTypes.Role, "admin");
 
@@ -108,63 +72,9 @@ else
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
 
-    [SupplyParameterFromForm(FormName = "create-feed")]
-    private FeedForm? NewFeed { get; set; }
-
-    protected override void OnInitialized() => NewFeed ??= new();
-
-    protected override async Task OnInitializedAsync() => await LoadAsync();
-
-    private async Task LoadAsync()
+    protected override async Task OnInitializedAsync()
     {
         var all = await Feeds.ListAsync(HttpContext.RequestAborted);
         feeds = IsAdmin ? all : all.Where(f => f.AnonymousRead).ToList();
-    }
-
-    private async Task CreateAsync()
-    {
-        // The form is only rendered for an admin, so a post without that claim is not a mistake.
-        if (!IsAdmin)
-        {
-            HttpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
-            return;
-        }
-
-        if (!FeedNames.IsValid(NewFeed!.Name))
-        {
-            (message, messageIsError) = ("Use letters, digits, dot, dash or underscore, starting with a letter or digit (at most 64).", true);
-            return;
-        }
-
-        var created = await Feeds.CreateAsync(
-            new Feed
-            {
-                Name = NewFeed!.Name,
-                NameLower = NewFeed!.Name.ToLowerInvariant(),
-                AnonymousRead = NewFeed!.AnonymousRead,
-                AllowOverwrite = NewFeed!.AllowOverwrite,
-                DeletionBehavior = NewFeed!.DeletionBehavior,
-                CreatedUtc = Time.GetUtcNow().UtcDateTime,
-            },
-            HttpContext.RequestAborted);
-
-        (message, messageIsError) = created ? ($"Feed '{NewFeed!.Name}' created.", false) : ($"A feed named '{NewFeed!.Name}' already exists.", true);
-        await LoadAsync();
-        if (created)
-        {
-            NewFeed = new();
-        }
-    }
-
-    private sealed class FeedForm
-    {
-        [Required(ErrorMessage = "Enter a name.")]
-        public string Name { get; set; } = "";
-
-        public bool AnonymousRead { get; set; }
-
-        public bool AllowOverwrite { get; set; }
-
-        public PackageDeletionBehavior DeletionBehavior { get; set; } = PackageDeletionBehavior.Unlist;
     }
 }

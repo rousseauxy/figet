@@ -1,0 +1,138 @@
+@page "/admin/feeds"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@layout AdminLayout
+@using System.ComponentModel.DataAnnotations
+@using FiGet.Domain.Feeds
+@inject IFeedStore FeedStore
+@inject TimeProvider Time
+
+<PageTitle>Feeds · admin · FiGet</PageTitle>
+
+<h1>Feeds</h1>
+<p class="fg-lede">Every feed on this server, including the ones a reader cannot see.</p>
+
+@if (feeds.Count == 0)
+{
+    <p class="fg-empty">No feeds yet. Create the first one below.</p>
+}
+else
+{
+    <div class="fg-table-wrap">
+        <table class="fg-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Kind</th>
+                    <th>Read</th>
+                    <th>On existing version</th>
+                    <th>Delete</th>
+                    <th>Upstreams</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var feed in feeds)
+                {
+                    <tr>
+                        <td><a href="/admin/feeds/@feed.Name">@feed.Name</a></td>
+                        <td><span class="fg-badge">@feed.Kind</span></td>
+                        <td>@(feed.AnonymousRead ? "Anonymous" : "Token")</td>
+                        <td>@(feed.AllowOverwrite ? "Overwrite" : "Reject (409)")</td>
+                        <td>@feed.DeletionBehavior</td>
+                        <td class="fg-num">@(feed.Upstreams.Count == 0 ? Display.None : feed.Upstreams.Count.ToString(CultureInfo.InvariantCulture))</td>
+                        <td class="fg-cell-actions">
+                            <a class="fg-btn fg-btn-sm" href="/admin/feeds/@feed.Name">Settings</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<h2>Create a feed</h2>
+<div class="fg-panel">
+    <EditForm Model="NewFeed!" FormName="create-feed" OnValidSubmit="CreateAsync" method="post" class="fg-form">
+        <DataAnnotationsValidator />
+        <div class="fg-field">
+            <label for="feed-name">Name</label>
+            <InputText id="feed-name" @bind-Value="NewFeed!.Name" placeholder="for example: modules" />
+            <ValidationMessage For="() => NewFeed!.Name" />
+        </div>
+
+        <label class="fg-check"><InputCheckbox @bind-Value="NewFeed!.AnonymousRead" /> Anyone can read without a token</label>
+        <label class="fg-check"><InputCheckbox @bind-Value="NewFeed!.AllowOverwrite" /> Pushing an existing version replaces it</label>
+
+        <div class="fg-field">
+            <label for="feed-delete">Delete behaviour</label>
+            <InputSelect id="feed-delete" @bind-Value="NewFeed!.DeletionBehavior">
+                <option value="@PackageDeletionBehavior.Unlist">Unlist (recommended)</option>
+                <option value="@PackageDeletionBehavior.HardDelete">Hard delete</option>
+            </InputSelect>
+        </div>
+
+        @if (message is not null)
+        {
+            <p class="@(messageIsError ? "fg-error" : "fg-ok")">@message</p>
+        }
+        <button type="submit" class="fg-btn fg-btn-primary">Create feed</button>
+    </EditForm>
+</div>
+
+@code {
+    private IReadOnlyList<Feed> feeds = [];
+    private string? message;
+    private bool messageIsError;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "create-feed")]
+    private FeedForm? NewFeed { get; set; }
+
+    protected override void OnInitialized() => NewFeed ??= new();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync() => feeds = await FeedStore.ListAsync(HttpContext.RequestAborted);
+
+    private async Task CreateAsync()
+    {
+        if (!FeedNames.IsValid(NewFeed!.Name))
+        {
+            (message, messageIsError) = ("Use letters, digits, dot, dash or underscore, starting with a letter or digit (at most 64).", true);
+            return;
+        }
+
+        var created = await FeedStore.CreateAsync(
+            new Feed
+            {
+                Name = NewFeed!.Name,
+                NameLower = NewFeed!.Name.ToLowerInvariant(),
+                AnonymousRead = NewFeed!.AnonymousRead,
+                AllowOverwrite = NewFeed!.AllowOverwrite,
+                DeletionBehavior = NewFeed!.DeletionBehavior,
+                CreatedUtc = Time.GetUtcNow().UtcDateTime,
+            },
+            HttpContext.RequestAborted);
+
+        (message, messageIsError) = created ? ($"Feed '{NewFeed!.Name}' created.", false) : ($"A feed named '{NewFeed!.Name}' already exists.", true);
+        await LoadAsync();
+        if (created)
+        {
+            NewFeed = new();
+        }
+    }
+
+    private sealed class FeedForm
+    {
+        [Required(ErrorMessage = "Enter a name.")]
+        public string Name { get; set; } = "";
+
+        public bool AnonymousRead { get; set; }
+
+        public bool AllowOverwrite { get; set; }
+
+        public PackageDeletionBehavior DeletionBehavior { get; set; } = PackageDeletionBehavior.Unlist;
+    }
+}

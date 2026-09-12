@@ -25,6 +25,13 @@ public interface IPackageStore
     /// </summary>
     Task<bool> AddVersionAsync(int feedKey, string id, PackageVersion version, bool replaceExisting, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Versions this feed holds that it does not advertise, newest first, each with its package so the id
+    /// can be shown. Every other query here answers "what does this feed offer"; this is the opposite view,
+    /// and it is the only way to find a version again once it has been unlisted.
+    /// </summary>
+    Task<IReadOnlyList<PackageVersion>> ListUnlistedAsync(int feedKey, int skip, int take, CancellationToken cancellationToken);
+
     Task<bool> SetListedAsync(int feedKey, string idLower, string normalizedVersionLower, bool listed, CancellationToken cancellationToken);
 
     /// <summary>Deletes the version row with its dependencies and symbol rows; removes the package row when it was the last version.</summary>

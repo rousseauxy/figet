@@ -1,0 +1,60 @@
+@*
+    The admin area's frame: one navigation for everything that changes something, so the public pages can
+    stay read-only. Nested inside MainLayout rather than replacing it, because the site header, the theme
+    toggle and the sign-out button belong on these pages too.
+
+    Which feed is being managed is read from the URL rather than passed in. A layout cannot take parameters
+    from the page it wraps, and the alternative - a cascading value every admin page has to remember to set
+    - fails silently on the one page that forgets.
+*@
+@inherits LayoutComponentBase
+@layout MainLayout
+@inject NavigationManager Navigation
+
+<div class="fg-admin-shell">
+    <nav class="fg-admin-nav" aria-label="Admin">
+        <div class="fg-admin-nav-group">
+            <span class="fg-admin-nav-title">Manage</span>
+            <a class="fg-admin-nav-link @Active("/admin/feeds")" href="/admin/feeds">Feeds</a>
+            <a class="fg-admin-nav-link @Active("/admin/tokens")" href="/admin/tokens">Tokens</a>
+        </div>
+
+        @if (FeedName is { Length: > 0 } feed)
+        {
+            <div class="fg-admin-nav-group">
+                <span class="fg-admin-nav-title">@feed</span>
+                <a class="fg-admin-nav-link @Active($"/admin/feeds/{feed}")" href="/admin/feeds/@feed">Settings</a>
+                <a class="fg-admin-nav-link @Active($"/admin/feeds/{feed}/unlisted")" href="/admin/feeds/@feed/unlisted">Unlisted versions</a>
+                <a class="fg-admin-nav-link" href="/feeds/@feed">View as a reader</a>
+            </div>
+        }
+    </nav>
+
+    <div class="fg-admin-body">
+        @Body
+    </div>
+</div>
+
+@code {
+    /// <summary>The path alone, without the query, and without a trailing slash to compare against.</summary>
+    private string CurrentPath =>
+        "/" + Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/');
+
+    /// <summary>The feed under management, when the URL names one.</summary>
+    private string? FeedName
+    {
+        get
+        {
+            var parts = CurrentPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length >= 3
+                && parts[0].Equals("admin", StringComparison.OrdinalIgnoreCase)
+                && parts[1].Equals("feeds", StringComparison.OrdinalIgnoreCase)
+                    ? Uri.UnescapeDataString(parts[2])
+                    : null;
+        }
+    }
+
+    /// <summary>Exact match, so "Feeds" does not stay lit while a single feed is being edited.</summary>
+    private string Active(string path) =>
+        string.Equals(CurrentPath, path, StringComparison.OrdinalIgnoreCase) ? "active" : "";
+}

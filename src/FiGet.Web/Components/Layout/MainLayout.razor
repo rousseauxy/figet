@@ -6,9 +6,11 @@
             <a class="fg-navbar-brand" href="/">FiGet</a>
             <div class="fg-nav-links">
                 <a href="/">Feeds</a>
+                @* One door into everything that changes something. The public pages below it are
+                   read-only, which is what lets them be served to anyone. *@
                 <AuthorizeView Policy="@FiGetApp.AdminPolicy">
                     <Authorized>
-                        <a href="/tokens">Tokens</a>
+                        <a href="/admin/feeds">Admin</a>
                     </Authorized>
                 </AuthorizeView>
 

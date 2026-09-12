@@ -1,5 +1,6 @@
-@page "/tokens"
+@page "/admin/tokens"
 @attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@layout AdminLayout
 @using System.ComponentModel.DataAnnotations
 @using FiGet.Application.Tokens
 @inject IAccessTokenStore Store

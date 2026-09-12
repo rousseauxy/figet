@@ -190,6 +190,17 @@ public sealed class EfPackageStore(FiGetDbContext db) : IPackageStore
         }
     }
 
+    public async Task<IReadOnlyList<PackageVersion>> ListUnlistedAsync(int feedKey, int skip, int take, CancellationToken cancellationToken) =>
+        await db.PackageVersions
+            .AsNoTracking()
+            .Include(v => v.Package)
+            .Where(v => v.Package!.FeedKey == feedKey && !v.Listed)
+            .OrderByDescending(v => v.LastUpdatedUtc)
+            .ThenBy(v => v.Key)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+
     public async Task<bool> SetListedAsync(int feedKey, string idLower, string normalizedVersionLower, bool listed, CancellationToken cancellationToken) =>
         await db.PackageVersions
             .Where(v => v.Package!.FeedKey == feedKey && v.Package.IdLower == idLower && v.NormalizedVersionLower == normalizedVersionLower)

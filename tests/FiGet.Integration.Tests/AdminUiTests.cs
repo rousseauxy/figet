@@ -24,7 +24,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         Assert.DoesNotContain("Create a feed", home, StringComparison.Ordinal);
 
         // Matched on the link, not the word: a feed may legitimately be named "settings-target".
-        Assert.DoesNotContain("href=\"/tokens\"", home, StringComparison.Ordinal);
+        Assert.DoesNotContain("href=\"/admin", home, StringComparison.Ordinal);
         Assert.DoesNotContain("/settings\"", home, StringComparison.Ordinal);
 
         var feed = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/public"));
@@ -36,7 +36,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
     {
         using var client = CreateBrowser();
 
-        foreach (var path in new[] { "/tokens", "/feeds/public/settings" })
+        foreach (var path in new[] { "/admin/tokens", "/admin/feeds", "/admin/feeds/public" })
         {
             var response = await client.GetAsync(path);
             HttpAssert.Status(HttpStatusCode.Redirect, response);
@@ -69,10 +69,16 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         var feeds = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/"));
         Assert.Contains(">public<", feeds, StringComparison.Ordinal);
         Assert.Contains(">private<", feeds, StringComparison.Ordinal);
-        Assert.Contains("Create a feed", feeds, StringComparison.Ordinal);
         Assert.Contains("/nuget/public/v3/index.json", feeds, StringComparison.Ordinal);
 
-        await HttpAssert.SuccessBodyAsync(await client.GetAsync("/tokens"));
+        // The public page is read-only now; it offers the way in rather than the controls themselves.
+        Assert.Contains("href=\"/admin/feeds\"", feeds, StringComparison.Ordinal);
+        Assert.DoesNotContain("Create a feed", feeds, StringComparison.Ordinal);
+
+        var admin = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/feeds"));
+        Assert.Contains("Create a feed", admin, StringComparison.Ordinal);
+
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/tokens"));
         await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/public"));
     }
 
@@ -87,16 +93,19 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
     }
 
     [Fact]
-    public async Task The_feed_list_offers_a_copy_button_and_a_settings_link()
+    public async Task The_feed_list_copies_a_url_and_the_admin_area_links_to_settings()
     {
         using var client = CreateBrowser();
         HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
 
+        // Copying a source URL is reading, so it stays on the page anyone can see.
         var feeds = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/"));
-
         Assert.Contains("data-copy=\"", feeds, StringComparison.Ordinal);
         Assert.Contains("/nuget/public/v3/index.json\"", feeds, StringComparison.Ordinal);
-        Assert.Contains("href=\"/feeds/public/settings\"", feeds, StringComparison.Ordinal);
+
+        // Changing a feed is not, so its link lives behind the admin navigation.
+        var admin = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/feeds"));
+        Assert.Contains("href=\"/admin/feeds/public\"", admin, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -106,7 +115,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
         var feed = await CreateFeedAsync("settings-target", anonymousRead: false);
 
-        var before = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/feeds/{feed}/settings"));
+        var before = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/admin/feeds/{feed}"));
         var form = FormBlock(before, "feed-settings");
         var fields = HiddenFields(form);
         fields[FieldName(form, "anonymous-read")] = "true";
@@ -114,7 +123,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         fields[FieldName(form, "delete-behaviour")] = nameof(FiGet.Domain.Entities.PackageDeletionBehavior.HardDelete);
 
         using var content = new FormUrlEncodedContent(fields);
-        var saved = await HttpAssert.SuccessBodyAsync(await client.PostAsync($"/feeds/{feed}/settings", content));
+        var saved = await HttpAssert.SuccessBodyAsync(await client.PostAsync($"/admin/feeds/{feed}", content));
         Assert.Contains("Settings saved.", saved, StringComparison.Ordinal);
 
         var stored = await FindFeedAsync(feed);
@@ -130,21 +139,21 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
         var feed = await CreateFeedAsync("delete-target", anonymousRead: true);
 
-        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/feeds/{feed}/settings"));
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/admin/feeds/{feed}"));
         var form = FormBlock(page, "delete-feed");
         var confirmField = FieldName(form, "confirm-name");
 
         var wrong = HiddenFields(form);
         wrong[confirmField] = "not-the-name";
         using var wrongContent = new FormUrlEncodedContent(wrong);
-        var refused = await HttpAssert.SuccessBodyAsync(await client.PostAsync($"/feeds/{feed}/settings", wrongContent));
+        var refused = await HttpAssert.SuccessBodyAsync(await client.PostAsync($"/admin/feeds/{feed}", wrongContent));
         Assert.Contains("exactly to confirm", refused, StringComparison.Ordinal);
         Assert.NotNull(await FindFeedAsync(feed));
 
         var right = HiddenFields(form);
         right[confirmField] = feed;
         using var rightContent = new FormUrlEncodedContent(right);
-        var response = await client.PostAsync($"/feeds/{feed}/settings", rightContent);
+        var response = await client.PostAsync($"/admin/feeds/{feed}", rightContent);
         Assert.True(response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.Redirect, $"Unexpected status {response.StatusCode}.");
         Assert.Null(await FindFeedAsync(feed));
     }

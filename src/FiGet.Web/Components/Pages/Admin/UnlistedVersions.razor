@@ -1,0 +1,137 @@
+@page "/admin/feeds/{Name}/unlisted"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@layout AdminLayout
+@using FiGet.Application.Ports
+@inject IFeedStore Feeds
+@inject IPackageStore Packages
+
+<PageTitle>Unlisted versions · @Name · FiGet</PageTitle>
+
+@if (feed is null)
+{
+    <h1>Feed not found</h1>
+    <p class="fg-muted">There is no feed named <code>@Name</code>. <a href="/admin/feeds">Back to feeds</a>.</p>
+}
+else
+{
+    <h1>Unlisted versions</h1>
+    <p class="fg-lede">
+        What <code>@feed.Name</code> holds but does not advertise. Every other page shows what a feed
+        offers; this is the opposite view, and the only way to find a version again once it is unlisted.
+    </p>
+
+    @*
+        Why this page exists at all: a version gets unlisted either because a delete arrived on a feed whose
+        delete behaviour is Unlist, or because an upstream withdrew it and the connector unlisted the cached
+        copy. Both leave a package that is still downloadable by exact version - a pinned install keeps
+        working - but invisible everywhere else. Without this screen the only way back is to know the
+        version number and call the API.
+    *@
+
+    @if (rows.Count == 0)
+    {
+        <p class="fg-empty">Nothing unlisted. Everything this feed holds, it also advertises.</p>
+    }
+    else
+    {
+        <div class="fg-table-wrap">
+            <table class="fg-table">
+                <thead>
+                    <tr>
+                        <th>Package</th>
+                        <th>Version</th>
+                        <th>Source</th>
+                        <th>Last updated</th>
+                        <th>Size</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in rows)
+                    {
+                        var id = row.Package?.Id ?? "";
+                        <tr class="is-inactive">
+                            <td><a href="/feeds/@feed.Name/packages/@id">@id</a></td>
+                            <td class="fg-num">@row.NormalizedVersion</td>
+                            <td><span class="fg-badge @(row.Origin == PackageOrigin.Pushed ? "fg-badge-accent" : "fg-badge-info")">@(row.Origin == PackageOrigin.Pushed ? "Pushed here" : "Cached")</span></td>
+                            <td class="fg-num">@Display.Date(row.LastUpdatedUtc)</td>
+                            <td class="fg-num">@Display.Size(row.Size)</td>
+                            <td class="fg-cell-actions">
+                                <form method="post" action="/admin/feeds/@feed.Name/versions/relist">
+                                    <AntiforgeryToken />
+                                    <input type="hidden" name="id" value="@id" />
+                                    <input type="hidden" name="version" value="@row.NormalizedVersion" />
+                                    <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                                    <button type="submit" class="fg-btn fg-btn-sm" title="Offer this version again">Relist</button>
+                                </form>
+                                <form method="post" action="/admin/feeds/@feed.Name/versions/delete">
+                                    <AntiforgeryToken />
+                                    <input type="hidden" name="id" value="@id" />
+                                    <input type="hidden" name="version" value="@row.NormalizedVersion" />
+                                    <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                                    <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger" title="Remove this version and its files for good">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <p class="fg-muted fg-small">
+            Relisting offers the version again. Deleting removes the row and its files outright, whatever
+            this feed's delete behaviour says — there would be no point unlisting what is already unlisted.
+        </p>
+
+        <nav class="fg-pager">
+            @if (Page > 1)
+            {
+                <a class="fg-btn fg-btn-sm" href="/admin/feeds/@feed.Name/unlisted?page=@(Page - 1)">← Previous</a>
+            }
+            <span class="fg-pager-info">@(Skip + 1) to @(Skip + rows.Count)</span>
+            @if (more)
+            {
+                <a class="fg-btn fg-btn-sm" href="/admin/feeds/@feed.Name/unlisted?page=@(Page + 1)">Next →</a>
+            }
+        </nav>
+    }
+}
+
+@code {
+    private const int PageSize = 100;
+
+    private Feed? feed;
+    private IReadOnlyList<PackageVersion> rows = [];
+
+    /// <summary>Whether a further page exists, learnt by asking for one row more than is shown.</summary>
+    private bool more;
+
+    [Parameter]
+    public string Name { get; set; } = "";
+
+    [SupplyParameterFromQuery(Name = "page")]
+    private int Page { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private int Skip => (Math.Max(1, Page) - 1) * PageSize;
+
+    /// <summary>Where the buttons return to.</summary>
+    private string ReturnUrl => HttpContext.Request.Path + HttpContext.Request.QueryString;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Page = Math.Max(1, Page);
+        feed = await Feeds.FindAsync(Name, HttpContext.RequestAborted);
+        if (feed is null)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        var page = await Packages.ListUnlistedAsync(feed.Key, Skip, PageSize + 1, HttpContext.RequestAborted);
+        more = page.Count > PageSize;
+        rows = more ? page.Take(PageSize).ToList() : page;
+    }
+}

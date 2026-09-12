@@ -180,6 +180,24 @@ public sealed class PackageIngestionService(IPackageIndexer indexer, IPackageSto
             return await store.SetListedAsync(feed.Key, idLower, versionLower, listed: false, cancellationToken);
         }
 
+        return await PurgeAsync(feed, id, version, cancellationToken);
+    }
+
+    /// <summary>
+    /// Removes a version and its files outright, whatever the feed's delete behaviour says.
+    /// <see cref="DeleteAsync"/> honours that setting, so on a feed that unlists it would only unlist
+    /// again - no answer at all when the caller is looking at a version that is already unlisted.
+    /// </summary>
+    public async Task<bool> PurgeAsync(Feed feed, string id, string version, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(feed);
+        var idLower = id.ToLowerInvariant();
+        var versionLower = NormalizeLower(version);
+        if (versionLower is null)
+        {
+            return false;
+        }
+
         var row = await store.GetVersionAsync(feed.Key, idLower, versionLower, cancellationToken);
         if (row is null)
         {
