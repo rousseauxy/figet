@@ -254,6 +254,13 @@ Since then, driven by using it:
 - **Versions nobody has cached are described.** The upstream's description, authors and tags travel with
   them, which matters because a PowerShell client reads `PSEdition_Desktop` against `PSEdition_Core` to
   decide whether a version can run at all.
+- **A version has tabs**: Overview, Metadata, Dependencies, and Files for a version held here. Tags moved
+  into Metadata as chips, with the generated ones folded away: a PowerShell module publishes one tag per
+  exported command, so the list runs to thousands and reads as noise inline. Dependencies come from the
+  stored package's own groups, and the file list is read from the package on demand. Two tabs the
+  commercial server has are deliberately absent until the data behind them exists: History needs the audit
+  log of phase 5, and usage needs the per-version download tracking the cache policy also wants. An empty
+  tab teaches people not to click tabs.
 
 ### Next, in this order
 
@@ -267,7 +274,8 @@ Since then, driven by using it:
 
 Not doing, decided: per-feed version filtering (section 9). Still open from earlier phases: the packages
 management API, replaying the recorded fixtures as tests, the real PowerShell 5.1 client run, per-version
-registration leaves for upstream-only versions, cache pruning, and promotion between feeds. The themed dropdown used elsewhere is an
+registration leaves for upstream-only versions, cache pruning, promotion between feeds, and the two
+deferred tabs above. The themed dropdown used elsewhere is an
 interactive component, and these pages are statically rendered, so that one needs a decision before it can
 be reused.
 

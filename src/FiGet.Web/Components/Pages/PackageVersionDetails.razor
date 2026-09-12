@@ -1,9 +1,12 @@
 @page "/feeds/{Name}/packages/{Id}/{Version}"
+@using System.IO.Compression
 @using System.Security.Claims
 @using FiGet.Core.Connectors
+@using FiGet.Core.Storage
 @using FiGet.Core.Versions
 @inject IFeedStore Feeds
 @inject IPackageStore Packages
+@inject IPackageStorage Storage
 @inject ConnectorService Connector
 
 <PageTitle>@Id @Version · FiGet</PageTitle>
@@ -56,37 +59,180 @@
             <button type="submit">Pull into this feed</button>
         </form>
     }
-    else if (!IsLocal)
+    else
     {
         <span class="muted">Held by an upstream. Downloading it through a client caches it here.</span>
     }
 </div>
 
-@if (!string.IsNullOrWhiteSpace(row.Description))
+<nav class="tabs">
+    <a class="@Active("")" href="@TabLink("")">Overview</a>
+    <a class="@Active("metadata")" href="@TabLink("metadata")">Metadata</a>
+    <a class="@Active("dependencies")" href="@TabLink("dependencies")">Dependencies</a>
+    @if (IsLocal)
+    {
+        <a class="@Active("files")" href="@TabLink("files")">Files</a>
+    }
+</nav>
+
+@switch (CurrentTab)
 {
-    <p class="description">@row.Description</p>
+    case "metadata":
+        <dl class="facts">
+            <dt>Id</dt><dd>@displayId</dd>
+            <dt>Version</dt><dd>@row.NormalizedVersion@(row.OriginalVersion == row.NormalizedVersion ? "" : $" (published as {row.OriginalVersion})")</dd>
+            <dt>Authors</dt><dd>@(string.IsNullOrWhiteSpace(row.Authors) ? "—" : row.Authors)</dd>
+            <dt>Origin</dt><dd>@origin</dd>
+            <dt>Published</dt><dd>@(row.PublishedUtc == default ? "—" : row.PublishedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC")</dd>
+            <dt>Size</dt><dd>@(IsLocal ? FormatSize(row.Size) : "—")</dd>
+            <dt>Downloads</dt><dd>@row.Downloads.ToString("N0", CultureInfo.InvariantCulture)</dd>
+            <dt>Licence</dt>
+            <dd>
+                @if (row.LicenseExpression is { Length: > 0 } expression)
+                {
+                    @expression
+                }
+                else if (Link(row.LicenseUrl) is { } licence)
+                {
+                    <a href="@licence" rel="noopener noreferrer">@licence</a>
+                }
+                else
+                {
+                    <span>—</span>
+                }
+            </dd>
+            <dt>Project</dt>
+            <dd>
+                @if (Link(row.ProjectUrl) is { } project)
+                {
+                    <a href="@project" rel="noopener noreferrer">@project</a>
+                }
+                else
+                {
+                    <span>—</span>
+                }
+            </dd>
+            <dt>Hash</dt><dd>@(string.IsNullOrWhiteSpace(row.Hash) ? "—" : row.HashAlgorithm + " " + row.Hash)</dd>
+        </dl>
+
+        <h2>Tags</h2>
+        @if (Tags.Count == 0)
+        {
+            <p class="muted">None.</p>
+        }
+        else
+        {
+            <div class="chips">
+                @foreach (var tag in Tags.Where(t => !IsGenerated(t)))
+                {
+                    <span class="chip">@tag</span>
+                }
+            </div>
+
+            @* A PowerShell module publishes one tag per exported command. Useful to search, useless to read. *@
+            @if (Tags.Any(IsGenerated))
+            {
+                <details class="more">
+                    <summary>@Tags.Count(IsGenerated) command and function tags</summary>
+                    <div class="chips">
+                        @foreach (var tag in Tags.Where(IsGenerated))
+                        {
+                            <span class="chip">@tag</span>
+                        }
+                    </div>
+                </details>
+            }
+        }
+        break;
+
+    case "dependencies":
+        @if (dependencies.Count == 0)
+        {
+            <p class="muted">
+                @(IsLocal ? "This version declares no dependencies." : "Known once the package is here: dependencies are read from the package itself.")
+            </p>
+        }
+        else
+        {
+            @foreach (var group in dependencies.GroupBy(d => d.TargetFramework))
+            {
+                <h2>@(string.IsNullOrWhiteSpace(group.Key) ? "Any framework" : group.Key)</h2>
+                @if (group.All(d => d.Id is null))
+                {
+                    <p class="muted">No dependencies for this target.</p>
+                }
+                else
+                {
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>Package</th><th>Version range</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var dependency in group.Where(d => d.Id is not null).OrderBy(d => d.Ordinal))
+                                {
+                                    <tr>
+                                        <td><a href="/feeds/@feed.Name/packages/@dependency.Id">@dependency.Id</a></td>
+                                        <td>@(string.IsNullOrWhiteSpace(dependency.VersionRange) ? "any" : dependency.VersionRange)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+        }
+        break;
+
+    case "files":
+        @if (files is null)
+        {
+            <p class="muted">The package file could not be read.</p>
+        }
+        else
+        {
+            <p class="muted">@files.Count file@(files.Count == 1 ? "" : "s") inside the package.</p>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Path</th><th>Size</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var file in files)
+                        {
+                            <tr><td><code>@file.Path</code></td><td>@FormatSize(file.Length)</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        break;
+
+    default:
+        @if (!string.IsNullOrWhiteSpace(row.Description))
+        {
+            <p class="description">@row.Description</p>
+        }
+
+        <h2>Install this version</h2>
+        <pre><code>Install-Module -Name @displayId -RequiredVersion @row.NormalizedVersion -Repository @feed.Name</code></pre>
+        <pre><code>Install-PSResource -Name @displayId -Version @row.NormalizedVersion -Repository @feed.Name</code></pre>
+        <pre><code>dotnet add package @displayId --version @row.NormalizedVersion --source @(feedUrl)/v3/index.json</code></pre>
+        break;
 }
 
-<dl class="facts">
-    <dt>Authors</dt><dd>@(string.IsNullOrWhiteSpace(row.Authors) ? "—" : row.Authors)</dd>
-    <dt>Tags</dt><dd>@(string.IsNullOrWhiteSpace(row.Tags) ? "—" : row.Tags)</dd>
-    <dt>Published</dt><dd>@(IsLocal ? row.PublishedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC" : "—")</dd>
-    <dt>Size</dt><dd>@(IsLocal ? FormatSize(row.Size) : "—")</dd>
-    <dt>Downloads</dt><dd>@row.Downloads.ToString("N0", CultureInfo.InvariantCulture)</dd>
-    <dt>Hash</dt><dd>@(string.IsNullOrWhiteSpace(row.Hash) ? "—" : row.HashAlgorithm + " " + row.Hash)</dd>
-</dl>
-
-<h2>Install this version</h2>
-<pre><code>Install-Module -Name @displayId -RequiredVersion @row.NormalizedVersion -Repository @feed.Name</code></pre>
-<pre><code>Install-PSResource -Name @displayId -Version @row.NormalizedVersion -Repository @feed.Name</code></pre>
-<pre><code>dotnet add package @displayId --version @row.NormalizedVersion --source @(feedUrl)/v3/index.json</code></pre>
-
 @code {
+    /// <summary>Tags a PowerShell module generates, one per exported command. Folded away, never dropped.</summary>
+    private static readonly string[] GeneratedTagPrefixes =
+        ["PSCommand_", "PSFunction_", "PSCmdlet_", "PSDscResource_", "PSRoleCapability_", "PSWorkflow_"];
+
     private Feed? feed;
     private string displayId = "";
     private string feedUrl = "";
     private string origin = "";
     private VersionListEntry<PackageVersion>? entry;
+    private IReadOnlyList<PackageDependency> dependencies = [];
+    private IReadOnlyList<PackageFile>? files;
 
     [Parameter]
     public string Name { get; set; } = "";
@@ -96,6 +242,9 @@
 
     [Parameter]
     public string Version { get; set; } = "";
+
+    [SupplyParameterFromQuery(Name = "tab")]
+    private string? Tab { get; set; }
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
@@ -107,6 +256,11 @@
     private bool IsAdmin => HttpContext.User.HasClaim(ClaimTypes.Role, "admin");
 
     private string ReturnUrl => HttpContext.Request.Path + HttpContext.Request.QueryString;
+
+    private string CurrentTab => (Tab ?? "").Trim().ToLowerInvariant();
+
+    private List<string> Tags =>
+        row.Tags.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
     protected override async Task OnInitializedAsync()
     {
@@ -127,7 +281,7 @@
             ? []
             : await Connector.UpstreamCandidatesAsync(feed, idLower, HttpContext.RequestAborted);
 
-        var package = await Packages.GetPackageAsync(feed.Key, idLower, includeDependencies: false, HttpContext.RequestAborted);
+        var package = await Packages.GetPackageAsync(feed.Key, idLower, includeDependencies: true, HttpContext.RequestAborted);
         var local = package?.Versions ?? [];
         var merged = VersionListBuilder
             .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream), includeSemVer2: true)
@@ -152,7 +306,59 @@
             VersionSource.Local => "Pushed to this feed",
             _ => "Upstream only",
         };
+
+        dependencies = row.Dependencies.OrderBy(d => d.Ordinal).ToList();
+        if (IsLocal && CurrentTab == "files")
+        {
+            files = await ReadFilesAsync();
+        }
     }
+
+    /// <summary>
+    /// The entries of the stored package, read on demand. Only for a version held here: there is nothing
+    /// to open for one that still lives upstream.
+    /// </summary>
+    private async Task<IReadOnlyList<PackageFile>?> ReadFilesAsync()
+    {
+        var key = new PackageStorageKey(feed!.NameLower, displayId.ToLowerInvariant(), row.NormalizedVersionLower);
+        var stream = await Storage.OpenPackageAsync(key, HttpContext.RequestAborted);
+        if (stream is null)
+        {
+            return null;
+        }
+
+        await using (stream)
+        {
+            try
+            {
+                using var archive = new ZipArchive(stream, ZipArchiveMode.Read);
+                return archive.Entries
+                    .Where(e => e.Length > 0 || !e.FullName.EndsWith('/'))
+                    .Select(e => new PackageFile(e.FullName, e.Length))
+                    .OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+            catch (InvalidDataException)
+            {
+                // A stored file that is not a readable zip is a storage problem, not a page error.
+                return null;
+            }
+        }
+    }
+
+    private string TabLink(string tab)
+    {
+        var link = $"/feeds/{Uri.EscapeDataString(Name)}/packages/{Uri.EscapeDataString(displayId)}/{Uri.EscapeDataString(row.NormalizedVersion)}";
+        return tab.Length == 0 ? link : link + "?tab=" + tab;
+    }
+
+    private string Active(string tab) => CurrentTab == tab ? "active" : "";
+
+    private static bool IsGenerated(string tag) =>
+        GeneratedTagPrefixes.Any(prefix => tag.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
+    private static string? Link(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var parsed) && parsed.Scheme is "https" or "http" ? parsed.ToString() : null;
 
     private static string FormatSize(long bytes) => bytes switch
     {
@@ -160,4 +366,6 @@
         >= 1024 => (bytes / 1024d).ToString("0", CultureInfo.InvariantCulture) + " KB",
         _ => bytes.ToString(CultureInfo.InvariantCulture) + " B",
     };
+
+    private sealed record PackageFile(string Path, long Length);
 }
