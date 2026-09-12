@@ -24,7 +24,13 @@ namespace FiGet.Protocol.V2;
 public static class NuGetV2Endpoints
 {
     /// <summary>What the clients ask for when they do not say: PowerShellGet uses 40, nuget.exe 30.</summary>
-    public const int DefaultTop = 40;
+    /// <summary>
+    /// Entries returned when a client does not ask for a page size. A hundred, because that is what the
+    /// PowerShell gallery answers and a client that does not page should see the same amount from either.
+    /// Every client this server exists for sends $top explicitly, so this is about matching the gallery
+    /// rather than about what those clients receive.
+    /// </summary>
+    public const int DefaultTop = 100;
 
     /// <summary>PSResourceGet asks for 6000 at a time; it pages with $skip when it gets fewer.</summary>
     public const int MaxTop = 1000;
