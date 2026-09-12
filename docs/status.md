@@ -862,17 +862,31 @@ knew about, so PnP.PowerShell would have shown 2098 rows with 2062 greyed out, a
 versions" — the newest ten *by version* — would have been ten withdrawn nightlies sitting under a header
 that correctly named the current release.
 
-So the tables now show what this feed holds, plus the upstream versions still advertised. The merged list
-stays whole, because the latest is computed across all of it and an exact version must still resolve; a
-second, filtered list drives the tables only. A line says how many are hidden and that they remain
-installable, rather than leaving a count that quietly disagrees with the gallery's.
+So the tables mirror the gallery: an unlisted version is not shown at all. PSGallery's own page for
+PnP.PowerShell lists 36 versions and withdraws the other 2062, and that is now exactly what this page
+lists. The merged list stays whole behind it, because the latest is computed across all of it — the hiding
+is display only. A line states how many are hidden and that they stay installable by exact version.
 
-The rule is deliberately **not** "an admin sees everything", which is where this landed first. Role-based
-visibility makes an admin's page disagree with what every client sees, exactly when the question being
-asked is "why did `Install-Module` pick that version" — and it still hands 2098 rows to the one person who
-needs the page to be readable. What an admin actually needs is the versions this feed *holds*, to relist
-or delete them, and those are visible to everyone. A withdrawn version nobody here holds is gallery
-history: hidden until somebody pulls it, then it is local and shows.
+The rule took two corrections to reach, both recorded because both were wrong in an instructive way:
+
+1. **"An admin sees everything."** Role-based visibility makes an admin's page disagree with what every
+   client sees, exactly when the question is "why did `Install-Module` pick that version" — and it still
+   hands 2098 rows to the one person who needs the page readable.
+2. **"Everything this feed holds, plus whatever is still advertised."** Defensible, but still not what the
+   gallery shows, and the argument for it — that an admin must be able to relist or delete a held copy —
+   turned out not to need this table at all. `POST /v3/publish/{id}/{version}` relists, and local search
+   and autocomplete had been filtering unlisted versions out all along, so the version table was the sole
+   exception rather than the rule.
+
+What the hiding must never touch, and does not: **resolving an exact version.** A pinned install names its
+version and does not care whether the gallery still advertises it — the fleet's Ansible baseline pins
+versions, so that is the normal case and not a corner. The flat container still serves every stored
+version, and `/nuget/{feed}/package/{id}/{version}` still downloads one. Hiding is a listing decision;
+fetching is a different path and was never filtered.
+
+The gap this leaves is deliberate: a version this feed holds but has unlisted is now invisible in the web
+UI, and relisting it is an API call. That belongs to the admin area, which is next — backlogged rather
+than patched over here.
 
 Deliberately untouched: `Find-Module`, v3 search and autocomplete, and the flat container. Search was
 already filtering on the flag, and the flat container already serves unlisted versions on purpose.

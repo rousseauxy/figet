@@ -67,6 +67,22 @@ The management controls sit among the public pages. Feeds, tokens, upstreams and
 behind one navigation, leaving the public pages read-only. The stylesheet for it is already ported
 (`fg-admin-shell`, `fg-admin-nav` and friends), so this is markup and routing rather than design.
 
+### Somewhere to manage a held version that is unlisted
+
+The package page now mirrors the gallery and shows no unlisted version at all (docs/status.md, "What the
+tables show"). That is right for a reader, and it leaves one thing with nowhere to live: a version this
+feed *holds* and has unlisted — either because the feed's deletion behaviour is `Unlist`, so a delete
+through the API unlists rather than removes, or because an upstream withdrew it and the connector unlisted
+the cached copy.
+
+Nothing is lost and nothing is unrecoverable: the version still downloads by exact version, and
+`POST /v3/publish/{id}/{version}` relists it. But no screen admits it exists, so the only way to find one
+is to already know its version number.
+
+Belongs in the admin area as a view over what the feed *holds* rather than what it advertises — unlisted
+copies listed, with relist and delete beside them. That is the one place where "show me everything" is the
+right default, and having it is what lets the reader-facing page stay honest about mirroring the gallery.
+
 ### A role above admin, and what a token may create
 
 Raised 2026-09-12. Today there is one signed-in role, and `TokenScopes` (Read, Push, Delete, Admin) says
