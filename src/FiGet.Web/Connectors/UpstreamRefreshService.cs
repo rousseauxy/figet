@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
+using FiGet.Application.Connectors;
 using FiGet.Application.Ports;
 using FiGet.Domain.Entities;
 
@@ -59,6 +60,7 @@ public sealed class UpstreamRefreshQueue : IUpstreamRefreshQueue
 public sealed class UpstreamRefreshService(
     UpstreamRefreshQueue queue,
     IUpstreamClient client,
+    UpstreamMetadataCache metadataCache,
     IServiceScopeFactory scopes,
     TimeProvider time,
     ILogger<UpstreamRefreshService> logger) : BackgroundService
@@ -96,7 +98,12 @@ public sealed class UpstreamRefreshService(
         var index = scope.ServiceProvider.GetRequiredService<IUpstreamIndexStore>();
 
         var catalog = await client.GetCatalogAsync(upstream, idLower, cancellationToken);
-        await index.SaveAsync(upstream.Key, idLower, catalog, stale: false, time.GetUtcNow().UtcDateTime, cancellationToken);
+        var now = time.GetUtcNow().UtcDateTime;
+
+        // Both halves, or the descriptions never arrive: the request path only fills them when it had to
+        // fetch synchronously, which after this change is the first view of a package and nothing else.
+        await index.SaveAsync(upstream.Key, idLower, catalog.Versions, stale: false, now, cancellationToken);
+        metadataCache.Set(upstream.Key, idLower, catalog.Described, now);
 
         logger.LogInformation(
             "Refreshed {Id} from upstream {Upstream}: {Versions} version(s).",

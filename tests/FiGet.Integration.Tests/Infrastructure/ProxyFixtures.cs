@@ -39,6 +39,14 @@ public sealed class StubUpstreamClient : IUpstreamClient
     public bool Fails { get; set; }
 
     /// <summary>
+    /// Padding added to every version's tags, so a test can stand a package up at the weight a real one
+    /// has. A PowerShell gallery writes one tag per exported command per version: PnP.PowerShell's 2098
+    /// versions are 31 KB of version strings and 101 MB of description, which is the difference between
+    /// what may be stored and what may only be held.
+    /// </summary>
+    public string TagPadding { get; set; } = "";
+
+    /// <summary>
     /// Set when a test wants the upstream to be slower than the connector's timeout. That surfaces as a
     /// cancelled task, which must be handled as "this upstream did not answer" and never reach the client.
     /// </summary>
@@ -54,6 +62,21 @@ public sealed class StubUpstreamClient : IUpstreamClient
         if (Fails)
         {
             throw new InvalidOperationException("The stub upstream is unreachable.");
+        }
+    }
+
+    /// <summary>
+    /// Registers many versions at once without building a package for each. The catalogue path never
+    /// reads the bytes - only a download does - and standing up hundreds of real nupkgs would make a
+    /// scale test too slow to keep.
+    /// </summary>
+    public void AddVersions(string id, IEnumerable<string> versions)
+    {
+        ArgumentNullException.ThrowIfNull(versions);
+        var known = packages.GetOrAdd(id, _ => new ConcurrentDictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase));
+        foreach (var version in versions)
+        {
+            known[NuGetVersion.Parse(version).ToNormalizedString()] = [];
         }
     }
 
@@ -110,7 +133,7 @@ public sealed class StubUpstreamClient : IUpstreamClient
                 "Stub summary.",
                 idLower,
                 "stub-author",
-                "PSModule PSEdition_Desktop",
+                "PSModule PSEdition_Desktop" + TagPadding,
                 "",
                 "",
                 "",

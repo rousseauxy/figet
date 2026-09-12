@@ -19,6 +19,7 @@ public sealed class ConnectorService(
     IUpstreamIndexStore index,
     IPackageStore packages,
     PackageIngestionService ingestion,
+    UpstreamMetadataCache metadataCache,
     IUpstreamRefreshQueue refreshes,
     ConnectorSettings settings,
     TimeProvider time,
@@ -371,20 +372,28 @@ public sealed class ConnectorService(
 
         if (cached is not null)
         {
-            // Asking again is worth it once the list is older than the window, but not worth waiting for.
-            // Enqueue collapses duplicates, so a popular package refreshes once however many readers it has.
-            if (now - cached.FetchedUtc >= settings.UpstreamIndexTtl)
+            // Whatever has been said about these versions, however old. The list is in the database and
+            // survives a restart; the descriptions are in memory and do not, so after one they are empty
+            // and the rows are listed plainly until the refresh below fills them in. A plain listing in
+            // milliseconds beats a described one in fifteen seconds.
+            var described = metadataCache.Get(upstream.Key, idLower, now, TimeSpan.MaxValue) ?? [];
+
+            // Worth asking again once the list is past its window, or whenever nothing describes it -
+            // which is what a restart leaves behind. Never worth waiting for: enqueue collapses
+            // duplicates, so a popular package refreshes once however many readers it has.
+            if (described.Count == 0 || now - cached.FetchedUtc >= settings.UpstreamIndexTtl)
             {
                 refreshes.Enqueue(upstream, idLower);
             }
 
-            return (new UpstreamCatalog(cached.Versions, cached.Described), !cached.Stale);
+            return (new UpstreamCatalog(cached.Versions, described), !cached.Stale);
         }
 
         try
         {
             var catalog = await client.GetCatalogAsync(upstream, idLower, cancellationToken);
-            await index.SaveAsync(upstream.Key, idLower, catalog, stale: false, now, cancellationToken);
+            await index.SaveAsync(upstream.Key, idLower, catalog.Versions, stale: false, now, cancellationToken);
+            metadataCache.Set(upstream.Key, idLower, catalog.Described, now);
             return (catalog, true);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)

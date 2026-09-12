@@ -25,14 +25,6 @@ public sealed class CachedUpstreamIndex
     /// <summary>Versions among <see cref="Versions"/> that need SemVer 2.0.0, so a v2 client can be told less.</summary>
     public string SemVer2Versions { get; set; } = "";
 
-    /// <summary>
-    /// What the upstream said about each of those versions, encoded by the adapter that wrote it.
-    /// Stored rather than held in memory because otherwise every restart and every new replica pays the
-    /// full walk again on the first view of a package - which for a two-thousand-version package is the
-    /// difference between a page and a wait.
-    /// </summary>
-    public string Metadata { get; set; } = "";
-
     public DateTime FetchedUtc { get; set; }
 
     /// <summary>

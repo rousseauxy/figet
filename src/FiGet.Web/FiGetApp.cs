@@ -88,6 +88,7 @@ public static class FiGetApp
             };
         });
         services.AddSingleton<IUpstreamClient, NuGetUpstreamClient>();
+        services.AddSingleton<UpstreamMetadataCache>();
 
         // Refreshing a stale catalogue happens behind the request that noticed it was stale. The queue is
         // shared, the worker is one loop, and the connector only ever asks - it never waits.

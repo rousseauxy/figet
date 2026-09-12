@@ -102,6 +102,36 @@ public sealed class StaleCatalogueTests(StaleCatalogueFixture server) : IClassFi
         Assert.True(refreshes <= 2, $"eight readers caused {refreshes} refreshes; duplicates are not being collapsed");
     }
 
+    /// <summary>
+    /// A catalogue at the weight a real one has. Every other test here uses one to three versions, and
+    /// that is how a defect this size reached production with a green suite: the descriptions were briefly
+    /// persisted as JSON, which for a 2098-version package is 101 MB against 31 KB of version strings, and
+    /// deserialising it threw OutOfMemoryException inside a one-gigabyte container.
+    ///
+    /// Four hundred versions carrying twenty kilobytes of tags each is about eight megabytes - far short
+    /// of a gigabyte, but enough that anything round-tripping the whole description set per request shows
+    /// up as a failure rather than as a page nobody loads until it is live.
+    /// </summary>
+    [Fact]
+    public async Task A_heavily_described_catalogue_is_served()
+    {
+        var id = FiGetServerFixture.UniqueId("Stale.Heavy");
+        server.Upstream.AddVersions(id, Enumerable.Range(1, 400).Select(n => $"1.0.{n}"));
+        server.Upstream.TagPadding = " " + string.Join(' ', Enumerable.Range(0, 900).Select(n => $"PSCommand_Verb-Noun{n}"));
+
+        try
+        {
+            // Twice: the first fetches and describes, the second takes the cached path that the OutOfMemory
+            // came from - it was reading back what had just been written that failed, not writing it.
+            Assert.NotEmpty(await FindAsync(id));
+            Assert.NotEmpty(await FindAsync(id));
+        }
+        finally
+        {
+            server.Upstream.TagPadding = "";
+        }
+    }
+
     private void AddUpstream(string id, string version)
     {
         using var package = FiGet.Testing.TestPackages.Create(id, version);

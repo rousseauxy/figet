@@ -96,7 +96,6 @@ public interface IUpstreamClient
 /// </summary>
 public sealed record CachedUpstreamCatalog(
     IReadOnlyList<UpstreamVersion> Versions,
-    IReadOnlyList<UpstreamMetadata> Described,
     DateTime FetchedUtc,
     bool Stale);
 
@@ -105,8 +104,12 @@ public interface IUpstreamIndexStore
     /// <summary>The cached catalogue for one upstream and id, whatever its age; null when nothing is cached.</summary>
     Task<CachedUpstreamCatalog?> FindAsync(int feedUpstreamKey, string idLower, CancellationToken cancellationToken);
 
-    /// <summary>Writes or replaces the cached catalogue, versions and descriptions together.</summary>
-    Task SaveAsync(int feedUpstreamKey, string idLower, UpstreamCatalog catalog, bool stale, DateTime fetchedUtc, CancellationToken cancellationToken);
+    /// <summary>
+    /// Writes or replaces the cached version list. Only the versions: the descriptions of those versions
+    /// are two orders of magnitude larger and live in memory, for the reason recorded on
+    /// <c>UpstreamMetadataCache</c>.
+    /// </summary>
+    Task SaveAsync(int feedUpstreamKey, string idLower, IReadOnlyList<UpstreamVersion> versions, bool stale, DateTime fetchedUtc, CancellationToken cancellationToken);
 
     /// <summary>Drops every cached list of one upstream, used when its configuration changes.</summary>
     Task ClearAsync(int feedUpstreamKey, CancellationToken cancellationToken);
