@@ -1296,3 +1296,13 @@ resolves a feed and a token, so attribution exists once and names the token rath
 Still open, and deliberately not built into this change: persisting per-download records with a
 cache-versus-upstream flag behind an admin page. That is a schema change and a retention question - the
 warning above is what happens when retention is an afterthought.
+
+### The audit log is a separate thing, and is now designed
+
+Asked whether the new request log covers auditing. It does not, and should not: it answers whether a client
+reached this server, while an audit answers who changed something. Decided 2026-09-12 and written up in
+docs/backlog.md - admin changes, package lifecycle and authentication events, in a database table behind an
+admin page, with configurable automatic pruning. To be built after the current testing settles.
+
+Per-download records carrying cache-versus-upstream origin were considered and deliberately left out of
+that entry: heaviest by volume, and they belong with usage statistics rather than with an audit trail.

@@ -183,6 +183,39 @@ Four things to decide before building it, none of them obvious:
 - **Which framework group.** A .NET package has dependency groups per target framework and following
   all of them explodes; a PowerShell module has one flat set, which is the case that matters first.
 
+### An audit log: who changed what, and when
+
+Decided 2026-09-12, to be built after the current round of testing settles. Distinct from the request log
+that now exists: that one answers "did a client reach us and what did it ask for", at Information level on
+the console, opt-in via `FiGet:Logging:Requests`. This answers "who changed this", which is a different
+shape, a different audience and a different retention question - so it is not a wider middleware.
+
+**What it records.** Three kinds of event:
+
+- **Admin changes** - feed created, deleted or edited, upstream added or removed, token issued or revoked,
+  theme changed, a package un-cached. Who, when, and what changed.
+- **Package lifecycle** - push, delete, unlist, relist, admin Pull, with the token or user behind it. This
+  overlaps the request log on purpose: the request log has the HTTP call, this has the intent.
+- **Authentication events** - sign-ins, and rejected or revoked token attempts. A client still presenting a
+  dead key is invisible today; `claude-push` was revoked on 2026-09-12 and nothing would show an attempt
+  to keep using it.
+
+**Where it lives.** A database table with an admin page beside Feeds and Tokens, filterable by feed, user
+and date. Not the console: the container keeps a single 50 MB `json-file` with no rotation history, so
+console-only records are lost silently, and "what happened last Tuesday" is exactly what an audit log is
+asked. `FeedAccess.ResolveAsync` already resolves feed and token for every protocol request and is where
+attribution should come from, the same as the request log's `who=`.
+
+**Retention: configurable days, pruned by a background task**, designed in rather than added later. The
+server being replaced keeps these forever and its own documentation warns the table reaches gigabytes,
+recommends purging annually, and supplies manual `DELETE` scripts because pruning "is not built-in".
+
+**Not in this entry:** per-download records carrying whether a version was served from cache or fetched
+upstream. It is the one thing the commercial server cannot answer - its guidance is to infer it from
+`time-taken` - and it is cheap here because `ConnectorService` already knows. Left out because it is the
+heaviest by volume and belongs with usage statistics and cache pruning, not with an audit trail. Worth
+doing; not yet decided when.
+
 ## Soon
 
 - **Promotion between feeds.** Referred to by the server being replaced; nothing in FiGet does it yet.
