@@ -67,6 +67,23 @@ The management controls sit among the public pages. Feeds, tokens, upstreams and
 behind one navigation, leaving the public pages read-only. The stylesheet for it is already ported
 (`fg-admin-shell`, `fg-admin-nav` and friends), so this is markup and routing rather than design.
 
+### Unlist a cached copy the upstream has unlisted, not only one it has removed
+
+`ReconcileWithdrawnAsync` compares what an upstream still *offers* against the copies cached here and
+unlists the ones that have disappeared. It never asks whether the upstream still *lists* what it offers,
+so a cached copy of a version the gallery has unlisted stays listed here.
+
+Visible on the live instance (docs/status.md, "The 37th version"): the gallery advertises 36 versions of
+PnP.PowerShell and the page shows 37. The extra one is `1.9.61-nightly` — cached here, unlisted there.
+
+Both states mean "stop offering this", so the rule is half applied, and the connector now knows the flag,
+so the change itself is small. What makes it a decision rather than a fix is the argument on the other
+side: what this feed *holds* is arguably this feed's business, and an air-gapped fleet may deliberately
+keep a version the gallery has since hidden. Unlisting it here would hide it from that fleet's own
+listings, though it would stay installable by exact version.
+
+Worth settling with the admin area, where a held-but-unlisted version finally has somewhere to be seen.
+
 ### Somewhere to manage a held version that is unlisted
 
 The package page now mirrors the gallery and shows no unlisted version at all (docs/status.md, "What the

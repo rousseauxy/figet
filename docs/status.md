@@ -911,3 +911,49 @@ results** for `pnp.powershell`, while its `FindPackagesById()` returns all 2098 
 connector can serve the package but its search cannot find it — the failure mode recorded in build plan
 section 4.3 as the reason not to guess the OData subset. FiGet's search finds it, verified live against
 both the v2 API and the anonymous UI.
+
+## Deployed, and the measurement I got wrong — 2026-09-12
+
+Built on the NAS from `git archive HEAD` (f5046f1), image `sha256:0f1ebc2f`, container recreated onto it.
+The Dockerfile's guard passed, so the framework script is in the image.
+
+| | before (two walks) | after (one walk) |
+|---|---|---|
+| cold PnP versions tab | 21.72s | **13.12s, 15.28s, 15.10s** |
+| warm | — | 0.66s, 0.73s |
+| versions the page lists | 2098 | **37** |
+| `3.4.9-nightly` Listed | true | **false** |
+
+**The prediction was 8-9s cold, and it was wrong: the honest figure is 13-15s.** The error is worth naming
+because it was avoidable. The probe had measured that same upstream walk three times — 8.4s, 10.1s, 12.2s —
+and the best of the spread was quoted as though it were the number. A range was known and a point estimate
+was given from its optimistic end.
+
+What does hold up: the 21.72s baseline matches the two-walk model (13.4 + 8.5 = 21.9s) to within one
+percent, and the deployed cold times sit where one walk plus page overhead should. The improvement is
+about a third, not the sixty percent the prediction implied.
+
+The weak spot, stated rather than buried: **the before figure is one sample and the after is three.** A
+controlled A/B would settle it — the previous image is still on the host as `537ec428aae1` — and has not
+been run.
+
+Also confirmed live: `/health/ready` and `/health/live` both answer 200 on the container. Publicly they
+404, so Traefik does not route `/health` — harmless, since CI checks the container directly, but it means
+there is no external readiness probe.
+
+### The 37th version, and the rule it half-applies
+
+The gallery advertises 36 versions; the page shows 37. The rows say why:
+
+```
+35 Upstream + 2 Cached  (1.11.0, 1.9.61-nightly)
+```
+
+`1.11.0` is one of the advertised 36 and is held here, so it merges and shows as Cached. `1.9.61-nightly`
+is **not** advertised: a cached copy of a version the gallery has since unlisted, whose local row still
+says listed. Hence 37 rows, and hence zero unlisted badges — that row is not unlisted at all.
+
+`ReconcileWithdrawnAsync` unlists a cached copy that has been **withdrawn**, meaning absent upstream, but
+not one that is merely **unlisted** upstream. Both mean "stop offering this", so the rule is half applied.
+Backlogged rather than fixed in the same breath: it changes what a cached copy does, and there is a real
+argument on the other side.
