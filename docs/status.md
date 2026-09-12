@@ -244,9 +244,30 @@ Also added, after using it: an admin can pull an upstream package into the feed 
 and add or remove a feed's upstreams from its settings page. Both are plain form posts to admin-only
 endpoints, because these pages are statically rendered and every one of those buttons changes something.
 
-Still to do: port the full design-system token set and component classes, so a pack can restyle every
-control rather than the colours the base stylesheet defines today. The admin pages also want their own
-area with a side menu, rather than sitting among the public pages. The themed dropdown used elsewhere is an
+Since then, driven by using it:
+
+- **The package page has tabs**, an overview with the newest versions and a full list, both showing where
+  each version is: pushed here, cached, or held by an upstream. Every version links to its own page with
+  the install lines, the metadata and the actions.
+- **Download and pull are buttons.** A version held locally downloads; a version only upstream is pulled
+  into the feed by an admin, which is the same fetch a client's first download would do.
+- **Versions nobody has cached are described.** The upstream's description, authors and tags travel with
+  them, which matters because a PowerShell client reads `PSEdition_Desktop` against `PSEdition_Core` to
+  decide whether a version can run at all.
+
+### Next, in this order
+
+1. **An admin area with its own side menu.** The management controls sit among the public pages today.
+   Feeds, tokens, upstreams and appearance belong behind one nav, leaving the public pages read-only.
+2. **The design-system port.** The token set and component classes, so a theme pack restyles every
+   control rather than the handful of colours the base stylesheet defines today.
+3. **The themed dropdown.** The one used elsewhere here is an interactive component and these pages are
+   statically rendered, so it needs rebuilding as a script-driven listbox with the same look, unless the
+   admin pages are made interactive instead.
+
+Not doing, decided: per-feed version filtering (section 9). Still open from earlier phases: the packages
+management API, replaying the recorded fixtures as tests, the real PowerShell 5.1 client run, per-version
+registration leaves for upstream-only versions, cache pruning, and promotion between feeds. The themed dropdown used elsewhere is an
 interactive component, and these pages are statically rendered, so that one needs a decision before it can
 be reused.
 
