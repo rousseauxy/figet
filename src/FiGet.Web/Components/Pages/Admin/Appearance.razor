@@ -6,6 +6,7 @@
 @inject IThemeService Themes
 @inject ISettingStore Settings
 @inject NavigationManager Navigation
+@inject FiGet.Http.AuditLog Audit
 
 <PageTitle>Appearance · admin · FiGet</PageTitle>
 
@@ -118,6 +119,7 @@
         }
 
         await Settings.SetAsync(SettingKeys.Theme, chosen, HttpContext.User.Identity?.Name, HttpContext.RequestAborted);
+        Audit.Record(HttpContext, "theme.change", chosen.Length == 0 ? "built-in" : chosen);
 
         // A full load, because the stylesheet link lives in <head> of the root component: an enhanced
         // navigation would patch the body and leave the old pack linked above it.

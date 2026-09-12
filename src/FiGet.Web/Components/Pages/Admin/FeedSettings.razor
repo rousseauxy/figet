@@ -6,6 +6,7 @@
 @inject IFeedStore Feeds
 @inject IPackageStorage Storage
 @inject NavigationManager Navigation
+@inject FiGet.Http.AuditLog Audit
 
 <PageTitle>@Name settings · FiGet</PageTitle>
 
@@ -229,6 +230,17 @@ else
         var saved = await Feeds.UpdateSettingsAsync(
             feed.Key, Settings!.AnonymousRead, Settings!.AllowOverwrite, Settings!.DeletionBehavior, HttpContext.RequestAborted);
 
+        if (saved)
+        {
+            // The values, not just that something changed: "who loosened this feed" is the question a
+            // settings audit is asked, and it cannot be answered by a bare "settings saved".
+            Audit.Record(
+                HttpContext,
+                "feed.settings",
+                feed.Name,
+                $"anonymousRead={Settings!.AnonymousRead} allowOverwrite={Settings!.AllowOverwrite} onDelete={Settings!.DeletionBehavior}");
+        }
+
         (message, messageIsError) = saved ? ("Settings saved.", false) : ("This feed no longer exists.", true);
         await LoadAsync();
     }
@@ -247,6 +259,7 @@ else
         }
 
         // Files first: a row without files is visible and fixable, an orphaned file is neither.
+        Audit.Record(HttpContext, "feed.delete", feed.Name);
         await Storage.DeleteFeedAsync(feed.NameLower, HttpContext.RequestAborted);
         await Feeds.DeleteAsync(feed.Key, HttpContext.RequestAborted);
         Navigation.NavigateTo("/admin/feeds", forceLoad: false);

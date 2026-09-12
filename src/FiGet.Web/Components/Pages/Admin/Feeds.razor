@@ -4,6 +4,7 @@
 @using System.ComponentModel.DataAnnotations
 @using FiGet.Domain.Feeds
 @inject IFeedStore FeedStore
+@inject FiGet.Http.AuditLog Audit
 @inject TimeProvider Time
 
 <PageTitle>Feeds · admin · FiGet</PageTitle>
@@ -115,6 +116,15 @@ else
                 CreatedUtc = Time.GetUtcNow().UtcDateTime,
             },
             HttpContext.RequestAborted);
+
+        if (created)
+        {
+            Audit.Record(
+                HttpContext,
+                "feed.create",
+                NewFeed!.Name,
+                $"anonymousRead={NewFeed!.AnonymousRead} allowOverwrite={NewFeed!.AllowOverwrite} onDelete={NewFeed!.DeletionBehavior}");
+        }
 
         (message, messageIsError) = created ? ($"Feed '{NewFeed!.Name}' created.", false) : ($"A feed named '{NewFeed!.Name}' already exists.", true);
         await LoadAsync();

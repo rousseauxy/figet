@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using FiGet.Application.Connectors;
 using FiGet.Application.Packages;
@@ -127,6 +128,7 @@ public static class FiGetApp
         // public surface is reachable without credentials, so it is not somewhere to allocate it.
         services.AddRazorComponents().AddInteractiveServerComponents();
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
+        services.AddSingleton<AuditLog>();
 
         if (builder.Configuration.GetValue<bool>("FiGet:Logging:Json") || builder.Configuration.GetValue<bool>("DOTNET_RUNNING_IN_CONTAINER"))
         {
@@ -300,6 +302,7 @@ public static class FiGetApp
             HttpContext http,
             IFeedStore feeds,
             ConnectorService connector,
+            AuditLog audit,
             CancellationToken cancellationToken) =>
         {
             var form = await http.Request.ReadFormAsync(cancellationToken);
@@ -307,6 +310,7 @@ public static class FiGetApp
             if (target is not null && NuGetVersion.TryParse(form["version"].ToString(), out var version))
             {
                 await connector.EnsureCachedAsync(target, form["id"].ToString(), version, cancellationToken);
+                audit.Record(http, "package.pull", form["id"].ToString(), $"feed={feed} version={version.ToNormalizedString()}");
             }
 
             return Back(form["returnUrl"].ToString(), $"/feeds/{Uri.EscapeDataString(feed)}");
@@ -316,6 +320,7 @@ public static class FiGetApp
             string feed,
             HttpContext http,
             IFeedStore feeds,
+            AuditLog audit,
             CancellationToken cancellationToken) =>
         {
             var form = await http.Request.ReadFormAsync(cancellationToken);
@@ -338,6 +343,10 @@ public static class FiGetApp
                         CredentialRef = form["credentialRef"].ToString().Trim() is { Length: > 0 } reference ? reference : null,
                     },
                     cancellationToken);
+
+                // The url as well as the name: pointing a feed at a different gallery is the change worth
+                // being able to find afterwards.
+                audit.Record(http, "upstream.add", name, $"feed={feed} url={url} kind={form["kind"]}");
             }
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
@@ -350,13 +359,14 @@ public static class FiGetApp
             HttpContext http,
             IFeedStore feeds,
             PackageIngestionService ingestion,
+            AuditLog audit,
             CancellationToken cancellationToken) =>
         {
             var form = await http.Request.ReadFormAsync(cancellationToken);
             var target = await feeds.FindAsync(feed, cancellationToken);
-            if (target is not null)
+            if (target is not null && await ingestion.RelistAsync(target, form["id"].ToString(), form["version"].ToString(), cancellationToken))
             {
-                await ingestion.RelistAsync(target, form["id"].ToString(), form["version"].ToString(), cancellationToken);
+                audit.Record(http, "package.relist", form["id"].ToString(), $"feed={feed} version={form["version"]}");
             }
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}/unlisted");
@@ -367,13 +377,14 @@ public static class FiGetApp
             HttpContext http,
             IFeedStore feeds,
             PackageIngestionService ingestion,
+            AuditLog audit,
             CancellationToken cancellationToken) =>
         {
             var form = await http.Request.ReadFormAsync(cancellationToken);
             var target = await feeds.FindAsync(feed, cancellationToken);
-            if (target is not null)
+            if (target is not null && await ingestion.PurgeAsync(target, form["id"].ToString(), form["version"].ToString(), cancellationToken))
             {
-                await ingestion.PurgeAsync(target, form["id"].ToString(), form["version"].ToString(), cancellationToken);
+                audit.Record(http, "package.delete", form["id"].ToString(), $"feed={feed} version={form["version"]}");
             }
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}/unlisted");
@@ -387,6 +398,7 @@ public static class FiGetApp
             HttpContext http,
             IFeedStore feeds,
             PackageIngestionService ingestion,
+            AuditLog audit,
             CancellationToken cancellationToken) =>
         {
             var form = await http.Request.ReadFormAsync(cancellationToken);
@@ -394,7 +406,10 @@ public static class FiGetApp
             var id = form["id"].ToString();
             if (target is not null && id.Length > 0)
             {
-                await ingestion.UncacheAsync(target, id, cancellationToken);
+                // The count, because the number on the button is a snapshot from when the page rendered
+                // and what actually went is the thing worth recording.
+                var removed = await ingestion.UncacheAsync(target, id, cancellationToken);
+                audit.Record(http, "package.uncache", id, $"feed={feed} removed={removed}");
             }
 
             return Back(form["returnUrl"].ToString(), $"/feeds/{Uri.EscapeDataString(feed)}");
@@ -404,6 +419,7 @@ public static class FiGetApp
             string feed,
             HttpContext http,
             IFeedStore feeds,
+            AuditLog audit,
             CancellationToken cancellationToken) =>
         {
             var form = await http.Request.ReadFormAsync(cancellationToken);
@@ -411,6 +427,7 @@ public static class FiGetApp
             if (target is not null && int.TryParse(form["key"].ToString(), out var upstreamKey))
             {
                 await feeds.RemoveUpstreamAsync(target.Key, upstreamKey, cancellationToken);
+                audit.Record(http, "upstream.remove", upstreamKey.ToString(CultureInfo.InvariantCulture), $"feed={feed}");
             }
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");

@@ -6,6 +6,7 @@
 @inject IAccessTokenStore Store
 @inject IFeedStore Feeds
 @inject AccessTokenService TokenService
+@inject FiGet.Http.AuditLog Audit
 @inject TimeProvider Time
 
 <PageTitle>Tokens · FiGet</PageTitle>
@@ -168,13 +169,22 @@
 
         DateTime? expires = NewToken!.ExpiresInDays is > 0 ? now.AddDays(NewToken!.ExpiresInDays.Value) : null;
         created = await TokenService.CreateAsync(NewToken!.Name.Trim(), scopes, feedKey, expires, HttpContext.RequestAborted);
+        Audit.Record(
+            HttpContext,
+            "token.create",
+            NewToken!.Name.Trim(),
+            $"scopes={scopes} feed={NewToken!.FeedName ?? "all"} expires={(expires is null ? "never" : expires.Value.ToString("u"))}");
         tokens = await Store.ListAsync(HttpContext.RequestAborted);
         NewToken = new();
     }
 
     private async Task RevokeAsync(int key)
     {
+        // Named before it goes: after revocation the row is still there, but reading it back to name it
+        // would be a second query for something already on screen.
+        var revoked = tokens.FirstOrDefault(t => t.Key == key);
         await TokenService.RevokeAsync(key, HttpContext.RequestAborted);
+        Audit.Record(HttpContext, "token.revoke", revoked?.Name ?? key.ToString(CultureInfo.InvariantCulture));
         tokens = await Store.ListAsync(HttpContext.RequestAborted);
     }
 

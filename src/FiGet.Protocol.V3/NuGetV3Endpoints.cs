@@ -440,7 +440,7 @@ public static class NuGetV3Endpoints
         return Results.Json(new AutocompleteResponse(context, skip + ids.Count, ids), Json);
     }
 
-    private static async Task<IResult> PushAsync(HttpContext http, string feed, PackageIngestionService ingestion, IOptions<UploadOptions> upload, CancellationToken cancellationToken)
+    private static async Task<IResult> PushAsync(HttpContext http, string feed, PackageIngestionService ingestion, IOptions<UploadOptions> upload, AuditLog audit, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Push, cancellationToken);
         if (error is not null)
@@ -448,10 +448,23 @@ public static class NuGetV3Endpoints
             return error;
         }
 
-        return await UploadAsync(http, upload.Value, file => ingestion.PushAsync(request!.Feed, file, cancellationToken), cancellationToken);
+        return await UploadAsync(
+            http,
+            upload.Value,
+            async file =>
+            {
+                var result = await ingestion.PushAsync(request!.Feed, file, cancellationToken);
+                if (result.Outcome is PushOutcome.Created or PushOutcome.Replaced)
+                {
+                    audit.Record(http, "package.push", result.Id ?? "", $"feed={feed} version={result.Version} outcome={result.Outcome}");
+                }
+
+                return result;
+            },
+            cancellationToken);
     }
 
-    private static async Task<IResult> PushSymbolsAsync(HttpContext http, string feed, PackageIngestionService ingestion, IOptions<UploadOptions> upload, CancellationToken cancellationToken)
+    private static async Task<IResult> PushSymbolsAsync(HttpContext http, string feed, PackageIngestionService ingestion, IOptions<UploadOptions> upload, AuditLog audit, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Push, cancellationToken);
         if (error is not null)
@@ -459,10 +472,23 @@ public static class NuGetV3Endpoints
             return error;
         }
 
-        return await UploadAsync(http, upload.Value, file => ingestion.PushSymbolsAsync(request!.Feed, file, cancellationToken), cancellationToken);
+        return await UploadAsync(
+            http,
+            upload.Value,
+            async file =>
+            {
+                var result = await ingestion.PushSymbolsAsync(request!.Feed, file, cancellationToken);
+                if (result.Outcome is PushOutcome.Created or PushOutcome.Replaced)
+                {
+                    audit.Record(http, "symbols.push", result.Id ?? "", $"feed={feed} version={result.Version}");
+                }
+
+                return result;
+            },
+            cancellationToken);
     }
 
-    private static async Task<IResult> DeleteAsync(HttpContext http, string feed, string id, string version, PackageIngestionService ingestion, CancellationToken cancellationToken)
+    private static async Task<IResult> DeleteAsync(HttpContext http, string feed, string id, string version, PackageIngestionService ingestion, AuditLog audit, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Delete, cancellationToken);
         if (error is not null)
@@ -470,10 +496,18 @@ public static class NuGetV3Endpoints
             return error;
         }
 
-        return await ingestion.DeleteAsync(request!.Feed, id, version, cancellationToken) ? Results.NoContent() : Results.NotFound();
+        if (!await ingestion.DeleteAsync(request!.Feed, id, version, cancellationToken))
+        {
+            return Results.NotFound();
+        }
+
+        // What the feed's deletion behaviour did - unlist or remove - is the feed's setting, and the
+        // audit line for that setting is where it was chosen.
+        audit.Record(http, "package.delete", id, $"feed={feed} version={version}");
+        return Results.NoContent();
     }
 
-    private static async Task<IResult> RelistAsync(HttpContext http, string feed, string id, string version, PackageIngestionService ingestion, CancellationToken cancellationToken)
+    private static async Task<IResult> RelistAsync(HttpContext http, string feed, string id, string version, PackageIngestionService ingestion, AuditLog audit, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Delete, cancellationToken);
         if (error is not null)
@@ -481,7 +515,13 @@ public static class NuGetV3Endpoints
             return error;
         }
 
-        return await ingestion.RelistAsync(request!.Feed, id, version, cancellationToken) ? Results.Ok() : Results.NotFound();
+        if (!await ingestion.RelistAsync(request!.Feed, id, version, cancellationToken))
+        {
+            return Results.NotFound();
+        }
+
+        audit.Record(http, "package.relist", id, $"feed={feed} version={version}");
+        return Results.Ok();
     }
 
     private static async Task<IResult> SymbolFileAsync(HttpContext http, string feed, string file, string key, string file2, IPackageStore store, IPackageStorage storage, CancellationToken cancellationToken)

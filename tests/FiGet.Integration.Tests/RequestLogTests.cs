@@ -1,5 +1,8 @@
 using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Http.Headers;
 using FiGet.Integration.Tests.Infrastructure;
+using FiGet.Testing;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -46,6 +49,7 @@ public sealed class RequestLogFixture() : FiGetServerFixture(TestDatabase.Sqlite
         // for a reason that has nothing to do with the middleware. Raised for this category alone, so
         // every other suite stays as quiet as it was.
         builder.UseSetting("Logging:LogLevel:FiGet.Web.Logging", "Information");
+        builder.UseSetting("Logging:LogLevel:FiGet.Audit", "Information");
         builder.ConfigureServices(services => services.AddSingleton<ILoggerProvider>(Logs));
     }
 }
@@ -93,6 +97,42 @@ public sealed class RequestLogTests(RequestLogFixture server) : IClassFixture<Re
         var line = await WaitForLineAsync("Log.Token.Probe");
         Assert.NotNull(line);
         Assert.Contains("who=token:", line, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A push is recorded, and recorded against whoever pushed it.
+    ///
+    /// Driven over the API with a token rather than through a page, because that is both the cheap path -
+    /// no sign-in, no antiforgery - and the one that matters: a package arriving in a feed is the change
+    /// somebody will want attributed later. It also proves the wiring end to end, which a compiler cannot:
+    /// the audit log reaches these handlers through minimal-API dependency injection, so a missing
+    /// registration would surface as a 500 when the endpoint is hit and not before.
+    /// </summary>
+    [Fact]
+    public async Task A_push_is_recorded_in_the_audit_log()
+    {
+        var id = FiGetServerFixture.UniqueId("Audit.Push");
+
+        using var client = server.CreateClient();
+        using var package = TestPackages.Create(id, "1.0.0");
+        using var content = new MultipartFormDataContent();
+        using var file = new StreamContent(package);
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        content.Add(file, "package", "package.nupkg");
+
+        using var request = new HttpRequestMessage(HttpMethod.Put, "nuget/public/") { Content = content };
+        request.Headers.Add("X-NuGet-ApiKey", FiGetServerFixture.AdminToken);
+        var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var line = await WaitForLineAsync("package.push");
+        Assert.NotNull(line);
+        Assert.Contains(id, line, StringComparison.Ordinal);
+
+        // The token, not just an address: several people share one proxy, and an address is not an answer.
+        // "by", not "who=": the audit line has its own shape, and the first version of this assertion
+        // borrowed the request log's.
+        Assert.True(line.Contains("by token:", StringComparison.Ordinal), "audit line was: " + line);
     }
 
     /// <summary>Health probes would otherwise be most of the log, and nobody is ever looking for them.</summary>

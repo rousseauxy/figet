@@ -283,7 +283,7 @@ public static class NuGetV2Endpoints
         return Results.Stream(stream, "application/zip", fileName, enableRangeProcessing: true);
     }
 
-    private static async Task<IResult> PushAsync(HttpContext http, string feed, PackageIngestionService ingestion, IOptions<UploadOptions> upload, CancellationToken cancellationToken)
+    private static async Task<IResult> PushAsync(HttpContext http, string feed, PackageIngestionService ingestion, IOptions<UploadOptions> upload, AuditLog audit, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, TokenScopes.Push, cancellationToken);
         if (error is not null)
@@ -313,6 +313,11 @@ public static class NuGetV2Endpoints
         await using (file)
         {
             var result = await ingestion.PushAsync(request!.Feed, file, cancellationToken);
+            if (result.Outcome is PushOutcome.Created or PushOutcome.Replaced)
+            {
+                audit.Record(http, "package.push", result.Id ?? "", $"feed={feed} version={result.Version} outcome={result.Outcome}");
+            }
+
             return result.Outcome switch
             {
                 PushOutcome.Created or PushOutcome.Replaced => Status(http, StatusCodes.Status201Created, result.Message),
@@ -323,7 +328,7 @@ public static class NuGetV2Endpoints
         }
     }
 
-    private static async Task<IResult> DeleteAsync(HttpContext http, string feed, string id, string version, PackageIngestionService ingestion, CancellationToken cancellationToken)
+    private static async Task<IResult> DeleteAsync(HttpContext http, string feed, string id, string version, PackageIngestionService ingestion, AuditLog audit, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, TokenScopes.Delete, cancellationToken);
         if (error is not null)
@@ -331,7 +336,13 @@ public static class NuGetV2Endpoints
             return error;
         }
 
-        return await ingestion.DeleteAsync(request!.Feed, id, version, cancellationToken) ? Results.NoContent() : Results.NotFound();
+        if (!await ingestion.DeleteAsync(request!.Feed, id, version, cancellationToken))
+        {
+            return Results.NotFound();
+        }
+
+        audit.Record(http, "package.delete", id, $"feed={feed} version={version}");
+        return Results.NoContent();
     }
 
     /// <summary>
