@@ -1101,3 +1101,48 @@ Worth recording about the diagnosis itself: the first two explanations were wron
 old client cannot do gzip" fitted the symptom and died when that same client saved the same package from
 the gallery, which also serves gzip. Only asking the application directly, without the proxy in front,
 separated what this server sends from what reaches the client.
+
+## A proxied package with many versions could not be found — 2026-09-12
+
+Reported while testing: `Find-PSResource -Name dbatools` answered "could not be found in repository",
+while `Microsoft.Graph` resolved in milliseconds. Both are proxied from the same gallery.
+
+The difference is the version count. Above `MaxInlinedLeaves` (128) a registration index stops embedding
+its leaves and advertises page URLs instead:
+
+```
+dbatools         16 pages, 0 inlined  -> every page URL 404
+pnp.powershell   33 pages, 0 inlined  -> every page URL 404
+microsoft.graph   2 pages, 2 inlined  -> never fetches a page, worked all along
+```
+
+`RegistrationIndexAsync` pages the **merged** list, local and upstream together.
+`RegistrationPageAsync` did not take a `ConnectorService` at all and chunked
+`BuildLocal(package.Versions)` - what this feed holds. On a proxy feed those are different lists, so the
+index advertised ranges the page endpoint had never heard of. dbatools is cached here at one version; the
+advertised range `0.7.9.7/0.8.709` matched no local chunk, and 404 became "this package does not exist".
+
+`RegistrationLeafAsync` and `CatalogEntryAsync` had the same shape and the same fault. The catalog entry is
+the quiet one: its own comment already recorded that PackageManagement's NuGet 3.x provider resolves a
+version by following that URL, so a 404 there makes a version silently unavailable rather than visibly
+missing. All three now build from the merged list.
+
+### Why the suite did not catch it
+
+`More_than_128_versions_page_the_registration_like_nuget_org` covers paging, and passes: it pushes 130
+versions to a **curated** feed, where local versions are the whole truth and the index and the page cannot
+disagree. The defect only exists where the two lists differ, which is every proxy feed. The new test pages
+a proxy feed and fetches every range the index advertises, plus a leaf and a catalog entry for a version
+nobody has cached.
+
+### Verified with the client that reported it
+
+| | before | after |
+|---|---|---|
+| `Find-PSResource dbatools` | not found | **2.8.4** |
+| `Find-PSResource PnP.PowerShell` | not found | **3.4.1** |
+| `Find-PSResource Microsoft.Graph` | 2.39.0 | 2.39.0, unchanged |
+| `Find-PSResource dbatools -Version 2.1.0` | not found | resolves |
+
+The last one matters most: an exact older version of a paged package reaches it through a page *and* a
+catalog entry, which is the path an install walks.
