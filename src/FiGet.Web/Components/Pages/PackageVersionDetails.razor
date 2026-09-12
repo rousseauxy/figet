@@ -1,0 +1,163 @@
+@page "/feeds/{Name}/packages/{Id}/{Version}"
+@using System.Security.Claims
+@using FiGet.Core.Connectors
+@using FiGet.Core.Versions
+@inject IFeedStore Feeds
+@inject IPackageStore Packages
+@inject ConnectorService Connector
+
+<PageTitle>@Id @Version · FiGet</PageTitle>
+
+@if (feed is null || entry is null)
+{
+    <h1>Version not found</h1>
+    <p>
+        <code>@Id</code> <code>@Version</code> is not in feed <code>@Name</code>.
+        <a href="/feeds/@Name">Back to the feed</a>.
+    </p>
+    return;
+}
+
+<p class="crumbs">
+    <a href="/">Feeds</a> / <a href="/feeds/@feed.Name">@feed.Name</a> /
+    <a href="/feeds/@feed.Name/packages/@displayId">@displayId</a>
+</p>
+<h1>@displayId <span class="version">@row.NormalizedVersion</span></h1>
+
+<p class="muted">
+    <span class="badge">@origin</span>
+    @if (!row.Listed)
+    {
+        <span class="badge">unlisted</span>
+    }
+    @if (entry.IsAbsoluteLatestVersion)
+    {
+        <span class="badge">latest</span>
+    }
+    @if (entry.IsLatestVersion && !entry.IsAbsoluteLatestVersion)
+    {
+        <span class="badge">latest stable</span>
+    }
+</p>
+
+<div class="actions">
+    @if (IsLocal)
+    {
+        <a class="button" href="@(feedUrl)/package/@displayId/@row.NormalizedVersion">Download</a>
+    }
+    else if (IsAdmin)
+    {
+        @* Not here yet: fetch it from the upstream and keep it, so a machine without internet can have it. *@
+        <form method="post" action="/admin/feeds/@feed.Name/pull">
+            <AntiforgeryToken />
+            <input type="hidden" name="id" value="@displayId" />
+            <input type="hidden" name="version" value="@row.NormalizedVersion" />
+            <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+            <button type="submit">Pull into this feed</button>
+        </form>
+    }
+    else if (!IsLocal)
+    {
+        <span class="muted">Held by an upstream. Downloading it through a client caches it here.</span>
+    }
+</div>
+
+@if (!string.IsNullOrWhiteSpace(row.Description))
+{
+    <p class="description">@row.Description</p>
+}
+
+<dl class="facts">
+    <dt>Authors</dt><dd>@(string.IsNullOrWhiteSpace(row.Authors) ? "—" : row.Authors)</dd>
+    <dt>Tags</dt><dd>@(string.IsNullOrWhiteSpace(row.Tags) ? "—" : row.Tags)</dd>
+    <dt>Published</dt><dd>@(IsLocal ? row.PublishedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC" : "—")</dd>
+    <dt>Size</dt><dd>@(IsLocal ? FormatSize(row.Size) : "—")</dd>
+    <dt>Downloads</dt><dd>@row.Downloads.ToString("N0", CultureInfo.InvariantCulture)</dd>
+    <dt>Hash</dt><dd>@(string.IsNullOrWhiteSpace(row.Hash) ? "—" : row.HashAlgorithm + " " + row.Hash)</dd>
+</dl>
+
+<h2>Install this version</h2>
+<pre><code>Install-Module -Name @displayId -RequiredVersion @row.NormalizedVersion -Repository @feed.Name</code></pre>
+<pre><code>Install-PSResource -Name @displayId -Version @row.NormalizedVersion -Repository @feed.Name</code></pre>
+<pre><code>dotnet add package @displayId --version @row.NormalizedVersion --source @(feedUrl)/v3/index.json</code></pre>
+
+@code {
+    private Feed? feed;
+    private string displayId = "";
+    private string feedUrl = "";
+    private string origin = "";
+    private VersionListEntry<PackageVersion>? entry;
+
+    [Parameter]
+    public string Name { get; set; } = "";
+
+    [Parameter]
+    public string Id { get; set; } = "";
+
+    [Parameter]
+    public string Version { get; set; } = "";
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private PackageVersion row => entry!.Payload!;
+
+    private bool IsLocal => entry!.Source == VersionSource.Local;
+
+    private bool IsAdmin => HttpContext.User.HasClaim(ClaimTypes.Role, "admin");
+
+    private string ReturnUrl => HttpContext.Request.Path + HttpContext.Request.QueryString;
+
+    protected override async Task OnInitializedAsync()
+    {
+        feed = await Feeds.FindAsync(Name, HttpContext.RequestAborted);
+        if (feed is not null && !feed.AnonymousRead && !IsAdmin)
+        {
+            feed = null;
+        }
+
+        if (feed is null)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        var idLower = Id.ToLowerInvariant();
+        var upstream = feed.Upstreams.Count == 0
+            ? []
+            : await Connector.UpstreamCandidatesAsync(feed, idLower, HttpContext.RequestAborted);
+
+        var package = await Packages.GetPackageAsync(feed.Key, idLower, includeDependencies: false, HttpContext.RequestAborted);
+        var local = package?.Versions ?? [];
+        var merged = VersionListBuilder
+            .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream), includeSemVer2: true)
+            .Where(e => e.Payload is not null)
+            .ToList();
+
+        entry = merged.FirstOrDefault(e =>
+            e.Payload!.NormalizedVersion.Equals(Version, StringComparison.OrdinalIgnoreCase)
+            || e.Payload!.OriginalVersion.Equals(Version, StringComparison.OrdinalIgnoreCase));
+
+        if (entry is null)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        displayId = package?.Id ?? Id;
+        feedUrl = PublicUrls.Feed(HttpContext, feed.Name);
+        origin = entry.Source switch
+        {
+            VersionSource.Local when row.Origin == PackageOrigin.Cached => "Cached from an upstream",
+            VersionSource.Local => "Pushed to this feed",
+            _ => "Upstream only",
+        };
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        >= 1024 * 1024 => (bytes / 1024d / 1024d).ToString("0.0", CultureInfo.InvariantCulture) + " MB",
+        >= 1024 => (bytes / 1024d).ToString("0", CultureInfo.InvariantCulture) + " KB",
+        _ => bytes.ToString(CultureInfo.InvariantCulture) + " B",
+    };
+}

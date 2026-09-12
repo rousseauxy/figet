@@ -98,6 +98,12 @@ button.danger { background: none; color: var(--danger); border: 1px solid var(--
 .search select { width: auto; flex: 0 0 auto; }
 .search .clear { align-self: center; font-size: 0.9rem; }
 .pager { display: flex; gap: 1rem; margin-top: 1rem; }
+.tabs { display: flex; gap: 0.25rem; margin: 0 0 1rem; border-bottom: 1px solid var(--line); }
+.tabs a { padding: 0.4rem 0.9rem; text-decoration: none; border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0; color: var(--muted); }
+.tabs a:hover { color: var(--text); }
+.tabs a.active { background: var(--surface); border-color: var(--line); color: var(--text); font-weight: 600; margin-bottom: -1px; }
+a.button { display: inline-block; text-decoration: none; border-radius: 6px; padding: 0.45rem 0.9rem; background: var(--accent); color: var(--accent-text); }
+h1 .version { color: var(--muted); font-weight: 400; font-size: 1.1rem; }
 .error, .validation-message { color: var(--danger); margin: 0; }
 .ok { color: var(--ok); margin: 0; }
 .secret { border: 1px solid var(--ok); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; background: var(--surface); }
