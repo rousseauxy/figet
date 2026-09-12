@@ -616,3 +616,82 @@ this repo has now been bitten by that fingerprinting twice.
 2026-09-12. Recorded with the observation that the obvious form of it restricts nothing: an admin who
 can create tokens can create an *admin* token and use that, so "admins cannot delete tokens" only means
 something if nobody may mint a token carrying more than they hold.
+
+## A silent 404 that killed every interactive component — 2026-09-12
+
+**A colleague reported "search is broken when logged in". It was, and nothing in the logs said so.**
+
+The signed-in feed view renders an interactive grid. The page prerendered correctly — the table drew,
+the pager even reported "5 items Page 1 of 1" — and then ignored every keystroke, because the circuit
+never started. The circuit never started because the page asked for `_framework/blazor.web.js` and got a
+404. Nothing threw, so there was no error to find: the container log had six lines and none of them were
+about this.
+
+### Cause: `--no-restore` on the publish
+
+`deploy/Dockerfile` published with `--no-restore`, which skips the work that composes static web assets.
+`wwwroot/_framework/blazor.web.js` was therefore never written into the image, while the asset manifest
+still advertised it — the page emitted a correct fingerprinted URL for a file that did not exist.
+
+Proven by building the same source twice on the same host with the same SDK, changing only the flag:
+
+| Image | Publish | `wwwroot/_framework` | blazor entries in manifest |
+|---|---|---|---|
+| `figet:diag` | `--no-restore`, and `--no-cache` to rule out layer reuse | **absent** | **0** |
+| `figet:dev` | without the flag | `blazor.web.js` | present |
+
+Layer caching was the first suspicion and was wrong: a completely fresh build still omitted the assets.
+The SDK was the second and was also wrong — the build image and this machine both resolve to 10.0.401
+under our `global.json`. The sibling application's Dockerfile already carried both the fix and a comment
+naming `--no-restore` as the cause; this repository had the flag and neither.
+
+**The publish now runs without it, and a build-time check fails loudly if the script is missing**, dumping
+`wwwroot` so the log shows what was emitted instead. The guard lives in the Dockerfile rather than in CI,
+so every path that builds the image inherits it.
+
+### Three more defects the same screenshot showed
+
+- **The scoped stylesheet was never linked.** `App.razor` did not reference `FiGet.Web.styles.css`. A
+  project with no `.razor.css` files does not need it and nothing complains when it is missing, so adding
+  component CSS silently shipped framework components unstyled — the grid's pager rendered as blank stubs.
+- **Forty-five empty rows.** The grid pads each page to its page size with `aria-hidden` placeholder rows,
+  so five results drew forty-five blank lines. Hidden with one rule, the same one the sibling application
+  uses.
+- **"0 packages" above a full table.** The items provider runs *during* a render, so assigning the count
+  never repainted the line showing it. Queued with `InvokeAsync(StateHasChanged)`.
+
+### Verified live
+
+| Check | Before | After |
+|---|---|---|
+| `GET /_framework/blazor.web.js` | 404 | **200, 200,645 bytes** |
+| Scoped bundle on the page | not linked | linked, resolves 200 |
+| Framework shipped to anonymous readers | n/a | still 0 — the split holds |
+| Error lines in the container log | 0 (nothing threw) | 0 |
+
+### What the restart also revealed: the describe pass costs seconds
+
+Recreating the container emptied the in-memory upstream metadata cache, which finally allowed a genuinely
+cold measurement of a large package:
+
+| Package | Versions | Cold | Warm |
+|---|---|---|---|
+| AdminByRequest | 7 | 0.57s | — |
+| Az.Accounts, Pester | 119–144 | ~1.0s | 0.13s |
+| PnP.PowerShell | 2098 | **22.99s** | 0.23s |
+
+Twenty-three seconds to render a page that shows ten rows. `UpstreamCandidatesAsync` describes every
+version — description, authors and tags for all 2098 — before the page selects the handful it displays.
+The version *list* genuinely is needed in full, because that is what makes exactly one version latest; the
+*descriptions* are only needed for the rows actually rendered. With a five-minute TTL this is the normal
+path, not a cold-start curiosity. Backlogged.
+
+### Two traps met while diagnosing, both mine
+
+- **`docker run --rm image sh -c '…'` does not run a shell** when the image has an `ENTRYPOINT`: it passes
+  the arguments to the entrypoint. Here that started the web server, which never exits, so the command hung
+  and its ssh session buffered forever — producing a zero-byte log that looked like a wedged machine. Use
+  `--entrypoint sh`. Two commands were lost to this before the process list showed
+  `dotnet FiGet.Web.dll sh -c ls …` and gave it away.
+- **Asserting on a fingerprinted filename cannot fail.** Covered above on its own; it recurred here because
+  the served name is `blazor.web.<hash>.js` and the literal never appears.
