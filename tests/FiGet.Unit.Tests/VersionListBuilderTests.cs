@@ -64,6 +64,31 @@ public sealed class VersionListBuilderTests
         Assert.Equal("1.0.0", Assert.Single(list, e => e.IsAbsoluteLatestVersion).Version.ToNormalizedString());
     }
 
+    /// <summary>
+    /// The combination a proxy feed actually produces: this feed holds a copy of a version the gallery has
+    /// since hidden, and the version the gallery does advertise is upstream-only because nobody has
+    /// downloaded it yet.
+    ///
+    /// Worth its own test because the existing unlisted case uses two local rows, and the difference
+    /// matters here - the hidden one is the higher version, so anything that lets it win "latest" hands a
+    /// client the wrong package. A colleague installed PowerShellGet over v3 and received 2.2.5.1 while
+    /// being told it was 2.2.5, with exactly this shape in the database.
+    /// </summary>
+    [Fact]
+    public void An_unlisted_local_copy_never_outranks_a_listed_upstream_version()
+    {
+        var list = VersionListBuilder.Build(
+            [Local("2.2.5.1", listed: false), Upstream("2.2.5"), Upstream("2.2.4")],
+            includeSemVer2: true);
+
+        Assert.Equal(["2.2.4", "2.2.5", "2.2.5.1"], list.Select(e => e.Version.ToNormalizedString()));
+        Assert.Equal("2.2.5", Assert.Single(list, e => e.IsLatestVersion).Version.ToNormalizedString());
+        Assert.Equal("2.2.5", Assert.Single(list, e => e.IsAbsoluteLatestVersion).Version.ToNormalizedString());
+
+        // Still present and still fetchable by exact version - hidden is not gone.
+        Assert.False(Assert.Single(list, e => e.Version.ToNormalizedString() == "2.2.5.1").Listed);
+    }
+
     [Fact]
     public void SemVer2_versions_are_removed_before_latest_is_computed_for_older_clients()
     {

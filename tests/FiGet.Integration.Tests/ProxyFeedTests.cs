@@ -744,6 +744,54 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         }
     }
 
+    /// <summary>
+    /// v3 must agree with v2 about which version is latest when this feed holds a hidden copy above the
+    /// one the gallery advertises.
+    ///
+    /// Reported from testing: `Install-PSResource` over v3 fetched PowerShellGet 2.2.5.1 - a version the
+    /// gallery unlists, cached here by an earlier install - while reporting that it had installed 2.2.5,
+    /// and the installed manifest said 2.2.5.1. The v2 client got it right against the same data. The v2
+    /// side of this is already covered; the registration this asserts is what the v3 client actually reads,
+    /// and nothing covered it for a proxy feed.
+    /// </summary>
+    [Fact]
+    public async Task The_v3_registration_never_offers_a_hidden_cached_copy_as_latest()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.V3Hidden");
+        AddUpstream(id, "1.0.0");
+        AddUpstream(id, "1.1.0");
+
+        using var client = server.CreateClient();
+        var idLower = id.ToLowerInvariant();
+
+        // Cache the higher one, the way a look-through install does, then have the gallery hide it.
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.1.0"));
+        AddUpstreamUnlisted(id, "1.1.0");
+        await ForgetUpstreamListingsAsync();
+
+        var index = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(
+            await client.GetAsync($"nuget/proxy/v3/registration/{idLower}/index.json")))!;
+
+        var leaves = index["items"]!.AsArray()
+            .SelectMany(page => page!["items"]!.AsArray())
+            .Select(leaf => (
+                Version: (string)leaf!["catalogEntry"]!["version"]!,
+                Listed: (bool)leaf!["catalogEntry"]!["listed"]!,
+                Content: (string)leaf!["packageContent"]!))
+            .ToList();
+
+        var hidden = leaves.Single(l => l.Version == "1.1.0");
+        var offered = leaves.Single(l => l.Version == "1.0.0");
+
+        Assert.False(hidden.Listed);
+        Assert.True(offered.Listed);
+
+        // Each leaf must carry its own bytes. Handing 1.0.0's leaf the hidden version's content is how a
+        // client installs one version while believing it installed another.
+        Assert.Contains("/1.0.0/", offered.Content, StringComparison.Ordinal);
+        Assert.Contains("/1.1.0/", hidden.Content, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task An_unreachable_upstream_withdraws_nothing()
     {
