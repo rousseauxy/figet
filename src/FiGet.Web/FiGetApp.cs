@@ -18,6 +18,7 @@ using FiGet.Protocol.V3;
 using FiGet.Web.Components;
 using FiGet.Web.Configuration;
 using FiGet.Web.Connectors;
+using FiGet.Web.Logging;
 using FiGet.Web.Theming;
 using NuGet.Versioning;
 using Microsoft.AspNetCore.Authentication;
@@ -154,6 +155,13 @@ public static class FiGetApp
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseAntiforgery();
+
+        // After authentication on purpose: the line says who the caller turned out to be, not just where
+        // it came from. Opt-in, because a package client is chatty and most instances never need it.
+        if (app.Configuration.GetValue<bool>("FiGet:Logging:Requests"))
+        {
+            app.UseMiddleware<RequestLogMiddleware>();
+        }
 
         app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
         app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });

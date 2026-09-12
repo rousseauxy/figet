@@ -20,6 +20,12 @@ public static class FeedAccess
     public const string Realm = "FiGet";
 
     /// <summary>
+    /// Where the accepted token's name is left for the request log to pick up. Set here because this is
+    /// the one place every protocol request resolves a feed and a token, so attribution exists once.
+    /// </summary>
+    public const string TokenNameItem = "figet:token-name";
+
+    /// <summary>
     /// Returns the feed and token, or an <see cref="IResult"/> to send instead:
     /// 404 for an unknown feed, 401 with a Basic challenge when credentials are missing or invalid,
     /// 403 when a valid token lacks the scope.
@@ -55,6 +61,11 @@ public static class FeedAccess
             || (best is not null && best.Allows(required, feed.Key));
         if (allowed)
         {
+            if (best is not null)
+            {
+                http.Items[TokenNameItem] = best.Name;
+            }
+
             return (new FeedRequest(feed, best), null);
         }
 
