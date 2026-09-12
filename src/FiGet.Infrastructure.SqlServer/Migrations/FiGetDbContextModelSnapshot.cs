@@ -88,8 +88,11 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Id")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
+                        .HasColumnType("nvarchar(128)")
+                        .HasDefaultValue("");
 
                     b.Property<string>("IdLower")
                         .IsRequired()

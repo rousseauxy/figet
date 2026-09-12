@@ -383,10 +383,41 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
     }
 
     /// <summary>
-    /// An uncached package keeps the upstream's spelling. A v3 registration URL is lower-cased by
-    /// convention, and echoing that back renamed the package until somebody downloaded it: "powershellget"
-    /// before the install, "PowerShellGet" after.
+    /// A cached catalogue with no stored spelling still serves, falling back to the id that was asked
+    /// for. That is the state real rows reach: the column was added nullable, 42 of 55 live rows read
+    /// back null, one `.Length` on it threw, and every registration index for a cached package answered
+    /// 500 - ten out of ten sampled.
+    ///
+    /// Deliberately not "set the column to null": the schema now forbids that, so such a test proves only
+    /// that SQLite enforces NOT NULL. The migration fills existing nulls with an empty string, so empty
+    /// is what those rows become, and this pins that it is harmless.
     /// </summary>
+    [Fact]
+    public async Task A_cached_catalogue_with_no_stored_spelling_still_serves()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.BlankSpelling");
+        AddUpstream(id, "1.0.0");
+
+        await FindAsync("proxy", id);
+
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FiGetDbContext>();
+            await db.Database.ExecuteSqlRawAsync(
+                "update CachedUpstreamIndexes set Id = '' where IdLower = {0}", id.ToLowerInvariant());
+        }
+
+        // Must answer rather than throw, and use the requested spelling since nothing better is stored.
+        var entries = await FindAsync("proxy", id);
+        Assert.Single(entries);
+        Assert.Equal(id, Property(entries[0], "Id"));
+
+        using var client = server.CreateClient();
+        await HttpAssert.SuccessBodyAsync(
+            await client.GetAsync($"nuget/proxy/v3/registration/{id.ToLowerInvariant()}/index.json"));
+    }
+
+
     [Fact]
     public async Task An_uncached_package_keeps_the_spelling_the_upstream_uses()
     {

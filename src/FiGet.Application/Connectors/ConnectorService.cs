@@ -56,7 +56,7 @@ public sealed class ConnectorService(
             var (catalog, answered) = await CatalogAsync(upstream, idLower, cancellationToken);
             authoritative |= answered;
             var described = ByVersion(catalog.Described);
-            if (casedId.Length == 0 && catalog.Id.Length > 0)
+            if (string.IsNullOrEmpty(casedId) && !string.IsNullOrEmpty(catalog.Id))
             {
                 casedId = catalog.Id;
             }
@@ -442,5 +442,5 @@ public sealed class ConnectorService(
 public sealed record UpstreamCandidates(IReadOnlyList<VersionCandidate<PackageVersion>> Versions, string Id)
 {
     /// <summary>The upstream's spelling when there is one, otherwise whatever the caller already had.</summary>
-    public string Spell(string fallback) => Id.Length > 0 ? Id : fallback;
+    public string Spell(string fallback) => string.IsNullOrEmpty(Id) ? fallback : Id;
 }
