@@ -70,13 +70,20 @@
                 <a class="fg-btn fg-btn-sm" href="@TabLink("versions", Page - 1)">← Newer</a>
             }
             <span class="fg-pager-info">
-                @(Skip + 1) to @(Skip + Rows.Count()) of @versions.Count versions, newest first
+                @(Skip + 1) to @(Skip + Rows.Count()) of @visible.Count versions, newest first
             </span>
-            @if (Skip + PageSize < versions.Count)
+            @if (Skip + PageSize < visible.Count)
             {
                 <a class="fg-btn fg-btn-sm" href="@TabLink("versions", Page + 1)">Older →</a>
             }
         </nav>
+        @if (Hidden > 0)
+        {
+            <p class="fg-muted">
+                @Hidden version@(Hidden == 1 ? "" : "s") the upstream no longer advertises
+                @(Hidden == 1 ? "is" : "are") hidden. They stay installable by exact version.
+            </p>
+        }
         break;
 
     default:
@@ -99,11 +106,19 @@
         <pre><code>dotnet add package @displayId --version @shown.NormalizedVersion --source @(feedUrl)/v3/index.json</code></pre>
 
         <h2>Recent versions</h2>
-        @VersionTable(versions.Reverse().Take(RecentCount))
-        @if (versions.Count > RecentCount)
+        @VersionTable(visible.Reverse().Take(RecentCount))
+        @if (visible.Count > RecentCount)
         {
-            <p class="fg-result-count"><a href="@TabLink("versions")">Show all @versions.Count versions</a>.</p>
+            <p class="fg-result-count"><a href="@TabLink("versions")">Show all @visible.Count versions</a>.</p>
         }
+        @if (Hidden > 0)
+        {
+            <p class="fg-muted">
+                @Hidden version@(Hidden == 1 ? "" : "s") the upstream no longer advertises
+                @(Hidden == 1 ? "is" : "are") hidden. They stay installable by exact version.
+            </p>
+        }
+
         break;
 }
 
@@ -122,6 +137,14 @@
     private PackageVersion? shown;
     private VersionListEntry<PackageVersion>? latest;
     private IReadOnlyList<VersionListEntry<PackageVersion>> versions = [];
+
+    /// <summary>
+    /// What the tables show. A version the upstream has withdrawn is hidden here the way the gallery hides
+    /// it, but only from the tables: <c>versions</c> stays whole, because the latest is computed across all
+    /// of them and an exact version must still resolve. An admin sees everything, having to be able to find
+    /// an unlisted version in order to pull, relist or delete it.
+    /// </summary>
+    private IReadOnlyList<VersionListEntry<PackageVersion>> visible = [];
     private IReadOnlyList<PackageDependency> dependencies = [];
     private IReadOnlyList<PackageFileEntry>? files;
     private string feedUrl = "";
@@ -223,7 +246,10 @@
     private int Skip => (Math.Max(1, Page) - 1) * PageSize;
 
     /// <summary>Newest first, because that is the version being looked for.</summary>
-    private IEnumerable<VersionListEntry<PackageVersion>> Rows => versions.Reverse().Skip(Skip).Take(PageSize);
+    private IEnumerable<VersionListEntry<PackageVersion>> Rows => visible.Reverse().Skip(Skip).Take(PageSize);
+
+    /// <summary>How many versions are held back from the tables, so the count is never quietly wrong.</summary>
+    private int Hidden => versions.Count - visible.Count;
 
     private string Active(string tab) => CurrentTab == tab ? "active" : "";
 
@@ -276,6 +302,7 @@
             .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream), includeSemVer2: true)
             .Where(entry => entry.Payload is not null)];
 
+        visible = IsAdmin ? versions : [.. versions.Where(entry => entry.Listed)];
         latest = versions.Latest(includePrerelease: true) ?? versions[^1];
         shown = latest.Payload;
         dependencies = [.. shown!.Dependencies.OrderBy(dependency => dependency.Ordinal)];
