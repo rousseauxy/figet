@@ -293,21 +293,21 @@
 
         // Upstreams first, so a version withdrawn upstream is reflected in the rows read just below.
         var upstream = feed.Upstreams.Count == 0
-            ? []
+            ? new UpstreamCandidates([], "")
             : await Connector.UpstreamCandidatesAsync(feed, idLower, HttpContext.RequestAborted);
 
         var package = await Packages.GetPackageAsync(feed.Key, idLower, includeDependencies: true, HttpContext.RequestAborted);
         var local = package?.Versions ?? [];
-        if (local.Count == 0 && upstream.Count == 0)
+        if (local.Count == 0 && upstream.Versions.Count == 0)
         {
             HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
             return;
         }
 
-        displayId = package?.Id ?? Id;
+        displayId = package?.Id ?? upstream.Spell(Id);
         feedUrl = PublicUrls.Feed(HttpContext, feed.Name);
         versions = [.. VersionListBuilder
-            .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream), includeSemVer2: true)
+            .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream.Versions), includeSemVer2: true)
             .Where(entry => entry.Payload is not null)];
 
         visible = [.. versions.Where(entry => entry.Listed)];

@@ -178,13 +178,13 @@
 
         var idLower = Id.ToLowerInvariant();
         var upstream = feed.Upstreams.Count == 0
-            ? []
+            ? new UpstreamCandidates([], "")
             : await Connector.UpstreamCandidatesAsync(feed, idLower, HttpContext.RequestAborted);
 
         var package = await Packages.GetPackageAsync(feed.Key, idLower, includeDependencies: true, HttpContext.RequestAborted);
         var local = package?.Versions ?? [];
         var merged = VersionListBuilder
-            .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream), includeSemVer2: true)
+            .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream.Versions), includeSemVer2: true)
             .Where(e => e.Payload is not null)
             .ToList();
 
@@ -198,7 +198,7 @@
             return;
         }
 
-        displayId = package?.Id ?? Id;
+        displayId = package?.Id ?? upstream.Spell(Id);
         feedUrl = PublicUrls.Feed(HttpContext, feed.Name);
         origin = entry.Source switch
         {

@@ -142,7 +142,10 @@ public sealed class StubUpstreamClient : IUpstreamClient
                 !unlisted.ContainsKey(idLower + "|" + v)))
             .ToList();
 
-        return Task.FromResult(new UpstreamCatalog(versions, described));
+        // The spelling this upstream knows the package by, recovered from the key it was added under:
+        // a real gallery answers a lower-cased request with its own casing, and so must this.
+        var casedId = packages.Keys.FirstOrDefault(k => k.Equals(idLower, StringComparison.OrdinalIgnoreCase)) ?? idLower;
+        return Task.FromResult(new UpstreamCatalog(versions, described, casedId));
     }
 
     /// <summary>Matches on the id, which is all the real galleries are asked for in these tests.</summary>

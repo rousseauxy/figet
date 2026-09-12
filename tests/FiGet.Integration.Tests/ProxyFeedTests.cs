@@ -350,6 +350,61 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         Assert.Equal("1.1.0", Property(restored.Single(e => Property(e, "IsLatestVersion") == "true"), "Version"));
     }
 
+    /// <summary>
+    /// A cached copy of a version the upstream has *hidden* stops being offered here too. Withdrawal was
+    /// already handled; being unlisted upstream was not, and the two are the same intent.
+    ///
+    /// Found in production: PowerShellGet 2.2.5.1 is unlisted on the gallery, a look-through install
+    /// cached it, and from then on it won "latest" over the 2.2.5 the gallery advertises - so asking this
+    /// server for the newest PowerShellGet installed something the gallery deliberately hides.
+    /// </summary>
+    [Fact]
+    public async Task A_cached_copy_of_a_version_the_upstream_unlists_stops_being_latest()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Hidden");
+        AddUpstream(id, "1.0.0");
+        AddUpstream(id, "1.1.0");
+
+        using var client = server.CreateClient();
+
+        // Cache the higher one, the way a look-through install does.
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.1.0"));
+
+        // The gallery keeps serving it but stops advertising it.
+        AddUpstreamUnlisted(id, "1.1.0");
+        await ForgetUpstreamListingsAsync();
+
+        var entries = await FindAsync("proxy", id);
+        Assert.Equal("false", Property(entries.Single(e => Property(e, "Version") == "1.1.0"), "Listed"));
+        Assert.Equal("1.0.0", Property(entries.Single(e => Property(e, "IsLatestVersion") == "true"), "Version"));
+
+        // Still fetchable by exact version: hidden is not gone, and something may be pinned to it.
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.1.0"));
+    }
+
+    /// <summary>
+    /// An uncached package keeps the upstream's spelling. A v3 registration URL is lower-cased by
+    /// convention, and echoing that back renamed the package until somebody downloaded it: "powershellget"
+    /// before the install, "PowerShellGet" after.
+    /// </summary>
+    [Fact]
+    public async Task An_uncached_package_keeps_the_spelling_the_upstream_uses()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Casing");
+        AddUpstream(id, "1.0.0");
+
+        using var client = server.CreateClient();
+
+        var registration = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(
+            await client.GetAsync($"nuget/proxy/v3/registration/{id.ToLowerInvariant()}/index.json")))!;
+        var entry = registration["items"]!.AsArray()[0]!["items"]!.AsArray()[0]!["catalogEntry"]!;
+        Assert.Equal(id, (string?)entry["id"]);
+
+        // And the same over v2, which asks with its own casing and must not be contradicted.
+        var entries = await FindAsync("proxy", id);
+        Assert.Equal(id, Property(entries.Single(), "Id"));
+    }
+
     [Fact]
     public async Task A_version_pushed_here_is_never_withdrawn_by_an_upstream()
     {

@@ -49,6 +49,10 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
         var items = await metadata.GetMetadataAsync(idLower, includePrerelease: true, includeUnlisted: true, cache, NullLogger.Instance, timeout.Token);
         var described = items.Select(ToMetadata).ToList();
 
+        // The gallery's own spelling, which only the metadata carries: the version resources answer for an
+        // id they were given and hand back nothing about how it is written.
+        var casedId = items.Select(m => m.Identity.Id).FirstOrDefault(i => !string.IsNullOrEmpty(i)) ?? "";
+
         // A source with no v3 service index is a v2 gallery, where the walk above already listed every
         // version and a second resource would only repeat it.
         var serviceIndex = await repository.GetResourceAsync<ServiceIndexResourceV3>(timeout.Token);
@@ -61,13 +65,13 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
                 .Select(v => new UpstreamVersion(v, IsSemVer2(v)))
                 .ToList();
 
-            return new UpstreamCatalog(walked, described);
+            return new UpstreamCatalog(walked, described, casedId);
         }
 
         var byId = await repository.GetResourceAsync<FindPackageByIdResource>(timeout.Token)
             ?? throw new InvalidOperationException($"Upstream '{upstream.Name}' does not expose a package resource.");
         var versions = await byId.GetAllVersionsAsync(idLower, cache, NullLogger.Instance, timeout.Token);
-        return new UpstreamCatalog(versions.Select(v => new UpstreamVersion(v, IsSemVer2(v))).ToList(), described);
+        return new UpstreamCatalog(versions.Select(v => new UpstreamVersion(v, IsSemVer2(v))).ToList(), described, casedId);
     }
 
     public async Task<Stream?> OpenPackageAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken)

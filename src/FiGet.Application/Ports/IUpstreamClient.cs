@@ -56,9 +56,16 @@ public sealed record UpstreamMetadata(
 /// What the upstream published about them. May cover fewer versions than <paramref name="Versions"/>, or
 /// none at all: a version with nothing said about it is listed with blanks rather than not listed.
 /// </param>
+/// <param name="Id">
+/// The id as the upstream spells it. Ids are compared case-insensitively, so this changes nothing about
+/// what resolves - but a v3 registration URL is lower-cased by convention, and echoing that back made an
+/// uncached package read as "powershellget" until somebody downloaded it and the real nuspec replaced it.
+/// Empty when the upstream described nothing, in which case the caller keeps whatever it already had.
+/// </param>
 public sealed record UpstreamCatalog(
     IReadOnlyList<UpstreamVersion> Versions,
-    IReadOnlyList<UpstreamMetadata> Described);
+    IReadOnlyList<UpstreamMetadata> Described,
+    string Id = "");
 
 /// <summary>
 /// Talks to one upstream feed. Implemented over NuGet's own client library, so both v2 and v3 upstreams

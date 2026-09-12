@@ -32,11 +32,16 @@ public sealed class ConnectorService(
     /// A cached list is used while it is fresh; a failing upstream falls back to its last known list and
     /// is logged, because answering from a slightly old list beats failing a client's install.
     /// </summary>
-    public async Task<IReadOnlyList<VersionCandidate<PackageVersion>>> UpstreamCandidatesAsync(Feed feed, string idLower, CancellationToken cancellationToken)
+    public async Task<UpstreamCandidates> UpstreamCandidatesAsync(Feed feed, string idLower, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(feed);
         var candidates = new List<VersionCandidate<PackageVersion>>();
         var offered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Versions an upstream still advertises, as opposed to still holds. Null while nothing has been
+        // described - after a restart, say - because "we were not told" must not read as "withdrawn".
+        HashSet<string>? advertised = null;
+        var casedId = "";
         var authoritative = false;
 
         foreach (var upstream in feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal))
@@ -51,14 +56,28 @@ public sealed class ConnectorService(
             var (catalog, answered) = await CatalogAsync(upstream, idLower, cancellationToken);
             authoritative |= answered;
             var described = ByVersion(catalog.Described);
+            if (casedId.Length == 0 && catalog.Id.Length > 0)
+            {
+                casedId = catalog.Id;
+            }
+
+            if (described.Count > 0)
+            {
+                advertised ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            }
 
             foreach (var version in catalog.Versions)
             {
-                offered.Add(version.Version.ToNormalizedString());
+                var normalized = version.Version.ToNormalizedString();
+                offered.Add(normalized);
                 var row = Placeholder(idLower, version);
-                if (described.TryGetValue(version.Version.ToNormalizedString(), out var metadata))
+                if (described.TryGetValue(normalized, out var metadata))
                 {
                     Describe(row, metadata);
+                    if (metadata.Listed)
+                    {
+                        advertised!.Add(normalized);
+                    }
                 }
 
                 // Listed as the upstream lists it. Claiming otherwise made every version the gallery
@@ -77,10 +96,10 @@ public sealed class ConnectorService(
         // Only when an upstream actually answered: an outage must never look like a mass withdrawal.
         if (authoritative)
         {
-            await ReconcileWithdrawnAsync(feed, idLower, offered, cancellationToken);
+            await ReconcileWithdrawnAsync(feed, idLower, offered, advertised, cancellationToken);
         }
 
-        return candidates;
+        return new UpstreamCandidates(candidates, casedId);
     }
 
     /// <summary>
@@ -91,7 +110,14 @@ public sealed class ConnectorService(
     /// it is being moved off; a feed that wants it gone entirely deletes it.
     /// Only cached copies are touched. What was pushed to this feed is nobody else's to withdraw.
     /// </summary>
-    private async Task ReconcileWithdrawnAsync(Feed feed, string idLower, HashSet<string> offered, CancellationToken cancellationToken)
+    /// <param name="advertised">
+    /// Versions the upstream still lists, or null when it described nothing this time. A cached copy of a
+    /// version the gallery has hidden should stop being offered here too - PowerShellGet 2.2.5.1 is
+    /// unlisted on the gallery, was cached here by a look-through install, and then went on winning
+    /// "latest" over the 2.2.5 the gallery actually advertises. Null is the safe case and behaves as
+    /// before: presence only, so a cold description cache cannot unlist a feed wholesale.
+    /// </param>
+    private async Task ReconcileWithdrawnAsync(Feed feed, string idLower, HashSet<string> offered, HashSet<string>? advertised, CancellationToken cancellationToken)
     {
         var package = await packages.GetPackageAsync(feed.Key, idLower, includeDependencies: false, cancellationToken);
         if (package is null)
@@ -101,7 +127,8 @@ public sealed class ConnectorService(
 
         foreach (var version in package.Versions.Where(v => v.Origin == PackageOrigin.Cached))
         {
-            var stillOffered = offered.Contains(version.NormalizedVersion);
+            var stillOffered = offered.Contains(version.NormalizedVersion)
+                && (advertised is null || advertised.Contains(version.NormalizedVersion));
             if (version.Listed == stillOffered)
             {
                 continue;
@@ -405,4 +432,15 @@ public sealed class ConnectorService(
         }
     }
 
+}
+
+/// <summary>
+/// What the upstreams hold for one id, and the id as they spell it. The spelling travels with the
+/// candidates because a v3 registration URL is lower-cased by convention: without it an uncached package
+/// reads as "powershellget" until somebody downloads it and the real nuspec replaces it.
+/// </summary>
+public sealed record UpstreamCandidates(IReadOnlyList<VersionCandidate<PackageVersion>> Versions, string Id)
+{
+    /// <summary>The upstream's spelling when there is one, otherwise whatever the caller already had.</summary>
+    public string Spell(string fallback) => Id.Length > 0 ? Id : fallback;
 }

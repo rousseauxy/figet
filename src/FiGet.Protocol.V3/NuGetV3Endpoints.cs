@@ -584,10 +584,15 @@ public static class NuGetV3Endpoints
         // rows have to be read after it to reflect that in this same response.
         var upstream = await connector.UpstreamCandidatesAsync(feed, idLower, cancellationToken);
         var package = await store.GetPackageAsync(feed.Key, idLower, includeDependencies, cancellationToken);
-        var stand = package ?? new Package { FeedKey = feed.Key, Id = id, IdLower = idLower };
+
+        // A registration URL is lower-cased by convention, so `id` here is "powershellget" however the
+        // gallery spells it. Once a version is cached the local row carries the real spelling; until then
+        // it has to come from the upstream, or the page renames the package for as long as nobody has
+        // downloaded it.
+        var stand = package ?? new Package { FeedKey = feed.Key, Id = upstream.Spell(id), IdLower = idLower };
         var local = package?.Versions ?? [];
         var merged = VersionListBuilder
-            .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream), includeSemVer2: true)
+            .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream.Versions), includeSemVer2: true)
             .Where(e => e.Payload is not null)
             .ToList();
 

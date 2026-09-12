@@ -359,13 +359,13 @@ public static class NuGetV2Endpoints
         var upstream = await connector.UpstreamCandidatesAsync(feed, idLower, cancellationToken);
         var package = await store.GetPackageAsync(feed.Key, idLower, includeDependencies: true, cancellationToken);
         var local = package?.Versions ?? [];
-        if (local.Count == 0 && upstream.Count == 0)
+        if (local.Count == 0 && upstream.Versions.Count == 0)
         {
             return [];
         }
 
-        var merged = VersionListBuilder.Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream), includeSemVer2);
-        var displayId = package?.Id ?? id;
+        var merged = VersionListBuilder.Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream.Versions), includeSemVer2);
+        var displayId = package?.Id ?? upstream.Spell(id);
         return merged.Where(e => e.Payload is not null).Select(e => new V2Row(displayId, e)).ToList();
     }
 
