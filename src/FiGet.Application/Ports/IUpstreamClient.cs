@@ -117,19 +117,41 @@ public sealed record CachedUpstreamCatalog(
     IReadOnlyList<UpstreamVersion> Versions,
     DateTime FetchedUtc,
     bool Stale,
-    string Id = "");
+    string Id = "",
+    IReadOnlySet<string>? Unlisted = null,
+    IReadOnlyDictionary<string, IReadOnlyList<UpstreamDependency>>? Dependencies = null);
 
 public interface IUpstreamIndexStore
 {
-    /// <summary>The cached catalogue for one upstream and id, whatever its age; null when nothing is cached.</summary>
+    /// <summary>
+    /// The cached catalogue for one upstream and id, whatever its age; null when nothing is cached. It
+    /// carries the version list and the two facts that must outlive a restart - which versions the
+    /// upstream hides, and what each depends on - but never the descriptions, which stay in memory.
+    /// </summary>
     Task<CachedUpstreamCatalog?> FindAsync(int feedUpstreamKey, string idLower, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Writes or replaces the cached version list. Only the versions: the descriptions of those versions
-    /// are two orders of magnitude larger and live in memory, for the reason recorded on
-    /// <c>UpstreamMetadataCache</c>.
+    /// Writes or replaces the cached version list, and the two facts about those versions that must
+    /// survive a restart: which of them the upstream does not advertise, and what each one depends on.
+    ///
+    /// Still not the descriptions. Those are two orders of magnitude larger - a hundred megabytes against
+    /// tens of kilobytes here - and the reason is recorded on <c>UpstreamMetadataCache</c>. What is stored
+    /// is what changes an answer: a hidden version must not look listed after a restart, and a package
+    /// must not report that it depends on nothing.
+    ///
+    /// <paramref name="described"/> empty leaves both of those columns as they are, rather than erasing
+    /// them: an upstream that answered without describing anything has told us nothing new, not that the
+    /// package suddenly has no dependencies.
     /// </summary>
-    Task SaveAsync(int feedUpstreamKey, string idLower, string casedId, IReadOnlyList<UpstreamVersion> versions, bool stale, DateTime fetchedUtc, CancellationToken cancellationToken);
+    Task SaveAsync(
+        int feedUpstreamKey,
+        string idLower,
+        string casedId,
+        IReadOnlyList<UpstreamVersion> versions,
+        IReadOnlyList<UpstreamMetadata> described,
+        bool stale,
+        DateTime fetchedUtc,
+        CancellationToken cancellationToken);
 
     /// <summary>Drops every cached list of one upstream, used when its configuration changes.</summary>
     Task ClearAsync(int feedUpstreamKey, CancellationToken cancellationToken);

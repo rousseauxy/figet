@@ -35,5 +35,12 @@ public sealed class UpstreamMetadataCache
     public void Set(int upstreamKey, string idLower, IReadOnlyList<UpstreamMetadata> items, DateTime nowUtc) =>
         entries[Key(upstreamKey, idLower)] = (nowUtc, items);
 
+    /// <summary>
+    /// Forgets what was remembered about one id, which is precisely what a restart does to this cache.
+    /// Exists so a test can reproduce that state without restarting anything: the version list stays in
+    /// the database, the descriptions go, and what the server answers next is the thing worth asserting.
+    /// </summary>
+    public void Forget(int upstreamKey, string idLower) => entries.TryRemove(Key(upstreamKey, idLower), out _);
+
     private static string Key(int upstreamKey, string idLower) => upstreamKey + "|" + idLower;
 }

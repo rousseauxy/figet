@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
 using System.Xml.Linq;
+using FiGet.Application.Connectors;
 using FiGet.Application.Ports;
 using FiGet.Domain.Entities;
 using FiGet.Infrastructure.Persistence;
@@ -626,6 +627,65 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         var dependency = groups[0]!["dependencies"]!.AsArray().Single();
         Assert.Equal("Some.Dependency", (string?)dependency!["id"]);
         Assert.Equal("[1.2.0, )", (string?)dependency!["range"]);
+    }
+
+    /// <summary>
+    /// A restart keeps the two facts that change an answer: what a version depends on, and whether the
+    /// upstream still advertises it.
+    ///
+    /// The version list has always survived a restart - it is in the database - but what the gallery said
+    /// *about* those versions lived only in memory. So after every restart a hidden version looked listed
+    /// until the first refresh landed, and an uncached version declared no dependencies, which is why a
+    /// first install brought nothing with it. Both are now written beside the version list.
+    ///
+    /// Not the descriptions. Those stay in memory on purpose, and this test pins that too: the rows come
+    /// back listed and with their dependencies while the upstream is saying nothing at all.
+    /// </summary>
+    [Fact]
+    public async Task A_restart_keeps_the_dependencies_and_the_hidden_versions()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Remembered");
+        AddUpstream(id, "1.0.0");
+        AddUpstreamUnlisted(id, "1.1.0");
+        server.Upstream.AddDependency(id, "1.0.0", "Some.Dependency", "[1.2.0, )");
+
+        // Warm: descriptions in memory, versions and facts written to the database.
+        var warm = await FindAsync("proxy", id);
+        Assert.Contains(
+            "Some.Dependency",
+            Property(warm.Single(e => Property(e, "Version") == "1.0.0"), "Dependencies"),
+            StringComparison.Ordinal);
+
+        // A restart: memory forgets, the database does not, and the upstream describes nothing any more.
+        await ForgetDescriptionsAsync(id);
+        server.Upstream.Describes = false;
+        try
+        {
+            var entries = await FindAsync("proxy", id);
+
+            Assert.Contains(
+                "Some.Dependency",
+                Property(entries.Single(e => Property(e, "Version") == "1.0.0"), "Dependencies"),
+                StringComparison.Ordinal);
+            Assert.Equal("false", Property(entries.Single(e => Property(e, "Version") == "1.1.0"), "Listed"));
+        }
+        finally
+        {
+            server.Upstream.Describes = true;
+        }
+    }
+
+    /// <summary>Drops the in-memory descriptions for an id, which is what a restart does to them.</summary>
+    private async Task ForgetDescriptionsAsync(string id)
+    {
+        await using var scope = server.Services.CreateAsyncScope();
+        var feeds = scope.ServiceProvider.GetRequiredService<IFeedStore>();
+        var cache = scope.ServiceProvider.GetRequiredService<UpstreamMetadataCache>();
+        var feed = await feeds.FindAsync("proxy", TestContext.Current.CancellationToken);
+        foreach (var upstream in feed!.Upstreams)
+        {
+            cache.Forget(upstream.Key, id.ToLowerInvariant());
+        }
     }
 
     [Fact]

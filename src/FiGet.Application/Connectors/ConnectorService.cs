@@ -53,15 +53,19 @@ public sealed class ConnectorService(
 
             // One call for both: the versions and what the upstream says about them, so an uncached
             // version is listed with its real description, authors and tags instead of blanks.
-            var (catalog, answered) = await CatalogAsync(upstream, idLower, cancellationToken);
+            var (catalog, answered, cached) = await CatalogAsync(upstream, idLower, cancellationToken);
             authoritative |= answered;
             var described = ByVersion(catalog.Described);
+
+            // What the database remembers, consulted only when memory has nothing to say - which is what
+            // every restart leaves behind. Two facts, and deliberately only two.
+            var remembered = described.Count == 0 ? cached : null;
             if (string.IsNullOrEmpty(casedId) && !string.IsNullOrEmpty(catalog.Id))
             {
                 casedId = catalog.Id;
             }
 
-            if (described.Count > 0)
+            if (described.Count > 0 || remembered?.Unlisted is not null)
             {
                 advertised ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             }
@@ -77,6 +81,23 @@ public sealed class ConnectorService(
                     if (metadata.Listed)
                     {
                         advertised!.Add(normalized);
+                    }
+                }
+                else if (remembered is not null)
+                {
+                    // These two and nothing else. Description, authors and tags stay empty until the
+                    // refresh lands, because keeping those in the database is the hundred megabytes that
+                    // took the server down once already.
+                    row.Listed = remembered.Unlisted?.Contains(normalized) != true;
+                    if (remembered.Dependencies is not null
+                        && remembered.Dependencies.TryGetValue(normalized, out var declared))
+                    {
+                        row.Dependencies = ToDependencies(declared);
+                    }
+
+                    if (row.Listed)
+                    {
+                        advertised?.Add(normalized);
                     }
                 }
 
@@ -424,7 +445,7 @@ public sealed class ConnectorService(
     /// thrown away for being old, because the only thing worse than a five-minute-old version list is no
     /// version list while somebody waits for a walk of several megabytes.
     /// </summary>
-    private async Task<(UpstreamCatalog Catalog, bool Authoritative)> CatalogAsync(
+    private async Task<(UpstreamCatalog Catalog, bool Authoritative, CachedUpstreamCatalog? Remembered)> CatalogAsync(
         FeedUpstream upstream,
         string idLower,
         CancellationToken cancellationToken)
@@ -448,22 +469,22 @@ public sealed class ConnectorService(
                 refreshes.Enqueue(upstream, idLower);
             }
 
-            return (new UpstreamCatalog(cached.Versions, described, cached.Id), !cached.Stale);
+            return (new UpstreamCatalog(cached.Versions, described, cached.Id), !cached.Stale, cached);
         }
 
         try
         {
             var catalog = await client.GetCatalogAsync(upstream, idLower, cancellationToken);
-            await index.SaveAsync(upstream.Key, idLower, catalog.Id, catalog.Versions, stale: false, now, cancellationToken);
+            await index.SaveAsync(upstream.Key, idLower, catalog.Id, catalog.Versions, catalog.Described, stale: false, now, cancellationToken);
             metadataCache.Set(upstream.Key, idLower, catalog.Described, now);
-            return (catalog, true);
+            return (catalog, true, null);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             // A timeout lands here too, which is why the answer is "not authoritative": a version missing
             // from a list we never received must not be mistaken for a version withdrawn upstream.
             logger.LogWarning(ex, "Upstream {Upstream} did not answer for {Id}, and nothing was cached.", upstream.Name, idLower);
-            return (new UpstreamCatalog([], []), false);
+            return (new UpstreamCatalog([], []), false, null);
         }
     }
 

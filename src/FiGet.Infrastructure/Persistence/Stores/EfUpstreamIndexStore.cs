@@ -22,7 +22,15 @@ public sealed class EfUpstreamIndexStore(FiGetDbContext db) : IUpstreamIndexStor
         // Coalesced here, at the boundary that reads the database: the column was added nullable, so
         // every row written before it exists comes back null however the property is declared, and one
         // `.Length` on it took out every registration index for a cached package.
-        return row is null ? null : new CachedUpstreamCatalog(ParseVersions(row), row.FetchedUtc, row.Stale, row.Id ?? "");
+        return row is null
+            ? null
+            : new CachedUpstreamCatalog(
+                ParseVersions(row),
+                row.FetchedUtc,
+                row.Stale,
+                row.Id ?? "",
+                ParseUnlisted(row.UnlistedVersions),
+                ParseDependencies(row.Dependencies));
     }
 
     public async Task SaveAsync(
@@ -30,11 +38,13 @@ public sealed class EfUpstreamIndexStore(FiGetDbContext db) : IUpstreamIndexStor
         string idLower,
         string casedId,
         IReadOnlyList<UpstreamVersion> versions,
+        IReadOnlyList<UpstreamMetadata> described,
         bool stale,
         DateTime fetchedUtc,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(versions);
+        ArgumentNullException.ThrowIfNull(described);
         var all = string.Join(' ', versions.Select(v => v.Version.ToNormalizedString()));
         var semVer2 = string.Join(' ', versions.Where(v => v.IsSemVer2).Select(v => v.Version.ToNormalizedString()));
 
@@ -46,6 +56,15 @@ public sealed class EfUpstreamIndexStore(FiGetDbContext db) : IUpstreamIndexStor
             existing.Versions = all;
             existing.Id = casedId ?? "";
             existing.SemVer2Versions = semVer2;
+
+            // Only when there is something to say. An upstream that answered without describing anything
+            // has told us nothing new, and blanking these would re-create the defects they exist to stop.
+            if (described.Count > 0)
+            {
+                existing.UnlistedVersions = EncodeUnlisted(described);
+                existing.Dependencies = EncodeDependencies(described);
+            }
+
             existing.FetchedUtc = fetchedUtc;
             existing.Stale = stale;
             await db.SaveChangesAsync(cancellationToken);
@@ -59,6 +78,8 @@ public sealed class EfUpstreamIndexStore(FiGetDbContext db) : IUpstreamIndexStor
             Id = casedId ?? "",
             Versions = all,
             SemVer2Versions = semVer2,
+            UnlistedVersions = EncodeUnlisted(described),
+            Dependencies = EncodeDependencies(described),
             FetchedUtc = fetchedUtc,
             Stale = stale,
         };
@@ -77,6 +98,64 @@ public sealed class EfUpstreamIndexStore(FiGetDbContext db) : IUpstreamIndexStor
 
     public async Task ClearAsync(int feedUpstreamKey, CancellationToken cancellationToken) =>
         await db.CachedUpstreamIndexes.Where(c => c.FeedUpstreamKey == feedUpstreamKey).ExecuteDeleteAsync(cancellationToken);
+
+    /// <summary>
+    /// How the dependency text is split up. Chosen because none of the four things it separates - a
+    /// version, a dependency id, a normalised range or a framework name - can contain either character,
+    /// so the encoding needs no escaping and cannot be broken by a package naming itself something odd.
+    /// </summary>
+    private const char VersionSeparator = '\n';
+
+    private const char FieldSeparator = '\t';
+
+    /// <summary>Versions the upstream holds but does not advertise, separated by a single space.</summary>
+    private static string EncodeUnlisted(IReadOnlyList<UpstreamMetadata> described) =>
+        string.Join(' ', described.Where(m => !m.Listed).Select(m => m.Version.ToNormalizedString()));
+
+    /// <summary>
+    /// One line per version that declares anything: the version, a tab, then <c>id:range:framework</c>
+    /// joined by pipes - the same triple the v2 protocol puts on the wire. A range carries spaces and
+    /// commas but never a tab, colon or pipe, so this needs no escaping.
+    /// </summary>
+    private static string EncodeDependencies(IReadOnlyList<UpstreamMetadata> described) =>
+        string.Join(
+            VersionSeparator,
+            described
+                .Where(m => m.Dependencies is { Count: > 0 })
+                .Select(m => m.Version.ToNormalizedString()
+                    + FieldSeparator
+                    + string.Join('|', m.Dependencies!.Select(d => $"{d.Id}:{d.VersionRange}:{d.TargetFramework}"))));
+
+    private static IReadOnlySet<string> ParseUnlisted(string? text) =>
+        (text ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<UpstreamDependency>> ParseDependencies(string? text)
+    {
+        var map = new Dictionary<string, IReadOnlyList<UpstreamDependency>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var line in (text ?? "").Split(VersionSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var tab = line.IndexOf(FieldSeparator);
+            if (tab <= 0)
+            {
+                continue;
+            }
+
+            var declared = new List<UpstreamDependency>();
+            foreach (var part in line[(tab + 1)..].Split('|', StringSplitOptions.RemoveEmptyEntries))
+            {
+                // Exactly three, because none of the three can contain the separator.
+                var bits = part.Split(':');
+                if (bits.Length == 3)
+                {
+                    declared.Add(new UpstreamDependency(bits[2], bits[0].Length == 0 ? null : bits[0], bits[1]));
+                }
+            }
+
+            map[line[..tab]] = declared;
+        }
+
+        return map;
+    }
 
     private static List<UpstreamVersion> ParseVersions(CachedUpstreamIndex cached)
     {

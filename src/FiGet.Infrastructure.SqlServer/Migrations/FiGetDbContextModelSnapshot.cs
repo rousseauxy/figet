@@ -81,6 +81,12 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Key"));
 
+                    b.Property<string>("Dependencies")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("");
+
                     b.Property<int>("FeedUpstreamKey")
                         .HasColumnType("int");
 
@@ -105,6 +111,12 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
 
                     b.Property<bool>("Stale")
                         .HasColumnType("bit");
+
+                    b.Property<string>("UnlistedVersions")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("");
 
                     b.Property<string>("Versions")
                         .IsRequired()

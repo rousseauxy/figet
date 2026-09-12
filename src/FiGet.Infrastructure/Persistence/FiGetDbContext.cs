@@ -82,6 +82,8 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.HasKey(x => x.Key);
             e.Property(x => x.IdLower).HasMaxLength(128);
             e.Property(x => x.Id).HasMaxLength(128).IsRequired().HasDefaultValue("");
+            e.Property(x => x.UnlistedVersions).IsRequired().HasDefaultValue("");
+            e.Property(x => x.Dependencies).IsRequired().HasDefaultValue("");
             e.HasIndex(x => new { x.FeedUpstreamKey, x.IdLower }).IsUnique();
             e.HasOne(x => x.FeedUpstream).WithMany().HasForeignKey(x => x.FeedUpstreamKey).OnDelete(DeleteBehavior.Cascade);
         });
