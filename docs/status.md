@@ -1430,3 +1430,33 @@ described in docs/backlog.md.
 as a class, and in a full run. It counts background refreshes and allows at most two; under a loaded
 machine a third can land inside its window. Pre-existing, not introduced here, and it will eventually do
 this in CI.
+
+### Both verified on the live instance
+
+Deployed and checked rather than assumed.
+
+**The re-listing fix holds.** This is the first restart since it landed, and the two cached copies the
+gallery hides - `PnP.PowerShell 1.9.61-nightly` and `PowerShellGet 2.2.5.1` - are both still `listed=0`,
+with **zero** re-list and zero withdrawal events since the container came up. Every previous start produced
+exactly one re-list followed by one correction, so the absence is the result.
+
+**The audit log writes real lines.** The count was zero on the previous image, so anything now is from this
+build. A refused sign-in produced:
+
+    signin.refused unknown token by anonymous from 203.0.113.11
+
+under category `FiGet.Audit`, with `Action`, `Subject`, `Actor` and `Caller` each rendering as their own
+field. That is the case worth having: a client presenting a key that no longer works was previously
+invisible.
+
+The first attempt to produce that line was wrong and is worth recording. Posting the login form directly
+returned **400** - the form is behind antiforgery, so the request was rejected by middleware before it ever
+reached the handler, and no audit line could fire. Read quickly, "400 and no audit line" looks like a
+broken audit log. The honest read was that the probe never ran the code. Repeating it through the real form
+- fetch the page, carry the cookie, send the antiforgery token and `_handler` - answered 200 and wrote the
+line.
+
+Also verified after the deploy: no errors at start, health probes still absent from the request log, the
+un-cache route still behind sign-in, package pages and both protocols answering, the page-size chooser
+working, and 58 rows intact. The request log is meanwhile showing the colleague's client by name -
+`PSResourceGet/1.1.0.1 PowerShell/5.1.26100.9168` - which is what it was built for.
