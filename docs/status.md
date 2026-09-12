@@ -1062,3 +1062,42 @@ holds it open, and the application had one.
 Stopping the container, vacuuming through `journal_mode=DELETE`, and starting it again took the file from
 142,032,896 to **520,192 bytes** - exactly the 127 pages reported. Twice in one episode the number on the
 outside disagreed with the number inside, and both times the pragmas settled it faster than reasoning did.
+
+## Save-Module fails through the proxy, and it is not this server — 2026-09-12
+
+Reported while testing. `Save-Module -Repository <figet-v2>` fails on every package:
+
+```
+AdminByRequest  End of Central Directory record could not be found.
+Pester          Number of entries expected in End Of Central Directory does not correspond ...
+```
+
+Both are zip errors, and the file is not corrupt: fetched with curl it is a valid 25-entry nupkg, and the
+bytes served over v2 and v3 are identical. What differs is the wire.
+
+| | Content-Length | Content-Encoding | Transfer-Encoding |
+|---|---|---|---|
+| the application, asked directly on :8080 | 24977 | none, even when gzip is offered | none |
+| the same request through the proxy | absent | **gzip** | chunked |
+| PowerShell Gallery, which the same client saves from successfully | 24977 | none | none |
+
+So the proxy is compressing `application/zip` and dropping the length while it does. The NuGet provider
+behind `Save-Module` - 3.0.0.1, under PowerShellGet 2.2.5 and PackageManagement 1.4.8.1, which is the
+fleet's pinned stack - writes the gzip stream to disk as if it were the package. `Save-PSResource` over v3
+succeeds against the very same compressed response, because a modern `HttpClient` decompresses it: this is
+a client difference, not a route difference.
+
+**Not caused by anything here.** There is no response compression in this repository, the application sets
+a correct `Content-Length` through `Results.Stream(..., enableRangeProcessing: true)`, and it ignores
+`Accept-Encoding` entirely. It predates today's work and would have been failing the whole time.
+
+The remedy is to stop compressing already-compressed media at the proxy - exclude `application/zip` and
+`application/octet-stream` from the compress middleware, or drop compression for this router. It buys
+almost nothing anyway: 24,977 bytes became 23,236, under seven percent, in exchange for breaking the exact
+client this server exists to serve.
+
+Worth recording about the diagnosis itself: the first two explanations were wrong and cheap to believe.
+"The restarts caused it" fitted the timing and died when the failure reproduced on a warm instance. "The
+old client cannot do gzip" fitted the symptom and died when that same client saved the same package from
+the gallery, which also serves gzip. Only asking the application directly, without the proxy in front,
+separated what this server sends from what reaches the client.

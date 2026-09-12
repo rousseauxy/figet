@@ -9,6 +9,23 @@ Ordered roughly by when it is likely to be worth doing, not by importance.
 
 ## Next
 
+### Stop the proxy compressing package downloads
+
+`Save-Module` fails for every package through the public hostname, with a zip error, because the proxy
+gzips `application/zip` and drops `Content-Length` doing it (docs/status.md, "Save-Module fails through the
+proxy"). The NuGet provider under PowerShellGet 2.2.5 - the fleet's pinned stack - cannot read that; the
+same client saves the same package from the PowerShell Gallery without trouble, and `Save-PSResource` over
+v3 succeeds against the identical compressed bytes.
+
+Nothing in this repository can fix it: the application already sends a correct length and never compresses.
+The change is one middleware exclusion in the proxy that fronts every service, so it is not ours to make
+unilaterally - but until it is made, the v2 install path is broken for exactly the clients this server
+exists to replace the commercial server for.
+
+Worth a compatibility test afterwards that drives the real 5.1 client against a running instance, since
+nothing in CI would have caught this: every protocol test here talks to the application directly, and the
+defect only exists between the proxy and an old client.
+
 ### Let the descriptions survive a restart
 
 Stale-while-revalidate is done (docs/status.md, "The catalogue outlives the request now"): the version list
