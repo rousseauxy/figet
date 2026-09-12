@@ -815,12 +815,58 @@ Guarded by `An_upstream_listing_is_described_without_a_second_call`: the stub up
 fetches, the listing shows the description, and the count is one. Counting is the only way to see this from
 inside a test, because both shapes produce identical output.
 
-### Two findings recorded rather than acted on
+### Two findings recorded rather than acted on (the first was acted on the same day)
 
 - **2062 of PnP.PowerShell's 2098 versions are unlisted upstream.** The gallery advertises 36. FiGet marks
   every upstream candidate `Listed: true`, so it shows all 2098 — about sixty times what `Find-Module`
-  would. The walk now returns the real flag, so honouring it is cheap, but it changes what every proxy
-  listing shows, so it is a decision rather than a quiet fix.
+  would. Left as a decision here; taken the same day, below.
 - **Some callers need no descriptions at all.** `/v3/flatcontainer/{id}/index.json` returns a bare version
   array, and a registration index above 128 versions inlines no leaves. On v2 that saves nothing, because
   the walk is the cost either way; on v3 it is the 0.17s-versus-3.2s difference.
+
+## Unlisted upstream versions are now unlisted here — 2026-09-12
+
+Decided the same day it was found: honour the upstream's flag.
+
+The defect was one hardcoded `Listed: true` on every upstream candidate in `ConnectorService`. Nothing
+downstream of it was wrong. `VersionListBuilder` already skips unlisted versions when computing the latest
+flags, v3 search and autocomplete already filter on `Listed`, a registration leaf already emits `listed`
+with the 1900 sentinel published date, and `V2Row` already exposes it as an OData property. One line was
+lying to all of them.
+
+What it cost, concretely: the gallery advertises 36 versions of PnP.PowerShell and withdraws the rest, so
+**the newest withdrawn nightly was being offered as the latest version of the module**. That is not a
+cosmetic row count — `Install-Module` with no version takes the latest, so it was installing a version the
+gallery had deliberately hidden.
+
+**Unlisted is not absent, and the fix must not conflate the two.** An unlisted version stays downloadable
+by exact version, because a pinned dependency asks for one and does not care whether the gallery still
+advertises it — the flat container serves unlisted versions for exactly this reason. Filtering the version
+out of the list would have passed a "not the latest" test while breaking every pinned install, so the
+guard asserts both halves: `An_unlisted_upstream_version_is_not_latest_and_still_downloads`.
+
+Truncating the list instead — to the 128 versions a v3 registration inlines, say — was considered and
+rejected before it was built. It breaks those same pinned installs, and it breaks the merged-latest rule
+this server exists to get right, which is computed across the whole list and not across a window of it.
+
+No migration was needed. The flag rides on `UpstreamMetadata` rather than on the cached version list,
+which is stored in the database as bare space-separated strings. That works because a catalogue is only
+ever answered from the cache when both halves are present, so a version carrying a description also
+carries its flag; a version an upstream reports without describing defaults to listed, which is the safe
+answer.
+
+### What the tables show
+
+Honouring the flag turned a hidden problem into a visible one. The package page rendered every version it
+knew about, so PnP.PowerShell would have shown 2098 rows with 2062 greyed out, and the overview's "Recent
+versions" — the newest ten *by version* — would have been ten withdrawn nightlies sitting under a header
+that correctly named the current release.
+
+So the tables now show what the gallery shows. The merged list stays whole, because the latest is computed
+across all of it and an exact version must still resolve; a second, filtered list drives the tables only.
+An admin sees everything, having to be able to find an unlisted version in order to pull, relist or delete
+it. A line says how many are hidden and that they are still installable, rather than leaving a count that
+quietly disagrees with the gallery's.
+
+Deliberately untouched: `Find-Module`, v3 search and autocomplete, and the flat container. Search was
+already filtering on the flag, and the flat container already serves unlisted versions on purpose.

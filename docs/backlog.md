@@ -45,13 +45,6 @@ One thing it cannot drop: a v2 Atom entry carries `Tags`, and PowerShellGet read
 `PSEdition_Core` from them to decide whether a version can run at all. Descriptions are cosmetic there;
 tags are not.
 
-### Decide whether unlisted upstream versions should be listed
-
-The gallery advertises 36 versions of PnP.PowerShell; FiGet shows 2098, because every upstream candidate is
-marked `Listed: true` whatever the upstream said. `Find-Module` against the gallery shows 36. The catalogue
-walk now carries the real flag, so honouring it is a small change — but it changes what every proxy listing
-shows, and which versions can be found at all, so it is a decision and not a fix to slip in.
-
 ### The admin area, with its own side menu
 
 Includes redoing the feed settings page, which is the worst layout in the application (noted
