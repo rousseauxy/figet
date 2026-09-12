@@ -1369,3 +1369,64 @@ snapshot taken when the page renders, and the action removes whatever is cached 
 can differ if the cache changes in between - which it does constantly on a feed somebody is testing
 against. The exact interleaving cannot be reconstructed from the log and is not worth inventing. The
 action is right either way: it removes the cached versions that exist at the moment it runs.
+
+## The flapping is fixed at the cause, and there is an audit log - 2026-09-12
+
+### Re-listing now needs to be told, not just not-told
+
+`ReconcileWithdrawnAsync` decided between two answers: still offered, or withdrawn. A cold description
+cache - every restart - produced neither, and the code read that silence as "still offered", so a cached
+copy the gallery hides was listed again on every start. While it was listed it could win "latest", which is
+the single thing that method exists to prevent.
+
+It now distinguishes three answers. Absent from the upstream's version list still withdraws, on presence
+alone. Listing again requires the upstream to actually describe the version as listed. Null - nothing
+described - means no news, and nothing is changed on that basis in either direction.
+
+Proven by falsification, because a test that passes before and after proves nothing. The stub upstream
+gained a `Describes` switch that models exactly what a restart produces: the version list read back from
+the database, the descriptions gone. Against the old logic the new test fails - the hidden version comes
+back listed and reclaims latest. Against the fix it passes.
+
+### Deleting the cached copy instead: considered, argued against
+
+The suggestion was to remove a cached copy outright when the upstream unlists it, which would also stop the
+flapping. Three reasons not to:
+
+- It would not finish the job. The other half of the cold-start effect is upstream versions, whose listed
+  flag comes from the same descriptions - PnP.PowerShell shows 2098 "listed" versions for the first seconds
+  after a restart, and no cached row is involved in that.
+- It trades a flag flip for real churn. Unlisted still means downloadable by exact version, so a deployment
+  pinned to that version fetches it, this server caches it, the next reconciliation deletes it, and round
+  again.
+- It throws away the copy the cache exists for. Unlisted is often the step before removal. If the gallery
+  drops the version later and this server deleted its copy, every machine pinned to it breaks with no
+  internet path to recover - and serving machines that have no internet access is the whole point.
+
+If it is wanted, the right shape is a per-feed policy beside `DeletionBehavior` - unlist or drop on
+withdrawal - not a change of default.
+
+### The audit log, console half
+
+Who changed what: feeds created, edited, deleted; upstreams added and removed; tokens issued and revoked;
+the theme changed; packages pushed, deleted, relisted, pulled and un-cached; sign-ins, including refused
+ones. Each line carries the actor and the caller address, sharing one `RequestActor` implementation with
+the request log so an audit line can never name a different person than the request line beside it.
+
+No bespoke on/off key. The category is `FiGet.Audit` and the standard log-level configuration governs it,
+so it is on wherever Information is on and `Logging:LogLevel:FiGet.Audit=None` silences it. On by default
+is deliberate: an audit trail that must be switched on in advance is not there on the day somebody asks
+what happened, and this is a few lines a day rather than a few per request.
+
+The un-cache line carries how many versions actually went, which is the number that was missing when the
+panel offered two and the action removed one.
+
+Console only, as agreed. A container log rotates and is lost; the database table and admin page are still
+described in docs/backlog.md.
+
+### Unrelated flake worth knowing about
+
+`Readers_of_the_same_stale_catalogue_cause_one_refresh` failed once during this work and then passed alone,
+as a class, and in a full run. It counts background refreshes and allows at most two; under a loaded
+machine a third can land inside its window. Pre-existing, not introduced here, and it will eventually do
+this in CI.

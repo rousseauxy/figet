@@ -95,6 +95,27 @@ the rare rule a token cannot express.
 | `Json` | `false` | Write logs as JSON to the console. Always on when `DOTNET_RUNNING_IN_CONTAINER=true` (set in the image). |
 | `Requests` | `false` | One line per request: method, path, status, duration, caller address, forwarded address, token or user, user agent. Health probes and framework assets are skipped. Off by default because package clients are chatty; turn it on to see whether a client reached this server and what it asked for. |
 
+### The audit log
+
+Who changed what, and when: feeds created, edited and deleted, upstreams added and removed, tokens issued
+and revoked, the theme changed, packages pushed, deleted, relisted, pulled and un-cached, and sign-ins
+including refused ones.
+
+It has no on/off key of its own. Every line is written at Information under the category `FiGet.Audit`, so
+the standard log-level configuration governs it:
+
+| Setting | Effect |
+|---|---|
+| (nothing) | On, because `Logging:LogLevel:Default` is `Information`. |
+| `Logging:LogLevel:FiGet.Audit` = `None` | Off. |
+
+On by default is deliberate. An audit trail that has to be switched on in advance is not there on the day
+somebody asks what happened, and the volume is a few lines a day rather than a few per request — unlike
+`Requests` above, which is off by default for exactly that reason.
+
+Console only for now. A container log rotates and is lost; the database table and admin page this wants
+eventually are described in `docs/backlog.md`.
+
 ## Standard ASP.NET Core and OpenTelemetry settings that matter
 
 | Setting | Meaning |
