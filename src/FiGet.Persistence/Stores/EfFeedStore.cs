@@ -88,4 +88,54 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
 
     public Task<int> CountVersionsAsync(int key, CancellationToken cancellationToken) =>
         db.PackageVersions.CountAsync(v => db.Packages.Any(p => p.Key == v.PackageKey && p.FeedKey == key), cancellationToken);
+
+    public async Task<bool> AddUpstreamAsync(int feedKey, FeedUpstream upstream, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(upstream);
+        var feed = await db.Feeds.FirstOrDefaultAsync(f => f.Key == feedKey, cancellationToken);
+        if (feed is null)
+        {
+            return false;
+        }
+
+        var existing = await db.FeedUpstreams.Where(u => u.FeedKey == feedKey).ToListAsync(cancellationToken);
+        if (existing.Exists(u => u.Name.Equals(upstream.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        upstream.FeedKey = feedKey;
+        upstream.Ordinal = existing.Count == 0 ? 0 : existing.Max(u => u.Ordinal) + 1;
+        db.FeedUpstreams.Add(upstream);
+
+        // A feed with an upstream behaves like a proxy feed, so that is what it is called.
+        feed.Kind = FeedKind.Proxy;
+        await db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> RemoveUpstreamAsync(int feedKey, int upstreamKey, CancellationToken cancellationToken)
+    {
+        var upstream = await db.FeedUpstreams.FirstOrDefaultAsync(u => u.Key == upstreamKey && u.FeedKey == feedKey, cancellationToken);
+        if (upstream is null)
+        {
+            return false;
+        }
+
+        await db.CachedUpstreamIndexes.Where(c => c.FeedUpstreamKey == upstreamKey).ExecuteDeleteAsync(cancellationToken);
+        db.FeedUpstreams.Remove(upstream);
+        await db.SaveChangesAsync(cancellationToken);
+
+        if (!await db.FeedUpstreams.AnyAsync(u => u.FeedKey == feedKey, cancellationToken))
+        {
+            var feed = await db.Feeds.FirstOrDefaultAsync(f => f.Key == feedKey, cancellationToken);
+            if (feed is not null)
+            {
+                feed.Kind = FeedKind.Curated;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+        }
+
+        return true;
+    }
 }

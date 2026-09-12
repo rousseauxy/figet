@@ -16,6 +16,7 @@ using FiGet.Storage;
 using FiGet.Web.Components;
 using FiGet.Web.Configuration;
 using FiGet.Web.Theming;
+using NuGet.Versioning;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
@@ -161,6 +162,7 @@ public static class FiGetApp
         app.MapNuGetV2();
         app.MapNuGetV3();
         app.MapAccountEndpoints();
+        app.MapAdminEndpoints();
         app.MapStaticAssets();
         app.MapRazorComponents<App>();
 
@@ -254,6 +256,89 @@ public static class FiGetApp
             return Results.Redirect("/account/login");
         });
     }
+
+    /// <summary>
+    /// The buttons of the admin pages. Plain form posts rather than interactive components, because these
+    /// pages are statically rendered; every one of them changes something, so all are admin-only and all
+    /// carry an antiforgery token.
+    /// </summary>
+    private static void MapAdminEndpoints(this WebApplication app)
+    {
+        var admin = app.MapGroup("/admin").RequireAuthorization(AdminPolicy);
+
+        // Fetch a package an upstream has but this feed has not cached yet.
+        admin.MapPost("/feeds/{feed}/pull", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            ConnectorService connector,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            if (target is not null && NuGetVersion.TryParse(form["version"].ToString(), out var version))
+            {
+                await connector.EnsureCachedAsync(target, form["id"].ToString(), version, cancellationToken);
+            }
+
+            return Back(form["returnUrl"].ToString(), $"/feeds/{Uri.EscapeDataString(feed)}");
+        });
+
+        admin.MapPost("/feeds/{feed}/upstreams/add", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            var name = form["name"].ToString().Trim();
+            var url = form["url"].ToString().Trim();
+            if (target is not null && name.Length > 0 && url.Length > 0)
+            {
+                await feeds.AddUpstreamAsync(
+                    target.Key,
+                    new FeedUpstream
+                    {
+                        Name = name,
+                        Url = url,
+                        Kind = form["kind"].ToString().Equals("V2", StringComparison.OrdinalIgnoreCase) ? UpstreamKind.V2 : UpstreamKind.V3,
+                        // Stored as the browser sent them: the pattern reader splits on the separator and
+                        // trims each line, so the carriage returns a textarea adds are already harmless.
+                        Allow = form["allow"].ToString().Trim(),
+                        Deny = form["deny"].ToString().Trim(),
+                        CredentialRef = form["credentialRef"].ToString().Trim() is { Length: > 0 } reference ? reference : null,
+                    },
+                    cancellationToken);
+            }
+
+            return Back(form["returnUrl"].ToString(), $"/feeds/{Uri.EscapeDataString(feed)}/settings");
+        });
+
+        admin.MapPost("/feeds/{feed}/upstreams/remove", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            if (target is not null && int.TryParse(form["key"].ToString(), out var upstreamKey))
+            {
+                await feeds.RemoveUpstreamAsync(target.Key, upstreamKey, cancellationToken);
+            }
+
+            return Back(form["returnUrl"].ToString(), $"/feeds/{Uri.EscapeDataString(feed)}/settings");
+        });
+    }
+
+    /// <summary>Back where the button was pressed, as long as that is a page on this server.</summary>
+    private static IResult Back(string? returnUrl, string fallback) =>
+        !string.IsNullOrWhiteSpace(returnUrl)
+        && returnUrl.StartsWith('/')
+        && !returnUrl.StartsWith("//", StringComparison.Ordinal)
+            ? Results.Redirect(returnUrl)
+            : Results.Redirect(fallback);
 
     private static async Task ValidateCookieAsync(CookieValidatePrincipalContext context)
     {

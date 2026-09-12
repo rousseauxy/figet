@@ -24,4 +24,17 @@ public interface IFeedStore
 
     /// <summary>How many package versions the feed holds, listed or not.</summary>
     Task<int> CountVersionsAsync(int key, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Adds an upstream to the feed, last in the order it is queried. A feed that gains its first
+    /// upstream becomes a proxy feed. Returns false when the feed is gone or the name is already used.
+    /// </summary>
+    Task<bool> AddUpstreamAsync(int feedKey, FeedUpstream upstream, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Removes one upstream with the listings cached from it. Packages already cached stay: they were
+    /// downloaded and are still what a client asked for. A feed that loses its last upstream becomes a
+    /// curated feed again. Returns false when the upstream no longer exists.
+    /// </summary>
+    Task<bool> RemoveUpstreamAsync(int feedKey, int upstreamKey, CancellationToken cancellationToken);
 }

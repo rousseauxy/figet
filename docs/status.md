@@ -190,6 +190,7 @@ The management API and the smaller connector extras are still open.**
 | Upstream credentials referenced by environment variable, never stored | `FeedUpstream.CredentialRef` |
 | Feeds with upstreams declared in configuration | `FiGet:Feeds:N:Upstreams:M:*` in docs/configuration.md |
 | Search reaches the upstreams, so a package nobody has cached is still findable | `ConnectorService.SearchUpstreamsAsync`, used by v2 `Search()`, v3 `query` and the browse UI |
+| A cached copy of a version the upstream withdrew is unlisted, and listed again if it returns | `ConnectorService.ReconcileWithdrawnAsync` (section 5, rule 6) |
 
 ### Evidence
 
@@ -239,8 +240,13 @@ not restore the list, and there was no way to tell a pushed package from a cache
   The token names match the design system used by the other applications here, so a pack converts
   mechanically between them. `wwwroot/themes/graphite.json` is a worked example.
 
+Also added, after using it: an admin can pull an upstream package into the feed from the search results,
+and add or remove a feed's upstreams from its settings page. Both are plain form posts to admin-only
+endpoints, because these pages are statically rendered and every one of those buttons changes something.
+
 Still to do: port the full design-system token set and component classes, so a pack can restyle every
-control rather than the colours the base stylesheet defines today. The themed dropdown used elsewhere is an
+control rather than the colours the base stylesheet defines today. The admin pages also want their own
+area with a side menu, rather than sitting among the public pages. The themed dropdown used elsewhere is an
 interactive component, and these pages are statically rendered, so that one needs a decision before it can
 be reused.
 

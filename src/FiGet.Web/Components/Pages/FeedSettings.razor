@@ -66,6 +66,77 @@ else
             </dl>
         </section>
 
+        <section class="panel">
+            <h2>Upstreams</h2>
+            @if (feed.Upstreams.Count == 0)
+            {
+                <p class="muted">
+                    None. This feed serves only what was pushed to it. Add an upstream to also offer, and
+                    cache on demand, everything another feed holds.
+                </p>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr><th>Name</th><th>Protocol</th><th>URL</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var upstream in feed.Upstreams)
+                            {
+                                <tr>
+                                    <td>@upstream.Name</td>
+                                    <td>@upstream.Kind</td>
+                                    <td><code>@upstream.Url</code></td>
+                                    <td class="actions">
+                                        <form method="post" action="/admin/feeds/@feed.Name/upstreams/remove">
+                                            <AntiforgeryToken />
+                                            <input type="hidden" name="key" value="@upstream.Key" />
+                                            <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                                            <button type="submit" class="danger" title="Stop using this upstream">Remove</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <p class="muted">
+                    Removing an upstream keeps the packages already cached from it: they were downloaded,
+                    and something out there depends on them.
+                </p>
+            }
+
+            <form method="post" action="/admin/feeds/@feed.Name/upstreams/add" class="stack">
+                <AntiforgeryToken />
+                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+
+                <label for="upstream-name">Name</label>
+                <input id="upstream-name" name="name" required placeholder="for example: powershellgallery" />
+
+                <label for="upstream-url">URL</label>
+                <input id="upstream-url" name="url" required placeholder="https://www.powershellgallery.com/api/v2" />
+
+                <label for="upstream-kind">Protocol</label>
+                <select id="upstream-kind" name="kind">
+                    <option value="V3">v3 service index (ends in index.json)</option>
+                    <option value="V2">v2 feed root (the PowerShell Gallery)</option>
+                </select>
+
+                <label for="upstream-allow">Only these package ids (one regular expression per line, empty allows all)</label>
+                <textarea id="upstream-allow" name="allow" rows="2"></textarea>
+
+                <label for="upstream-deny">Never these package ids (one regular expression per line)</label>
+                <textarea id="upstream-deny" name="deny" rows="2"></textarea>
+
+                <label for="upstream-credential">Environment variable holding the API key, if the upstream needs one</label>
+                <input id="upstream-credential" name="credentialRef" placeholder="for example: FIGET_UPSTREAM_KEY" />
+
+                <button type="submit">Add upstream</button>
+            </form>
+        </section>
+
         <section class="panel danger-zone">
             <h2>Delete this feed</h2>
             <p class="muted">
@@ -100,6 +171,9 @@ else
     private ConfirmForm? Confirm { get; set; }
 
     private string FeedUrl => PublicUrls.Feed(HttpContext, feed!.Name);
+
+    /// <summary>Where the buttons return to.</summary>
+    private string ReturnUrl => HttpContext.Request.Path + HttpContext.Request.QueryString;
 
     private string V3Url => $"{FeedUrl}/v3/index.json";
 

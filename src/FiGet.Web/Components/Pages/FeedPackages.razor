@@ -60,7 +60,7 @@
     <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>Package</th><th>Latest</th><th>Versions</th><th>Source</th><th>Downloads</th><th>Last published</th></tr>
+                <tr><th>Package</th><th>Latest</th><th>Versions</th><th>Source</th><th>Downloads</th><th>Last published</th><th></th></tr>
             </thead>
             <tbody>
                 @foreach (var row in rows)
@@ -81,6 +81,20 @@
                         <td><span class="badge">@row.Source</span></td>
                         <td>@(row.Local ? row.Downloads.ToString("N0", CultureInfo.InvariantCulture) : "—")</td>
                         <td>@(row.Published is null ? "—" : row.Published.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC")</td>
+                        <td class="actions">
+                            @if (IsAdmin && !row.Local)
+                            {
+                                @* Fetches this version from the upstream and keeps it, the way a client's
+                                   first download would. Useful before a machine that has no internet needs it. *@
+                                <form method="post" action="/admin/feeds/@feed.Name/pull">
+                                    <AntiforgeryToken />
+                                    <input type="hidden" name="id" value="@row.Id" />
+                                    <input type="hidden" name="version" value="@row.Latest" />
+                                    <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                                    <button type="submit" class="link" title="Download @row.Id @row.Latest into this feed">Pull</button>
+                                </form>
+                            }
+                        </td>
                     </tr>
                 }
             </tbody>
@@ -126,6 +140,9 @@
 
     /// <summary>Reading is open on a feed that allows it; the buttons need the admin claim.</summary>
     private bool IsAdmin => HttpContext.User.HasClaim(ClaimTypes.Role, "admin");
+
+    /// <summary>Where a button press returns to, so a pull does not lose the search that found it.</summary>
+    private string ReturnUrl => HttpContext.Request.Path + HttpContext.Request.QueryString;
 
     private bool IsProxy => feed!.Upstreams.Count > 0;
 
