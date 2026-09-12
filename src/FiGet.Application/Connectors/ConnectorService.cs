@@ -17,9 +17,9 @@ namespace FiGet.Application.Connectors;
 public sealed class ConnectorService(
     IUpstreamClient client,
     IUpstreamIndexStore index,
-    UpstreamMetadataCache metadataCache,
     IPackageStore packages,
     PackageIngestionService ingestion,
+    IUpstreamRefreshQueue refreshes,
     ConnectorSettings settings,
     TimeProvider time,
     ILogger<ConnectorService> logger)
@@ -348,6 +348,19 @@ public sealed class ConnectorService(
     /// paged walk: fetching them separately paid for it twice, which was most of the twenty-three seconds
     /// a two-thousand-version package took to render (docs/status.md, 2026-09-12).
     /// </summary>
+    /// <summary>
+    /// The upstream's catalogue for one id, and whether it is a real answer.
+    ///
+    /// Anything cached is served at once, however old. Only a package nothing is known about waits, which
+    /// is the first view of it and never again: a stale catalogue is refreshed behind the request instead
+    /// of in front of it. The difference is not small - a cold two-thousand-version package cost 13 to 15
+    /// seconds, and under the old rule every reader who arrived more than five minutes after the last one
+    /// paid it again (docs/status.md, 2026-09-12).
+    ///
+    /// What the time-to-live now means is "refresh after this", not "expire after this". Nothing is ever
+    /// thrown away for being old, because the only thing worse than a five-minute-old version list is no
+    /// version list while somebody waits for a walk of several megabytes.
+    /// </summary>
     private async Task<(UpstreamCatalog Catalog, bool Authoritative)> CatalogAsync(
         FeedUpstream upstream,
         string idLower,
@@ -355,44 +368,32 @@ public sealed class ConnectorService(
     {
         var now = time.GetUtcNow().UtcDateTime;
         var cached = await index.FindAsync(upstream.Key, idLower, cancellationToken);
-        var describedCache = metadataCache.Get(upstream.Key, idLower, now, settings.UpstreamIndexTtl);
 
-        // Both halves have to be cached before the cache can answer. The version list is in the database
-        // and the descriptions are in memory, so after a restart the list is fresh and the descriptions
-        // are gone, and a listing of blank rows would be the visible result of taking only the first.
-        if (cached is not null && now - cached.FetchedUtc < settings.UpstreamIndexTtl && describedCache is not null)
+        if (cached is not null)
         {
-            return (new UpstreamCatalog(Parse(cached), describedCache), !cached.Stale);
+            // Asking again is worth it once the list is older than the window, but not worth waiting for.
+            // Enqueue collapses duplicates, so a popular package refreshes once however many readers it has.
+            if (now - cached.FetchedUtc >= settings.UpstreamIndexTtl)
+            {
+                refreshes.Enqueue(upstream, idLower);
+            }
+
+            return (new UpstreamCatalog(cached.Versions, cached.Described), !cached.Stale);
         }
 
         try
         {
             var catalog = await client.GetCatalogAsync(upstream, idLower, cancellationToken);
-            await index.SaveAsync(upstream.Key, idLower, catalog.Versions, stale: false, now, cancellationToken);
-            metadataCache.Set(upstream.Key, idLower, catalog.Described, now);
+            await index.SaveAsync(upstream.Key, idLower, catalog, stale: false, now, cancellationToken);
             return (catalog, true);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             // A timeout lands here too, which is why the answer is "not authoritative": a version missing
             // from a list we never received must not be mistaken for a version withdrawn upstream.
-            logger.LogWarning(ex, "Upstream {Upstream} did not answer for {Id}; serving the last known list.", upstream.Name, idLower);
-            return (new UpstreamCatalog(cached is null ? [] : Parse(cached), describedCache ?? []), false);
+            logger.LogWarning(ex, "Upstream {Upstream} did not answer for {Id}, and nothing was cached.", upstream.Name, idLower);
+            return (new UpstreamCatalog([], []), false);
         }
     }
 
-    private static List<UpstreamVersion> Parse(CachedUpstreamIndex cached)
-    {
-        var semVer2 = cached.SemVer2Versions.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var versions = new List<UpstreamVersion>();
-        foreach (var text in cached.Versions.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (NuGetVersion.TryParse(text, out var version))
-            {
-                versions.Add(new UpstreamVersion(version, semVer2.Contains(text)));
-            }
-        }
-
-        return versions;
-    }
 }

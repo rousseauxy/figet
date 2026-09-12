@@ -90,13 +90,23 @@ public interface IUpstreamClient
 /// Reads and writes the cached upstream version lists. Kept behind an interface so the connector can be
 /// tested without a database and without the network.
 /// </summary>
+/// <summary>
+/// A catalogue as it was last stored, with the moment it was fetched so the caller can decide whether to
+/// use it, refresh it behind the request, or both.
+/// </summary>
+public sealed record CachedUpstreamCatalog(
+    IReadOnlyList<UpstreamVersion> Versions,
+    IReadOnlyList<UpstreamMetadata> Described,
+    DateTime FetchedUtc,
+    bool Stale);
+
 public interface IUpstreamIndexStore
 {
-    /// <summary>The cached list for one upstream and id, whatever its age; null when nothing is cached.</summary>
-    Task<CachedUpstreamIndex?> FindAsync(int feedUpstreamKey, string idLower, CancellationToken cancellationToken);
+    /// <summary>The cached catalogue for one upstream and id, whatever its age; null when nothing is cached.</summary>
+    Task<CachedUpstreamCatalog?> FindAsync(int feedUpstreamKey, string idLower, CancellationToken cancellationToken);
 
-    /// <summary>Writes or replaces the cached list.</summary>
-    Task SaveAsync(int feedUpstreamKey, string idLower, IReadOnlyList<UpstreamVersion> versions, bool stale, DateTime fetchedUtc, CancellationToken cancellationToken);
+    /// <summary>Writes or replaces the cached catalogue, versions and descriptions together.</summary>
+    Task SaveAsync(int feedUpstreamKey, string idLower, UpstreamCatalog catalog, bool stale, DateTime fetchedUtc, CancellationToken cancellationToken);
 
     /// <summary>Drops every cached list of one upstream, used when its configuration changes.</summary>
     Task ClearAsync(int feedUpstreamKey, CancellationToken cancellationToken);

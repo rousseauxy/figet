@@ -92,6 +92,10 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<string>("Metadata")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("SemVer2Versions")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
