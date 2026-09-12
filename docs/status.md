@@ -471,3 +471,54 @@ id, not the server's — which leaves a `FiGet.Web` holding the build lock.
    routing rather than design.
 2. **The themed dropdown**, which now matters only for the admin forms, and still needs the decision
    about whether those pages become interactive.
+
+## A theme that loaded nowhere, and interactivity decided — 2026-09-12
+
+### An empty path is not an unset path
+
+Deploying the design-system port exposed a defect introduced by the port itself. `ThemeService` resolved
+its directory with `configuration["FiGet:Theming:Path"] ?? Path.Combine(webRoot, "themes")`, and `??`
+falls back only on **null**. Adding `"Theming": { "Theme": "", "Path": "" }` to `appsettings.json` — so
+the keys are discoverable, which is how every other key in that file is written — made the empty string
+win. The themes directory became `""`, no pack loaded, and `/themes/graphite.css` answered 404 while the
+page went on linking it. The site rendered, on built-in defaults, looking almost right.
+
+Every local run had passed because the configuration block was added *after* the run that proved the
+loader worked. The suite could not have caught it either: the loader had no tests at all.
+
+Fixed by treating empty or whitespace as unset, which is what an empty default means everywhere else in
+that file, and covered by seven new tests in `FiGet.Integration.Tests` — the first this loader has had.
+Three of them are the regression itself (`""`, `"   "`, and the key absent), and the rest cover a pack
+compiling both dark selectors with balanced braces, a missing directory being no error, and one broken
+pack being skipped without taking the others down.
+
+| Check | Result |
+|---|---|
+| `dotnet test` | 156 total, 0 failed, 29 skipped (149 before, so all seven ran) |
+| Live `GET /themes/graphite.css` | 200, `text/css`, 1,868 bytes, accent `#9a6400` present — was 404 |
+| Container log | `Theme loaded: graphite from graphite.yaml.` — was `No themes directory at ` |
+| Error lines in the container log | 0 |
+
+The lesson is the same shape as the v2 empty-feed bug recorded above: **the failure was in the path that
+runs when a value is absent**, and absence is exactly what a local run with the key missing does not
+exercise. Worth stating once more because it has now happened twice on this project in two days.
+
+### Admin pages become interactive; public pages stay static
+
+Decided with the user. The one real objection to Blazor circuits was session affinity across replicas,
+and the load balancer in the target environment provides it, so that objection does not apply here.
+
+- **Admin pages** get interactive rendering: the grid with live sorting and filtering, and the themed
+  dropdown as the real component rather than something rebuilt by hand. That is most of step 3 removed
+  rather than solved.
+- **Public pages stay static SSR** and keep shipping no script, which is why the proxy-feed source filter
+  stayed as pill links rather than becoming a dropdown again.
+- **Residual cost that affinity does not remove:** a circuit still drops on a pod restart or a rolling
+  deploy, so an interactive page needs a reconnect overlay. The sibling application already has one, so
+  it ports across rather than being new work. Nothing else about the deployment changes: the public
+  surface, which is what the NuGet and PowerShell clients actually use, stays scriptless and stateless.
+
+### Next
+
+The admin area, now with interactive rendering available for it, followed by the themed dropdown as part
+of that rather than as a separate rebuild.
