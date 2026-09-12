@@ -15,6 +15,7 @@ using FiGet.Protocol.V3;
 using FiGet.Storage;
 using FiGet.Web.Components;
 using FiGet.Web.Configuration;
+using FiGet.Web.Theming;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
@@ -108,6 +109,7 @@ public static class FiGetApp
         services.AddCascadingAuthenticationState();
         services.AddAntiforgery();
 
+        services.AddSingleton<IThemeService, ThemeService>();
         services.AddRazorComponents();
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
 
@@ -141,6 +143,20 @@ public static class FiGetApp
 
         app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
         app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
+
+        // A theme pack is a small stylesheet of token overrides, layered after app.css.
+        app.MapGet("/themes/{name}.css", (string name, HttpContext http, IThemeService themes) =>
+        {
+            var theme = themes.GetCss(name);
+            if (theme is null)
+            {
+                return Results.NotFound();
+            }
+
+            http.Response.Headers.ETag = theme.Value.ETag;
+            http.Response.Headers.CacheControl = "no-cache";
+            return Results.Text(theme.Value.Css, "text/css");
+        });
 
         app.MapNuGetV2();
         app.MapNuGetV3();

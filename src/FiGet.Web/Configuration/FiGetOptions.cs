@@ -22,6 +22,17 @@ public sealed class FiGetOptions
     public LimitsOptions Limits { get; set; } = new();
 
     public ConnectorOptions Connector { get; set; } = new();
+
+    public ThemingOptions Theming { get; set; } = new();
+}
+
+public sealed class ThemingOptions
+{
+    /// <summary>Name of the theme pack to serve, or empty for the built-in look.</summary>
+    public string? Theme { get; set; }
+
+    /// <summary>Where theme packs are read from. Default: the themes folder of the web root.</summary>
+    public string? Path { get; set; }
 }
 
 public enum DatabaseProvider

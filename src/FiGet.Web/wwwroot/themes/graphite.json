@@ -1,0 +1,44 @@
+{
+  // A theme pack: only what it changes. Every token has a default in app.css, so a pack this small is a
+  // complete theme. Drop a file here, set FiGet:Theming:Theme to its name, and reload.
+  "name": "graphite",
+  "label": "Graphite and amber",
+  "description": "Warm paper in light, graphite in dark, amber accent.",
+
+  "fonts": {
+    "ui": "'Inter', ui-sans-serif, 'Segoe UI', system-ui, sans-serif",
+    "mono": "'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace"
+  },
+
+  "layout": {
+    "radius": "4px",
+    "radiusLarge": "8px"
+  },
+
+  "tokens": {
+    "light": {
+      "bg": "#f6f4ef",
+      "surface": "#ffffff",
+      "text": "#24221d",
+      "muted": "#6c6759",
+      "line": "#e4e0d5",
+      "accent": "#9a6400",
+      "accent-text": "#ffffff",
+      "code-bg": "#efece4",
+      "ok": "#2f7d4f",
+      "danger": "#b3261e"
+    },
+    "dark": {
+      "bg": "#17181a",
+      "surface": "#1f2123",
+      "text": "#e7e5df",
+      "muted": "#9b968c",
+      "line": "#33363a",
+      "accent": "#e0a355",
+      "accent-text": "#1b1408",
+      "code-bg": "#26292c",
+      "ok": "#8cc79b",
+      "danger": "#e38a7f"
+    }
+  }
+}

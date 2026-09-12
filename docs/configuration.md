@@ -58,6 +58,17 @@ Applies to every proxy feed. Upstreams themselves are configured per feed, above
 | `UpstreamIndexTtl` | `00:05:00` | How long one upstream's version list for one package stays usable before it is fetched again. A new upstream release becomes visible within this window. |
 | `UpstreamTimeout` | `00:00:10` | How long a single upstream call may take before that upstream counts as unavailable for this request. |
 
+## FiGet:Theming
+
+A theme pack is a JSON file of custom-property overrides, compiled once and served at
+`/themes/{name}.css` after `app.css`. Every token has a default in the base stylesheet, so a pack that
+sets three colours is a complete theme.
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `Theme` | empty | Name of the pack to serve. Empty uses the built-in look. |
+| `Path` | `themes` under the web root | Where packs are read from. Point it at a mounted volume to change themes without rebuilding the image. |
+
 ## FiGet:Auth
 
 | Key | Default | Meaning |

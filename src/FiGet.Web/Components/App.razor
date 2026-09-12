@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
+    @if (!string.IsNullOrWhiteSpace(Theme))
+    {
+        <link rel="stylesheet" href="@($"/themes/{Theme}.css")" />
+    }
     <HeadOutlet />
 </head>
 <body>
@@ -12,3 +16,10 @@
     <script src="@Assets["app.js"]"></script>
 </body>
 </html>
+
+@code {
+    [Inject]
+    private Microsoft.Extensions.Options.IOptions<FiGet.Web.Configuration.FiGetOptions> Options { get; set; } = default!;
+
+    private string? Theme => Options.Value.Theming.Theme;
+}
