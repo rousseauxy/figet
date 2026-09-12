@@ -80,9 +80,9 @@
         @if (Hidden > 0)
         {
             <p class="fg-muted">
-                @Hidden version@(Hidden == 1 ? "" : "s") the upstream no longer advertises
-                @(Hidden == 1 ? "is" : "are") hidden. @(Hidden == 1 ? "It stays" : "They stay")
-                installable by exact version, and appear@(Hidden == 1 ? "s" : "") here once pulled.
+                @Hidden unlisted version@(Hidden == 1 ? "" : "s") hidden, as the gallery hides
+                @(Hidden == 1 ? "it" : "them"). @(Hidden == 1 ? "It stays" : "They stay") installable
+                by exact version.
             </p>
         }
         break;
@@ -115,9 +115,9 @@
         @if (Hidden > 0)
         {
             <p class="fg-muted">
-                @Hidden version@(Hidden == 1 ? "" : "s") the upstream no longer advertises
-                @(Hidden == 1 ? "is" : "are") hidden. @(Hidden == 1 ? "It stays" : "They stay")
-                installable by exact version, and appear@(Hidden == 1 ? "s" : "") here once pulled.
+                @Hidden unlisted version@(Hidden == 1 ? "" : "s") hidden, as the gallery hides
+                @(Hidden == 1 ? "it" : "them"). @(Hidden == 1 ? "It stays" : "They stay") installable
+                by exact version.
             </p>
         }
 
@@ -141,15 +141,16 @@
     private IReadOnlyList<VersionListEntry<PackageVersion>> versions = [];
 
     /// <summary>
-    /// What the tables show: everything this feed holds, plus the upstream versions still advertised.
-    /// Withdrawn versions nobody here holds are gallery history — 2062 of PnP.PowerShell's 2098 — and are
-    /// left out. <c>versions</c> stays whole, because the latest is computed across all of it and an exact
-    /// version must still resolve.
+    /// What the tables show: the versions the sources still advertise, mirroring the gallery's own page.
+    /// PSGallery lists 36 versions of PnP.PowerShell and withdraws the other 2062; those are gallery
+    /// history and are left out here too, whether or not this feed happens to hold one.
     ///
-    /// Deliberately not "an admin sees everything". A cached or pushed version stays visible whoever is
-    /// looking, unlisted or not, which is what an admin needs in order to relist or delete it; and a reader
-    /// and an admin seeing different lists makes "why did Install-Module pick that version" a question the
-    /// two of them cannot answer together.
+    /// Hiding is display only — <c>versions</c> stays whole behind it, because the latest is computed
+    /// across all of it. An unlisted version stays resolvable by exact version, which is the case that
+    /// matters: a pinned install names a version and does not care whether the gallery still shows it.
+    /// The flat container serves every stored version on purpose, and a held copy can still be relisted
+    /// through <c>POST /v3/publish/{id}/{version}</c>. Local search and autocomplete already filtered
+    /// unlisted versions out; this table was the last place they appeared.
     /// </summary>
     private IReadOnlyList<VersionListEntry<PackageVersion>> visible = [];
     private IReadOnlyList<PackageDependency> dependencies = [];
@@ -309,7 +310,7 @@
             .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream), includeSemVer2: true)
             .Where(entry => entry.Payload is not null)];
 
-        visible = [.. versions.Where(entry => entry.Listed || entry.Source == VersionSource.Local)];
+        visible = [.. versions.Where(entry => entry.Listed)];
         latest = versions.Latest(includePrerelease: true) ?? versions[^1];
         shown = latest.Payload;
         dependencies = [.. shown!.Dependencies.OrderBy(dependency => dependency.Ordinal)];
