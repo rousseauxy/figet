@@ -797,3 +797,9 @@ legend {
    well. The class is repeated to raise specificity above theirs without reaching for !important. */
 .fg-table.fg-table.quickgrid > thead > tr > th { padding: 0.5rem 0.7rem; }
 .fg-table.fg-table.quickgrid > tbody > tr > td { padding: 0.45rem 0.7rem; font-size: 0.82rem; }
+
+/* The first column is always a name or an id, and some are very long — a fully qualified module id, or
+   a version with a prerelease label. Every other cell stays on one line, but forcing this one to as well
+   pushed the table past its container, which turned into a horizontal scrollbar and clipped the buttons
+   in the last column. Only this column is allowed to wrap. */
+.fg-table td:first-child { white-space: normal; overflow-wrap: anywhere; }
