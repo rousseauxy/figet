@@ -1460,3 +1460,22 @@ Also verified after the deploy: no errors at start, health probes still absent f
 un-cache route still behind sign-in, package pages and both protocols answering, the page-size chooser
 working, and 58 rows intact. The request log is meanwhile showing the colleague's client by name -
 `PSResourceGet/1.1.0.1 PowerShell/5.1.26100.9168` - which is what it was built for.
+
+### Half the request log was a stylesheet
+
+Reported while watching it: `/themes/cobalt.css` on every page view. Counted on the live instance, 31 of 65
+request lines were browser assets and 15 of those were that one stylesheet — so roughly half the log was a
+browser re-fetching the same two files, burying the lines that say what a package client did.
+
+The filter skipped health probes and the framework's paths but nothing else. It now also skips stylesheets,
+scripts, icons and fonts, matched by extension rather than by folder because the static assets are served
+from the web root with a content hash in the name (`/app.9eycm9ixdl.css`), so there is no prefix to match.
+
+One rule matters more than the filter: **anything under `/nuget` is never skipped**, whatever it is named.
+A package may legitimately be called `something.css`, and an extension test that could swallow a package
+download would hide exactly what this log exists for. That is the half the test pins — it asks for a
+package id ending in `.css` and requires the line to be there, alongside asserting the real stylesheet is
+absent.
+
+What survives is the useful set: package pages, the v3 index, registration documents, sign-ins, and every
+protocol call.
