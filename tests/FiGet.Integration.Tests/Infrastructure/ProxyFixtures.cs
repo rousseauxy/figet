@@ -106,6 +106,32 @@ public sealed class StubUpstreamClient : IUpstreamClient
         return Task.FromResult(hits);
     }
 
+    /// <summary>
+    /// What this upstream "publishes" about each version. Tagged the way a PowerShell gallery tags a
+    /// module, because those tags are what a client reads to decide a version can run at all.
+    /// </summary>
+    public Task<IReadOnlyList<UpstreamMetadata>> GetMetadataAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
+    {
+        FailIfAsked();
+
+        IReadOnlyList<UpstreamMetadata> described = packages.TryGetValue(idLower, out var versions)
+            ? versions.Keys.Select(v => new UpstreamMetadata(
+                NuGetVersion.Parse(v),
+                "Described by the stub upstream.",
+                "Stub summary.",
+                idLower,
+                "stub-author",
+                "PSModule PSEdition_Desktop",
+                "",
+                "",
+                "",
+                new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                7)).ToList()
+            : [];
+
+        return Task.FromResult(described);
+    }
+
     public Task<Stream?> OpenPackageAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref downloadCalls);

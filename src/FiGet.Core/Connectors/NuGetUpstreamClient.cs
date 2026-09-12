@@ -82,6 +82,30 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
         }
     }
 
+    public async Task<IReadOnlyList<UpstreamMetadata>> GetMetadataAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(upstream);
+        using var timeout = Timeout(cancellationToken);
+        var resource = await Repository(upstream).GetResourceAsync<PackageMetadataResource>(timeout.Token)
+            ?? throw new InvalidOperationException($"Upstream '{upstream.Name}' does not expose a metadata resource.");
+
+        var items = await resource.GetMetadataAsync(idLower, includePrerelease: true, includeUnlisted: false, cache, NullLogger.Instance, timeout.Token);
+        return items
+            .Select(m => new UpstreamMetadata(
+                m.Identity.Version,
+                m.Description ?? "",
+                m.Summary ?? "",
+                m.Title ?? "",
+                m.Authors ?? "",
+                m.Tags ?? "",
+                m.ProjectUrl?.ToString() ?? "",
+                m.IconUrl?.ToString() ?? "",
+                m.LicenseUrl?.ToString() ?? "",
+                m.Published?.UtcDateTime,
+                m.DownloadCount ?? 0))
+            .ToList();
+    }
+
     public async Task<IReadOnlyList<UpstreamSearchHit>> SearchAsync(
         FeedUpstream upstream,
         string query,

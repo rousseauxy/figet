@@ -17,6 +17,7 @@ namespace FiGet.Core.Connectors;
 public sealed class ConnectorService(
     IUpstreamClient client,
     IUpstreamIndexStore index,
+    UpstreamMetadataCache metadataCache,
     IPackageStore packages,
     PackageIngestionService ingestion,
     ConnectorSettings settings,
@@ -46,15 +47,26 @@ public sealed class ConnectorService(
 
             var (versions, answered) = await VersionsAsync(upstream, idLower, cancellationToken);
             authoritative |= answered;
+
+            // What the upstream says about each version, so an uncached one is listed with its real
+            // description, authors and tags instead of blanks.
+            var described = await DescribeAsync(upstream, idLower, cancellationToken);
+
             foreach (var version in versions)
             {
                 offered.Add(version.Version.ToNormalizedString());
+                var row = Placeholder(idLower, version);
+                if (described.TryGetValue(version.Version.ToNormalizedString(), out var metadata))
+                {
+                    Describe(row, metadata);
+                }
+
                 candidates.Add(new VersionCandidate<PackageVersion>(
                     version.Version,
                     Listed: true,
                     version.IsSemVer2,
                     VersionSource.Upstream,
-                    Placeholder(idLower, version)));
+                    row));
             }
         }
 
@@ -260,6 +272,57 @@ public sealed class ConnectorService(
             Origin = PackageOrigin.Cached,
             SearchTextLower = idLower,
         };
+    }
+
+    /// <summary>
+    /// The upstream's metadata for one id, by normalised version. Cached for the same time as the version
+    /// list, and never allowed to fail a request: a listing with plain rows beats no listing at all.
+    /// </summary>
+    private async Task<Dictionary<string, UpstreamMetadata>> DescribeAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
+    {
+        var now = time.GetUtcNow().UtcDateTime;
+        var items = metadataCache.Get(upstream.Key, idLower, now, settings.UpstreamIndexTtl);
+        if (items is null)
+        {
+            try
+            {
+                items = await client.GetMetadataAsync(upstream, idLower, cancellationToken);
+                metadataCache.Set(upstream.Key, idLower, items, now);
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning(ex, "Upstream {Upstream} did not describe {Id}; versions are listed without details.", upstream.Name, idLower);
+                items = [];
+            }
+        }
+
+        var byVersion = new Dictionary<string, UpstreamMetadata>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in items)
+        {
+            byVersion[item.Version.ToNormalizedString()] = item;
+        }
+
+        return byVersion;
+    }
+
+    /// <summary>Copies what the upstream published onto a placeholder row.</summary>
+    private static void Describe(PackageVersion row, UpstreamMetadata metadata)
+    {
+        row.Description = metadata.Description;
+        row.Summary = metadata.Summary;
+        row.Title = metadata.Title;
+        row.Authors = metadata.Authors;
+        row.Tags = metadata.Tags;
+        row.TagsLower = " " + metadata.Tags.ToLowerInvariant() + " ";
+        row.ProjectUrl = metadata.ProjectUrl;
+        row.IconUrl = metadata.IconUrl;
+        row.LicenseUrl = metadata.LicenseUrl;
+        row.Downloads = metadata.Downloads;
+        if (metadata.Published is { } published)
+        {
+            row.PublishedUtc = published;
+            row.LastUpdatedUtc = published;
+        }
     }
 
     /// <summary>Deny wins over allow, and an empty allow list means every id is allowed.</summary>

@@ -331,6 +331,29 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         }
     }
 
+    /// <summary>
+    /// A version nobody has downloaded yet must still be described. The tags are the point: a PowerShell
+    /// client reads PSEdition_Desktop and PSEdition_Core to decide whether a version can run at all, so a
+    /// feed that lists uncached versions with no tags takes that choice away from it.
+    /// </summary>
+    [Fact]
+    public async Task A_version_nobody_has_cached_is_still_described()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Described");
+        AddUpstream(id, "1.0.0");
+
+        using var client = server.CreateClient();
+        var body = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/Packages(Id='{id}',Version='1.0.0')"));
+        var entry = XDocument.Parse(body).Root!;
+
+        Assert.Contains("PSEdition_Desktop", Property(entry, "Tags"), StringComparison.Ordinal);
+        Assert.NotEmpty(Property(entry, "Description"));
+        Assert.NotEmpty(Property(entry, "Authors"));
+
+        // Still a placeholder in the sense that matters: nothing was downloaded to produce it.
+        Assert.Equal("0", Property(entry, "PackageSize"));
+    }
+
     /// <summary>Expires the cached upstream listings, instead of waiting out the time-to-live.</summary>
     private async Task ForgetUpstreamListingsAsync()
     {

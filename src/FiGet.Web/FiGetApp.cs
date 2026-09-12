@@ -85,6 +85,7 @@ public static class FiGetApp
             };
         });
         services.AddSingleton<IUpstreamClient, NuGetUpstreamClient>();
+        services.AddSingleton<UpstreamMetadataCache>();
         services.AddScoped<ConnectorService>();
 
         services.AddDataProtection()

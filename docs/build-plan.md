@@ -673,7 +673,13 @@ never inline.
   is on 5.1. That is the module's compatibility problem, and a package server that silently hides
   versions to work around it makes a second, worse problem, because the feed no longer shows what the
   upstream actually has. A fleet that must stay on an older major version pins it with
-  `-RequiredVersion`, or uses a curated feed holding only what it approves. Decided 2026-09-12.
+  `-RequiredVersion`, or uses a curated feed holding only what it approves. Decided 2026-09-12, and the
+  module that raised it fixed its own manifest soon after, which is how it should be settled.
+- **What the server owes that choice is the metadata to make it.** A client decides from the package's
+  own tags, `PSEdition_Desktop` against `PSEdition_Core`, so every version a feed lists carries the
+  description, authors and tags the upstream published, including versions nobody has downloaded yet.
+  Listing an uncached version with blank metadata looks harmless and is not: it removes exactly the
+  signal the client needs.
 - **`@type` everywhere in v3 registration JSON** (see §4.2). Non-negotiable, for the 3.x
   PackageManagement provider.
 - **PackageManagement 1.4.8.1 uses its bundled NuGet provider 3.0.0.1**, not an installed 2.8.5.208.

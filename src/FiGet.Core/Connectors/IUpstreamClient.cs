@@ -12,6 +12,24 @@ public readonly record struct UpstreamVersion(NuGetVersion Version, bool IsSemVe
 public sealed record UpstreamSearchHit(string Id, NuGetVersion Version, string Description, string Authors, string Tags, long Downloads);
 
 /// <summary>
+/// What an upstream publishes about one version, without downloading the package. The tags matter more
+/// than they look: a PowerShell client reads PSEdition_Desktop and PSEdition_Core from them to decide
+/// whether a version can run at all, so a feed that drops them makes that choice impossible.
+/// </summary>
+public sealed record UpstreamMetadata(
+    NuGetVersion Version,
+    string Description,
+    string Summary,
+    string Title,
+    string Authors,
+    string Tags,
+    string ProjectUrl,
+    string IconUrl,
+    string LicenseUrl,
+    DateTime? Published,
+    long Downloads);
+
+/// <summary>
 /// Talks to one upstream feed. Implemented over NuGet's own client library, so both v2 and v3 upstreams
 /// work without FiGet re-implementing either protocol as a client.
 /// </summary>
@@ -28,6 +46,12 @@ public interface IUpstreamClient
     /// matter: a meta-package pins its dependencies, so "only the latest" would break installs.
     /// </summary>
     Task<Stream?> OpenPackageAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// What the upstream publishes about every version of one id. Used to describe versions nobody has
+    /// downloaded yet, so a listing shows the real description, authors and tags rather than blanks.
+    /// </summary>
+    Task<IReadOnlyList<UpstreamMetadata>> GetMetadataAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken);
 
     /// <summary>
     /// Searches the upstream, so a package nobody has cached yet can still be found. Throws when the
