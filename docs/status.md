@@ -1172,3 +1172,44 @@ saving. Traefik reloaded the dynamic file without an error, and the original is 
 Worth stating what this was not: nothing in this repository ever compressed anything, the application sets
 a correct `Content-Length`, and it ignores `Accept-Encoding`. The failure only existed between a proxy
 that gzipped an already-compressed payload and a client old enough not to cope.
+
+## A nullable column took every cached package to 500 — 2026-09-12
+
+Carrying the upstream's spelling on the cache row needed a column. It was added the way EF scaffolds one:
+
+```
+migrationBuilder.AddColumn<string>(name: "Id", ..., nullable: true);
+```
+
+The property is `public string Id { get; set; } = ""`. Every row written before the column existed reads
+back NULL, EF assigns it into that non-nullable string regardless, and the first `.Length` on it threw.
+42 of 55 live rows were in that state, and **ten out of ten sampled packages answered 500** on their
+registration index. `Find-Module` reports that as "the package does not exist", which is how it was first
+described.
+
+It looked like it was healing, and it was not. Each background refresh rewrote one row, so failures
+rotated between packages rather than clearing: `powershellget` recovered while `dbatools.library` broke,
+minutes apart. Sampling one package at a time would have suggested a flake.
+
+### What it took to put right
+
+- Coalesce where the database is read, so no caller can be handed a null id.
+- `IsNullOrEmpty` instead of `.Length` at the two sites that took it.
+- Declare the column required with an empty default - and **fill the existing nulls first**. EF scaffolded
+  a bare `AlterColumn` to NOT NULL; on SQLite that is a table rebuild which copies existing data, so a
+  NULL fails the migration. This application migrates on startup, so that would have turned a broken page
+  into a container that never comes up. Both migrations now run
+  `UPDATE CachedUpstreamIndexes SET Id = '' WHERE Id IS NULL` before the alter.
+
+Verified after deploying: the same ten packages all answer 200, no row holds NULL, and the log is clean.
+
+### The test that could not have caught it
+
+The first version wrote `Id = null` into the row. Once the schema was fixed that raises
+`NOT NULL constraint failed`, so the test proved only that SQLite enforces its own constraint - it could
+not express the defect it was written for. The migration turns those rows into empty strings, so *empty*
+is the state real rows reach, and that is what the test pins now.
+
+The deeper miss is the same one as the paged-registration defect earlier today: every test writes its rows
+through today's code, so no test ever produces a row that an older build left behind. Nothing in the suite
+can see a migration-shaped defect unless it is written to.
