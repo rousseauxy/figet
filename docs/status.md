@@ -957,3 +957,37 @@ says listed. Hence 37 rows, and hence zero unlisted badges — that row is not u
 not one that is merely **unlisted** upstream. Both mean "stop offering this", so the rule is half applied.
 Backlogged rather than fixed in the same breath: it changes what a cached copy does, and there is a real
 argument on the other side.
+
+## A chosen theme lasted exactly one page — 2026-09-12
+
+Reported from using the deployed instance: the light/dark toggle switches, the choice is gone on the next
+page, and the button's glyph never changes. Two faults, one of them deliberate.
+
+**The glyph never changed because it was never meant to.** `MainLayout.razor` ships a literal `◐` under a
+comment saying the button is stateless, which was true when static SSR was the only renderer — the server
+cannot know what the reader chose. The answer is not to render it server-side but to paint it in script,
+where the choice already lives.
+
+**The choice was dropped by enhanced navigation.** It is stored in `localStorage` and applied by an inline
+`<head>` script before first paint. For a signed-in reader the framework is loaded, so following a link is
+a DOM patch rather than a page load: that script never runs again, and the attribute it set does not
+survive the patch. An anonymous reader gets no framework at all and never saw it. So it reads as "broken
+when signed in" — the same shape as the earlier circuit fault, and again not the same cause.
+
+Fixed by re-applying the stored choice on Blazor's `enhancedload` event and painting every toggle from the
+same function, so the glyph and the attribute cannot disagree.
+
+Four guesses died on the evidence, each worth recording:
+
+- **The theme pack looked unguarded**, which would have made the CSS the culprit. It is not:
+  `graphite.css` emits `@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {`, exactly
+  the guarded form. The grep that said otherwise matched only as far as the first brace and hid the inner
+  selector — the fourth miscount from a partial grep in one session.
+- **A Content-Security-Policy blocking inline script** would explain it precisely. The only CSP present is
+  `frame-ancestors 'self'`, which does not restrict scripts.
+- **The inline restore script might be missing** from the delivered HTML. It is there.
+- **The deployed `app.js` might be stale** and lack the write. It serves 200 and contains it.
+
+**Not verified in a browser**, because there is none here; the diagnosis rests on reading rather than
+observation. It is falsifiable: a reload should keep the choice, following a link should now keep it too,
+and an anonymous reader was never affected. If a reload also loses the choice, this is wrong.
