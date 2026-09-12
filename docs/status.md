@@ -1648,3 +1648,8 @@ it passes.
 was tested, deployed and verified working; this hid underneath it, in the default on a column. Worth
 remembering next time a migration adds one: the default is a value, and somebody downstream will read
 meaning into it.
+
+**Verified live.** Deployed, restarted, and the two packages whose rows still carry blank facts -
+`powershellget`, holding a hidden 2.2.5.1, and `dbatools` - were viewed straight after start: **zero**
+re-list events, zero withdrawals, both hidden copies still unlisted, no errors. The previous build produced
+a re-list three seconds after the same restart, with 65 of 71 rows in a state that would repeat it.
