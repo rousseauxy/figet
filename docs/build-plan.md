@@ -667,6 +667,13 @@ never inline.
 
 ## 9. Known traps and decisions, so nobody rediscovers them
 
+- **The server does not decide which version a client should install.** A proxy feed offers every
+  version its upstreams have, and the client picks. There is deliberately no per-feed version filter,
+  even though the case for one is easy to state: a module whose 2.x needs PowerShell 7 while the fleet
+  is on 5.1. That is the module's compatibility problem, and a package server that silently hides
+  versions to work around it makes a second, worse problem, because the feed no longer shows what the
+  upstream actually has. A fleet that must stay on an older major version pins it with
+  `-RequiredVersion`, or uses a curated feed holding only what it approves. Decided 2026-09-12.
 - **`@type` everywhere in v3 registration JSON** (see §4.2). Non-negotiable, for the 3.x
   PackageManagement provider.
 - **PackageManagement 1.4.8.1 uses its bundled NuGet provider 3.0.0.1**, not an installed 2.8.5.208.
