@@ -91,6 +91,24 @@ public sealed partial class AdminUiTests
     }
 
     /// <summary>
+    /// The admin area keeps the site chrome. AdminLayout nests inside MainLayout rather than replacing it,
+    /// which is easy to lose: a layout that forgets its own @@layout silently drops the header, the theme
+    /// toggle and the way back out, and every admin page loses them at once.
+    /// </summary>
+    [Fact]
+    public async Task The_admin_area_keeps_the_site_chrome()
+    {
+        using var client = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/feeds"));
+
+        Assert.Contains("fg-admin-nav", page, StringComparison.Ordinal);
+        Assert.Contains("data-theme-toggle", page, StringComparison.Ordinal);
+        Assert.Contains("fg-nav-dropdown", page, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The reconnect dialog exists only where a circuit does. It is not merely cosmetic: without it a
     /// dropped circuit leaves a page that looks alive and ignores every click.
     /// </summary>
