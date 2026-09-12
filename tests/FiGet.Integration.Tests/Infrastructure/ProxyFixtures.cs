@@ -19,6 +19,8 @@ public sealed class StubUpstreamClient : IUpstreamClient
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte[]>> packages =
         new(StringComparer.OrdinalIgnoreCase);
 
+    private readonly ConcurrentDictionary<string, bool> unlisted = new(StringComparer.OrdinalIgnoreCase);
+
     private int versionCalls;
     private int downloadCalls;
     private int searchCalls;
@@ -59,6 +61,16 @@ public sealed class StubUpstreamClient : IUpstreamClient
     {
         var versions = packages.GetOrAdd(id, _ => new ConcurrentDictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase));
         versions[NuGetVersion.Parse(version).ToNormalizedString()] = nupkg;
+    }
+
+    /// <summary>
+    /// Adds a version the upstream holds but no longer advertises, the way a gallery hides an old nightly.
+    /// It must still be downloadable by exact version: a pinned dependency asks for one.
+    /// </summary>
+    public void AddUnlisted(string id, string version, byte[] nupkg)
+    {
+        Add(id, version, nupkg);
+        unlisted[id + "|" + NuGetVersion.Parse(version).ToNormalizedString()] = true;
     }
 
     /// <summary>Withdraws a version, the way a gallery pulls a module that should no longer be used.</summary>
@@ -103,7 +115,8 @@ public sealed class StubUpstreamClient : IUpstreamClient
                 "",
                 "",
                 new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
-                7))
+                7,
+                !unlisted.ContainsKey(idLower + "|" + v)))
             .ToList();
 
         return Task.FromResult(new UpstreamCatalog(versions, described));

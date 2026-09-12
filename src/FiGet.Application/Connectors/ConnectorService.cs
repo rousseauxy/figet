@@ -60,9 +60,13 @@ public sealed class ConnectorService(
                     Describe(row, metadata);
                 }
 
+                // Listed as the upstream lists it. Claiming otherwise made every version the gallery
+                // hides look current: of PnP.PowerShell's 2098 versions the gallery advertises 36, and
+                // this listed all of them, so the newest nightly the gallery had withdrawn was offered as
+                // the latest version of the module.
                 candidates.Add(new VersionCandidate<PackageVersion>(
                     version.Version,
-                    Listed: true,
+                    row.Listed,
                     version.IsSemVer2,
                     VersionSource.Upstream,
                     row));
@@ -288,6 +292,7 @@ public sealed class ConnectorService(
     /// <summary>Copies what the upstream published onto a placeholder row.</summary>
     private static void Describe(PackageVersion row, UpstreamMetadata metadata)
     {
+        row.Listed = metadata.Listed;
         row.Description = metadata.Description;
         row.Summary = metadata.Summary;
         row.Title = metadata.Title;

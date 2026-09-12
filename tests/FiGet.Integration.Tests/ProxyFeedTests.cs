@@ -112,6 +112,34 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
     }
 
     /// <summary>
+    /// A version the upstream no longer advertises is listed as unlisted, and is never the latest. It is
+    /// not dropped: unlisted means undiscoverable, not gone, and an exact version must still resolve
+    /// because a pinned dependency asks for one. Both halves are asserted here, because honouring the flag
+    /// by filtering the version out would pass the first half and break every pinned install.
+    /// </summary>
+    [Fact]
+    public async Task An_unlisted_upstream_version_is_not_latest_and_still_downloads()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Unlisted");
+        AddUpstream(id, "1.0.0");
+        AddUpstreamUnlisted(id, "2.0.0");
+
+        var entries = await FindAsync("proxy", id);
+        var byVersion = entries.ToDictionary(e => Property(e, "Version"), StringComparer.Ordinal);
+
+        Assert.Equal(["1.0.0", "2.0.0"], byVersion.Keys.OrderBy(v => v, StringComparer.Ordinal).ToArray());
+        Assert.Equal("false", Property(byVersion["2.0.0"], "Listed"));
+        Assert.Equal("true", Property(byVersion["1.0.0"], "Listed"));
+
+        // The one the gallery still advertises is the latest, not the higher one it hides.
+        Assert.Equal("1.0.0", Property(entries.Single(e => Property(e, "IsAbsoluteLatestVersion") == "true"), "Version"));
+
+        using var client = server.CreateClient();
+        var download = await client.GetAsync($"nuget/proxy/package/{id}/2.0.0");
+        Assert.True(download.IsSuccessStatusCode, $"{(int)download.StatusCode} {download.ReasonPhrase}");
+    }
+
+    /// <summary>
     /// The descriptions have to arrive in the same call as the versions. They used to be two calls, and on
     /// a v2 gallery both are the same paged walk of <c>FindPackagesById()</c> behind two different NuGet
     /// resources, so every listing paid for that walk twice. Measured against the real gallery on
@@ -386,6 +414,13 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
     {
         using var package = TestPackages.Create(id, version);
         server.Upstream.Add(id, version, package.ToArray());
+    }
+
+    /// <summary>A version the upstream holds but no longer advertises.</summary>
+    private void AddUpstreamUnlisted(string id, string version)
+    {
+        using var package = TestPackages.Create(id, version);
+        server.Upstream.AddUnlisted(id, version, package.ToArray());
     }
 
     private async Task<IReadOnlyList<XElement>> FindAsync(string feed, string id)

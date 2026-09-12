@@ -16,6 +16,18 @@ public sealed record UpstreamSearchHit(string Id, NuGetVersion Version, string D
 /// than they look: a PowerShell client reads PSEdition_Desktop and PSEdition_Core from them to decide
 /// whether a version can run at all, so a feed that drops them makes that choice impossible.
 /// </summary>
+/// <param name="Listed">
+/// Whether the upstream still advertises this version. Unlisted does not mean gone: the version stays
+/// downloadable by exact version, because a pinned dependency asks for one and does not care whether the
+/// gallery still shows it. It means undiscoverable — out of search, out of a version listing's visible
+/// rows, and never the latest.
+///
+/// It rides with the metadata rather than with the version because that is where it is learnt, and
+/// because the version list is cached in the database as bare strings while the metadata is cached beside
+/// it; a catalogue is only ever answered from the cache when both halves are present, so a version that
+/// has a description also has this flag. Defaults to listed, which is the safe answer when an upstream
+/// reports a version it says nothing else about.
+/// </param>
 public sealed record UpstreamMetadata(
     NuGetVersion Version,
     string Description,
@@ -27,7 +39,8 @@ public sealed record UpstreamMetadata(
     string IconUrl,
     string LicenseUrl,
     DateTime? Published,
-    long Downloads);
+    long Downloads,
+    bool Listed = true);
 
 /// <summary>
 /// One upstream's answer for one package id: every version it holds, and what it published about the

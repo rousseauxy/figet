@@ -120,7 +120,8 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
         m.IconUrl?.ToString() ?? "",
         m.LicenseUrl?.ToString() ?? "",
         m.Published?.UtcDateTime,
-        m.DownloadCount ?? 0);
+        m.DownloadCount ?? 0,
+        m.IsListed);
 
     public async Task<IReadOnlyList<UpstreamSearchHit>> SearchAsync(
         FeedUpstream upstream,
