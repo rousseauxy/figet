@@ -44,6 +44,30 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         }
     }
 
+    /// <summary>
+    /// The bare path is what a person types. It answered 404, which reads as "there is no admin area"
+    /// rather than "you are one click away from it".
+    /// </summary>
+    [Fact]
+    public async Task The_bare_admin_path_leads_into_the_admin_area()
+    {
+        using var client = CreateBrowser();
+
+        // A stranger meets the sign-in page. Not a 404, and not a hint about what is behind it either.
+        var anonymous = await client.GetAsync("/admin");
+        HttpAssert.Status(HttpStatusCode.Redirect, anonymous);
+        Assert.Contains("/account/login", anonymous.Headers.Location!.ToString(), StringComparison.Ordinal);
+
+        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+
+        foreach (var path in new[] { "/admin", "/admin/" })
+        {
+            var response = await client.GetAsync(path);
+            HttpAssert.Status(HttpStatusCode.Redirect, response);
+            Assert.Equal("/admin/feeds", response.Headers.Location!.ToString());
+        }
+    }
+
     [Fact]
     public async Task A_feed_that_needs_credentials_is_not_browsable_anonymously()
     {

@@ -272,6 +272,13 @@ public static class FiGetApp
     {
         var admin = app.MapGroup("/admin").RequireAuthorization(AdminPolicy);
 
+        // The bare path is what a person types when they want the admin area, and it used to answer 404.
+        // Inside the authorised group on purpose: a stranger then meets the sign-in page, rather than a
+        // redirect to a page that would only bounce them to the sign-in page anyway. One template only:
+        // "" and "/" both normalise to the group prefix, so mapping both made every request to it an
+        // AmbiguousMatchException, which surfaces as a 500 rather than as anything that names the cause.
+        admin.MapGet("", () => Results.Redirect("/admin/feeds"));
+
         // Fetch a package an upstream has but this feed has not cached yet.
         admin.MapPost("/feeds/{feed}/pull", async (
             string feed,
