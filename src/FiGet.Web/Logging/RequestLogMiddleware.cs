@@ -48,25 +48,9 @@ public sealed class RequestLogMiddleware(RequestDelegate next, ILogger<RequestLo
                 elapsed.TotalMilliseconds,
                 context.Connection.RemoteIpAddress?.ToString() ?? "-",
                 Header(context, "X-Forwarded-For"),
-                Who(context),
+                RequestActor.Describe(context),
                 Header(context, "User-Agent"));
         }
-    }
-
-    /// <summary>
-    /// Who this request turned out to be: the token that was accepted, or the signed-in user, or nobody.
-    /// A feed with anonymous read answers without either, and that is worth seeing as "anonymous" rather
-    /// than as a blank.
-    /// </summary>
-    private static string Who(HttpContext context)
-    {
-        if (context.Items.TryGetValue(FeedAccess.TokenNameItem, out var token) && token is string name && name.Length > 0)
-        {
-            return "token:" + name;
-        }
-
-        var user = context.User.Identity;
-        return user?.IsAuthenticated == true && !string.IsNullOrEmpty(user.Name) ? "user:" + user.Name : "anonymous";
     }
 
     private static string Header(HttpContext context, string name)
