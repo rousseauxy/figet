@@ -14,8 +14,12 @@ public sealed class ConnectorSettings
     /// <summary>How long a cached upstream version list stays usable before it is fetched again.</summary>
     public TimeSpan UpstreamIndexTtl { get; set; } = TimeSpan.FromMinutes(5);
 
-    /// <summary>How long one upstream call may take before that upstream counts as unavailable.</summary>
-    public TimeSpan UpstreamTimeout { get; set; } = TimeSpan.FromSeconds(10);
+    /// <summary>
+    /// How long one upstream call may take before that upstream counts as unavailable. Listing a package
+    /// with hundreds of versions on a v2 gallery is a paged walk of several megabytes, so this is not the
+    /// latency of a single request.
+    /// </summary>
+    public TimeSpan UpstreamTimeout { get; set; } = TimeSpan.FromSeconds(30);
 }
 
 /// <summary>

@@ -132,8 +132,10 @@ public sealed class ConnectorService(
             {
                 nupkg = await client.OpenPackageAsync(upstream, idLower, version, cancellationToken);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
+                // Includes this connector's own timeout: a slow upstream is an upstream that did not
+                // answer, never an error thrown back at the client.
                 logger.LogWarning(ex, "Upstream {Upstream} could not serve {Id} {Version}.", upstream.Name, id, version.ToNormalizedString());
                 continue;
             }
@@ -226,7 +228,7 @@ public sealed class ConnectorService(
             {
                 found = await client.SearchAsync(upstream, query, includePrerelease, 0, take, cancellationToken);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
                 logger.LogWarning(ex, "Upstream {Upstream} did not answer a search for {Query}.", upstream.Name, query);
                 continue;
@@ -312,8 +314,10 @@ public sealed class ConnectorService(
             await index.SaveAsync(upstream.Key, idLower, versions, stale: false, now, cancellationToken);
             return (versions, true);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
+            // A timeout lands here too, which is why the answer is "not authoritative": a version missing
+            // from a list we never received must not be mistaken for a version withdrawn upstream.
             logger.LogWarning(ex, "Upstream {Upstream} did not answer for {Id}; serving the last known list.", upstream.Name, idLower);
             return (cached is null ? [] : Parse(cached), false);
         }

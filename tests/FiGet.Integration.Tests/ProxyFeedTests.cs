@@ -299,6 +299,38 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         }
     }
 
+    /// <summary>
+    /// A slow upstream is this server's problem, not the client's. Listing a package with hundreds of
+    /// versions on a v2 gallery can outrun the connector's timeout, and that must degrade to "the upstream
+    /// did not answer" rather than becoming a 500 in the middle of someone's install.
+    /// </summary>
+    [Fact]
+    public async Task An_upstream_that_times_out_never_reaches_the_client()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Timeout");
+        AddUpstream(id, "1.0.0");
+
+        using var client = server.CreateClient();
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.0.0"));
+
+        server.Upstream.TimesOut = true;
+        await ForgetUpstreamListingsAsync();
+        try
+        {
+            var entries = await FindAsync("proxy", id);
+            Assert.Equal("true", Property(entries.Single(e => Property(e, "Version") == "1.0.0"), "Listed"));
+
+            await HttpAssert.SuccessBodyAsync(await client.GetAsync(
+                $"nuget/proxy/Search()?$filter=IsLatestVersion&searchTerm='{id}'&$top=40"));
+
+            await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/query?q={id}"));
+        }
+        finally
+        {
+            server.Upstream.TimesOut = false;
+        }
+    }
+
     /// <summary>Expires the cached upstream listings, instead of waiting out the time-to-live.</summary>
     private async Task ForgetUpstreamListingsAsync()
     {

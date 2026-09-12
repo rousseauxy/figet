@@ -112,8 +112,11 @@ public sealed class ConnectorOptions
     /// <summary>How long an upstream's version list for one package stays usable before it is fetched again.</summary>
     public TimeSpan UpstreamIndexTtl { get; set; } = TimeSpan.FromMinutes(5);
 
-    /// <summary>How long a single upstream call may take before the upstream is treated as unavailable.</summary>
-    public TimeSpan UpstreamTimeout { get; set; } = TimeSpan.FromSeconds(10);
+    /// <summary>
+    /// How long one upstream call may take before the upstream is treated as unavailable. Listing a
+    /// package with hundreds of versions on a v2 gallery is a paged walk, not one request.
+    /// </summary>
+    public TimeSpan UpstreamTimeout { get; set; } = TimeSpan.FromSeconds(30);
 }
 
 public sealed class AuthOptions

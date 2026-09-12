@@ -56,7 +56,7 @@ Applies to every proxy feed. Upstreams themselves are configured per feed, above
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `UpstreamIndexTtl` | `00:05:00` | How long one upstream's version list for one package stays usable before it is fetched again. A new upstream release becomes visible within this window. |
-| `UpstreamTimeout` | `00:00:10` | How long a single upstream call may take before that upstream counts as unavailable for this request. |
+| `UpstreamTimeout` | `00:00:30` | How long one upstream call may take before that upstream counts as unavailable for this request. Listing a package with hundreds of versions on a v2 gallery is a paged walk of several megabytes, so this is not the latency of one request. A timeout is treated as "the upstream did not answer": the last known list is served and nothing is considered withdrawn. |
 
 ## FiGet:Theming
 

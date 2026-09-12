@@ -32,6 +32,25 @@ public sealed class StubUpstreamClient : IUpstreamClient
     /// <summary>Set when a test wants the upstream to behave as unreachable.</summary>
     public bool Fails { get; set; }
 
+    /// <summary>
+    /// Set when a test wants the upstream to be slower than the connector's timeout. That surfaces as a
+    /// cancelled task, which must be handled as "this upstream did not answer" and never reach the client.
+    /// </summary>
+    public bool TimesOut { get; set; }
+
+    private void FailIfAsked()
+    {
+        if (TimesOut)
+        {
+            throw new TaskCanceledException("The stub upstream took longer than the connector allows.");
+        }
+
+        if (Fails)
+        {
+            throw new InvalidOperationException("The stub upstream is unreachable.");
+        }
+    }
+
     public void Add(string id, string version, byte[] nupkg)
     {
         var versions = packages.GetOrAdd(id, _ => new ConcurrentDictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase));
@@ -50,10 +69,7 @@ public sealed class StubUpstreamClient : IUpstreamClient
     public Task<IReadOnlyList<UpstreamVersion>> GetVersionsAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref versionCalls);
-        if (Fails)
-        {
-            throw new InvalidOperationException("The stub upstream is unreachable.");
-        }
+        FailIfAsked();
 
         IReadOnlyList<UpstreamVersion> versions = packages.TryGetValue(idLower, out var found)
             ? found.Keys.Select(v => new UpstreamVersion(NuGetVersion.Parse(v), IsSemVer2: false)).ToList()
@@ -72,10 +88,7 @@ public sealed class StubUpstreamClient : IUpstreamClient
         CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref searchCalls);
-        if (Fails)
-        {
-            throw new InvalidOperationException("The stub upstream is unreachable.");
-        }
+        FailIfAsked();
 
         IReadOnlyList<UpstreamSearchHit> hits = packages
             .Where(p => string.IsNullOrWhiteSpace(query) || p.Key.Contains(query, StringComparison.OrdinalIgnoreCase))
@@ -96,10 +109,7 @@ public sealed class StubUpstreamClient : IUpstreamClient
     public Task<Stream?> OpenPackageAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref downloadCalls);
-        if (Fails)
-        {
-            throw new InvalidOperationException("The stub upstream is unreachable.");
-        }
+        FailIfAsked();
 
         if (packages.TryGetValue(idLower, out var versions)
             && versions.TryGetValue(version.ToNormalizedString(), out var bytes))
