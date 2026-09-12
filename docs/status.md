@@ -654,9 +654,9 @@ so every path that builds the image inherits it.
 - **The scoped stylesheet was never linked.** `App.razor` did not reference `FiGet.Web.styles.css`. A
   project with no `.razor.css` files does not need it and nothing complains when it is missing, so adding
   component CSS silently shipped framework components unstyled — the grid's pager rendered as blank stubs.
-- **Forty-five empty rows.** The grid pads each page to its page size with `aria-hidden` placeholder rows,
-  so five results drew forty-five blank lines. Hidden with one rule, the same one the sibling application
-  uses.
+- **Forty-five empty rows.** Still open, and the first two explanations here were wrong — see the
+  correction below. The grid does pad each page to its page size, but not with anything a stylesheet can
+  select.
 - **"0 packages" above a full table.** The items provider runs *during* a render, so assigning the count
   never repainted the line showing it. Queued with `InvokeAsync(StateHasChanged)`.
 
@@ -695,3 +695,60 @@ path, not a cold-start curiosity. Backlogged.
   `dotnet FiGet.Web.dll sh -c ls …` and gave it away.
 - **Asserting on a fingerprinted filename cannot fail.** Covered above on its own; it recurred here because
   the served name is `blazor.web.<hash>.js` and the literal never appears.
+
+## Correction, and where the grid's empty rows actually come from — 2026-09-12
+
+Two explanations recorded above for the grid's blank rows were wrong, and a third guess was worse. The
+record is corrected here rather than edited away, because the wrong answers are the useful part.
+
+- **Wrong:** "the grid pads with `aria-hidden` placeholder rows", copied from the sibling application's
+  `::deep tr[aria-hidden="true"]`. That rule matched nothing here and hid nothing.
+- **Wrong:** hide any row whose cells are all empty (`tr:not(:has(td:not(:empty)))`). That treats the
+  symptom and would hide a genuine row whose columns happen to render nothing.
+- **Also wrong, and worth admitting:** the rows are *not* QuickGrid's placeholder rows at all. Those exist
+  only under `Virtualize`, and they carry `grid-cell-placeholder` and an `aria-rowindex`.
+
+**What actually happens**, from `QuickGrid.razor` on `release/10.0`: `RenderNonVirtualizedRows` renders the
+real rows, and then
+
+```csharp
+// When pagination is enabled, by default ensure we render the exact number of expected rows per page,
+// even if there aren't enough data items. This avoids the layout jumping on the last page.
+// Consider making this optional.
+if (Pagination is not null)
+{
+    while (rowIndex++ < initialRowIndex + Pagination.ItemsPerPage)
+    {
+        <tr>@foreach (var col in _columns) { <td class="@ColumnClass(col)" @key="@col"></td> }</tr>
+    }
+}
+```
+
+So it pads to `ItemsPerPage` **only when `Pagination` is set**, which is why the published samples never
+show it, and it marks those rows with nothing whatsoever — no class, no `aria-rowindex`, the same `<tr>`
+and `<td class="col-justify-start">` as a real row. There is no handle for CSS, by construction. The
+framework's own comment still says "Consider making this optional".
+
+`ItemsPerPage` is 50 and the feed holds 5, so forty-five blank rows are the documented behaviour rather
+than a defect. The fix is therefore not a stylesheet rule at all.
+
+### What to do next
+
+One change to `Components/Shared/PackageGrid.razor`, taking over both jobs QuickGrid is doing badly here:
+
+1. **Stop passing `Pagination`** to the grid and page the items provider directly, which removes the
+   padding at its cause. (Setting a smaller `ItemsPerPage` only makes the blank rows fewer.)
+2. **Replace `<Paginator>`** with a pager built from `fg-btn`, matching the anonymous view's pager. This is
+   wanted independently: `Paginator`'s scoped rules are `.paginator[b-3qssc0bm46]`, so they outrank plain
+   selectors on specificity, they hard-code `border-top: 1px solid #ccc` which ignores the theme, and the
+   arrows come from `background: none center …` on the button — which the current
+   `.fg-pager .paginator button` block overwrites, producing the blank circles now on the live site. Remove
+   that block with it. Model the pager on the sibling application's `GridPager`, which passes the count in
+   rather than reading `PaginationState.TotalItemCount` (not populated on every path).
+3. `wwwroot/app.css` currently carries a comment where a rule used to be, explaining why there is none.
+
+**Then take it to the other two applications.** The sibling grid is on the same component with `Pagination`
+set, so it pads the same way; its `::deep tr[aria-hidden="true"]` rule suggests somebody hit this and
+settled for hiding something that was never there. Worth an entry in both backlogs once the fix here is
+proven, along with the `--no-restore` publish trap, which is a far more serious silent failure than this
+one.

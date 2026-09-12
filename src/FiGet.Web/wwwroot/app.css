@@ -389,10 +389,11 @@ pre code { padding: 0; background: none; }
 /* An unlisted or revoked row is still readable, just plainly secondary. */
 .fg-table tr.is-inactive td { color: var(--text-3); }
 
-/* The grid pads every page out to its page size with empty placeholder rows, so five results in a
-   page of fifty drew forty-five blank lines. They are marked aria-hidden, which is the handle for
-   removing them without touching the grid's own markup. */
-.fg-table tr[aria-hidden="true"] { display: none; }
+/* Deliberately no rule here for the grid's stray empty rows. Two attempts were wrong: keying off
+   aria-hidden (copied from an application on a different QuickGrid version, and matching nothing), and
+   then hiding any row whose cells are all empty — which treats the symptom and would hide a genuine row
+   whose columns happen to render nothing. The rows are not QuickGrid placeholders: those only exist
+   under Virtualize and carry `grid-cell-placeholder`. Fix the cause in PackageGrid instead. */
 
 /* Versions, sizes and counts line up when they are tabular. */
 .fg-num, .fg-table td.fg-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

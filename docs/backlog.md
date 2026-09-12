@@ -49,6 +49,22 @@ the packages people care about most.
 
 ### The admin area, with its own side menu
 
+Includes redoing the feed settings page, which is the worst layout in the application (noted
+2026-09-12 from using it). Specifically, and these are layout faults rather than styling ones:
+
+- **The panel grid leaves a large dead area.** Three panels of wildly unequal height sit in one row, so
+  a short Settings panel and a short Source URLs panel park beside a very tall Upstreams panel, and the
+  danger zone ends up orphaned far below with nothing beside it.
+- **Source URLs wrap mid-token**, breaking a copyable URL across three lines in the middle of a word.
+  They want their own full-width row, not a narrow column.
+- **The upstreams table scrolls sideways inside its column** rather than being given the width a table
+  needs.
+- **Adding an upstream is a seven-field form** taking up most of the page height, permanently, for
+  something done rarely. It belongs behind a control rather than always open.
+
+The shape to aim for is the same side-menu admin the sibling application uses, with each of these as its
+own section rather than four unrelated things competing for one three-column grid.
+
 The management controls sit among the public pages. Feeds, tokens, upstreams and appearance belong
 behind one navigation, leaving the public pages read-only. The stylesheet for it is already ported
 (`fg-admin-shell`, `fg-admin-nav` and friends), so this is markup and routing rather than design.
