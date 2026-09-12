@@ -135,6 +135,26 @@ public sealed class RequestLogTests(RequestLogFixture server) : IClassFixture<Re
         Assert.True(line.Contains("by token:", StringComparison.Ordinal), "audit line was: " + line);
     }
 
+    /// <summary>
+    /// Stylesheets and the like are not requests anybody is hunting for. A browser asks for them on every
+    /// page: one session of clicking around was 80 requests with 38 of them the same two stylesheets.
+    ///
+    /// The second half matters more than the first: a package whose id ends in an asset extension must
+    /// still be logged, or the filter would hide exactly what the log is for.
+    /// </summary>
+    [Fact]
+    public async Task Static_assets_are_not_logged_but_packages_always_are()
+    {
+        using var client = server.CreateClient();
+        await client.GetAsync("themes/cobalt.css");
+
+        var awkward = FiGetServerFixture.UniqueId("Log.Asset") + ".css";
+        await client.GetAsync($"nuget/public/FindPackagesById()?id='{awkward}'");
+
+        Assert.NotNull(await WaitForLineAsync(awkward));
+        Assert.DoesNotContain(server.Logs.Lines, l => l.Contains("cobalt.css", StringComparison.Ordinal));
+    }
+
     /// <summary>Health probes would otherwise be most of the log, and nobody is ever looking for them.</summary>
     [Fact]
     public async Task Health_probes_are_not_logged()

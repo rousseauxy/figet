@@ -60,12 +60,50 @@ public sealed class RequestLogMiddleware(RequestDelegate next, ILogger<RequestLo
     }
 
     /// <summary>
-    /// Health probes and the framework's own assets, which a container polls constantly and nobody is ever
-    /// looking for. Everything a package client does is kept.
+    /// Browser furniture: stylesheets, scripts, icons and fonts, fetched again on every page and asked for
+    /// by nobody. One session of somebody clicking around the site was 80 requests, 38 of them the same two
+    /// stylesheets, which buries the handful of lines that say what a package client did.
+    ///
+    /// Health probes and the framework's own paths go the same way, for the same reason.
     /// </summary>
-    private static bool IsNoise(PathString path) =>
-        path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWithSegments("/_framework", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWithSegments("/_content", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWithSegments("/_blazor", StringComparison.OrdinalIgnoreCase);
+    private static bool IsNoise(PathString path)
+    {
+        // Protocol traffic is never noise, whatever it is named. A package may legitimately be called
+        // something.css, and these are the requests the log exists for - so this test comes first and the
+        // extension check below can never swallow a download.
+        if (path.StartsWithSegments("/nuget", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWithSegments("/_framework", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWithSegments("/_content", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWithSegments("/_blazor", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWithSegments("/themes", StringComparison.OrdinalIgnoreCase)
+            || IsAsset(path.Value);
+    }
+
+    /// <summary>
+    /// Named by extension rather than by folder, because the static assets are served from the web root
+    /// with a content hash in the name - <c>/app.9eycm9ixdl.css</c> - and there is no prefix to match on.
+    /// Deliberately short: <c>.json</c>, <c>.xml</c>, <c>.nupkg</c> and <c>.nuspec</c> are not here,
+    /// because those are answers to package clients.
+    /// </summary>
+    private static bool IsAsset(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return false;
+        }
+
+        var dot = path.LastIndexOf('.');
+        return dot >= 0 && AssetExtensions.Contains(path[dot..], StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static readonly string[] AssetExtensions =
+    [
+        ".css", ".js", ".mjs", ".map", ".ico", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
+        ".woff", ".woff2", ".ttf", ".otf", ".eot",
+    ];
 }
