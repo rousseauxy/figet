@@ -23,8 +23,11 @@ public sealed class StubUpstreamClient : IUpstreamClient
     private int downloadCalls;
     private int searchCalls;
 
-    /// <summary>How often a version list was actually fetched, as opposed to answered from the cache.</summary>
+    /// <summary>How often a catalogue was actually fetched, as opposed to answered from the cache.</summary>
     public int VersionCalls => Volatile.Read(ref versionCalls);
+
+    /// <summary>The same count under the name the one-walk rule is about.</summary>
+    public int CatalogCalls => Volatile.Read(ref versionCalls);
 
     public int DownloadCalls => Volatile.Read(ref downloadCalls);
 
@@ -67,16 +70,43 @@ public sealed class StubUpstreamClient : IUpstreamClient
         }
     }
 
-    public Task<IReadOnlyList<UpstreamVersion>> GetVersionsAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
+    /// <summary>
+    /// The versions and their descriptions in one answer, the way a real upstream gives them: a v2 gallery
+    /// walks one paged endpoint for both. <see cref="CatalogCalls"/> counts the walks, so a test can prove
+    /// a listing costs one and not two.
+    /// </summary>
+    public Task<UpstreamCatalog> GetCatalogAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref versionCalls);
         FailIfAsked();
 
-        IReadOnlyList<UpstreamVersion> versions = packages.TryGetValue(idLower, out var found)
-            ? found.Keys.Select(v => new UpstreamVersion(NuGetVersion.Parse(v), IsSemVer2: false)).ToList()
-            : [];
+        if (!packages.TryGetValue(idLower, out var found))
+        {
+            return Task.FromResult(new UpstreamCatalog([], []));
+        }
 
-        return Task.FromResult(versions);
+        var versions = found.Keys
+            .Select(v => new UpstreamVersion(NuGetVersion.Parse(v), IsSemVer2: false))
+            .ToList();
+
+        // Tagged the way a PowerShell gallery tags a module, because those tags are what a client reads
+        // to decide a version can run at all.
+        var described = found.Keys
+            .Select(v => new UpstreamMetadata(
+                NuGetVersion.Parse(v),
+                "Described by the stub upstream.",
+                "Stub summary.",
+                idLower,
+                "stub-author",
+                "PSModule PSEdition_Desktop",
+                "",
+                "",
+                "",
+                new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                7))
+            .ToList();
+
+        return Task.FromResult(new UpstreamCatalog(versions, described));
     }
 
     /// <summary>Matches on the id, which is all the real galleries are asked for in these tests.</summary>
@@ -105,32 +135,6 @@ public sealed class StubUpstreamClient : IUpstreamClient
             .ToList();
 
         return Task.FromResult(hits);
-    }
-
-    /// <summary>
-    /// What this upstream "publishes" about each version. Tagged the way a PowerShell gallery tags a
-    /// module, because those tags are what a client reads to decide a version can run at all.
-    /// </summary>
-    public Task<IReadOnlyList<UpstreamMetadata>> GetMetadataAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
-    {
-        FailIfAsked();
-
-        IReadOnlyList<UpstreamMetadata> described = packages.TryGetValue(idLower, out var versions)
-            ? versions.Keys.Select(v => new UpstreamMetadata(
-                NuGetVersion.Parse(v),
-                "Described by the stub upstream.",
-                "Stub summary.",
-                idLower,
-                "stub-author",
-                "PSModule PSEdition_Desktop",
-                "",
-                "",
-                "",
-                new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
-                7)).ToList()
-            : [];
-
-        return Task.FromResult(described);
     }
 
     public Task<Stream?> OpenPackageAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken)

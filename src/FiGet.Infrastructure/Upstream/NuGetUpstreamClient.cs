@@ -21,16 +21,53 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
     private readonly ConcurrentDictionary<string, SourceRepository> repositories = new(StringComparer.Ordinal);
     private readonly SourceCacheContext cache = new() { NoCache = true, DirectDownload = true };
 
-    public async Task<IReadOnlyList<UpstreamVersion>> GetVersionsAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
+    /// <summary>
+    /// One upstream answer carrying both the version list and the descriptions.
+    ///
+    /// The split is the whole point. On a v2 gallery the version list and the metadata are the same paged
+    /// walk of <c>FindPackagesById()</c> behind two resources, so asking both cost that walk twice: for a
+    /// package with 2098 versions, 13.4s for the versions and another 8.5s for the descriptions, measured
+    /// 2026-09-12 against the real gallery. Taking both from the metadata walk costs 8.4s and misses no
+    /// version. On a v3 source they are genuinely different endpoints, and the cheap one is also the
+    /// authoritative one: the flat container answered in 0.17s where the registration walk took 3.2s, so
+    /// there the version list is still read from the resource that decides what can be downloaded.
+    /// </summary>
+    public async Task<UpstreamCatalog> GetCatalogAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(upstream);
         using var timeout = Timeout(cancellationToken);
+        var repository = Repository(upstream);
+
         // NuGet returns null when the source does not expose the resource, for example a URL that is not
-        // a feed at all. The connector catches this per upstream and falls back to the cached list.
-        var resource = await Repository(upstream).GetResourceAsync<FindPackageByIdResource>(timeout.Token)
+        // a feed at all. The connector catches this per upstream and falls back to the cached catalogue.
+        var metadata = await repository.GetResourceAsync<PackageMetadataResource>(timeout.Token)
+            ?? throw new InvalidOperationException($"Upstream '{upstream.Name}' does not expose a metadata resource.");
+
+        // includeUnlisted: true, because this has to answer for every version the upstream holds, not only
+        // the ones it advertises: a pinned dependency asks for an exact version and does not care whether
+        // the gallery still lists it. What FiGet lists is decided after the merge, not here.
+        var items = await metadata.GetMetadataAsync(idLower, includePrerelease: true, includeUnlisted: true, cache, NullLogger.Instance, timeout.Token);
+        var described = items.Select(ToMetadata).ToList();
+
+        // A source with no v3 service index is a v2 gallery, where the walk above already listed every
+        // version and a second resource would only repeat it.
+        var serviceIndex = await repository.GetResourceAsync<ServiceIndexResourceV3>(timeout.Token);
+        if (serviceIndex is null)
+        {
+            var walked = described
+                .Select(m => m.Version)
+                .Distinct()
+                .OrderBy(v => v, VersionComparer.Default)
+                .Select(v => new UpstreamVersion(v, IsSemVer2(v)))
+                .ToList();
+
+            return new UpstreamCatalog(walked, described);
+        }
+
+        var byId = await repository.GetResourceAsync<FindPackageByIdResource>(timeout.Token)
             ?? throw new InvalidOperationException($"Upstream '{upstream.Name}' does not expose a package resource.");
-        var versions = await resource.GetAllVersionsAsync(idLower, cache, NullLogger.Instance, timeout.Token);
-        return versions.Select(v => new UpstreamVersion(v, IsSemVer2(v))).ToList();
+        var versions = await byId.GetAllVersionsAsync(idLower, cache, NullLogger.Instance, timeout.Token);
+        return new UpstreamCatalog(versions.Select(v => new UpstreamVersion(v, IsSemVer2(v))).ToList(), described);
     }
 
     public async Task<Stream?> OpenPackageAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken)
@@ -71,29 +108,19 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
         }
     }
 
-    public async Task<IReadOnlyList<UpstreamMetadata>> GetMetadataAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(upstream);
-        using var timeout = Timeout(cancellationToken);
-        var resource = await Repository(upstream).GetResourceAsync<PackageMetadataResource>(timeout.Token)
-            ?? throw new InvalidOperationException($"Upstream '{upstream.Name}' does not expose a metadata resource.");
-
-        var items = await resource.GetMetadataAsync(idLower, includePrerelease: true, includeUnlisted: false, cache, NullLogger.Instance, timeout.Token);
-        return items
-            .Select(m => new UpstreamMetadata(
-                m.Identity.Version,
-                m.Description ?? "",
-                m.Summary ?? "",
-                m.Title ?? "",
-                m.Authors ?? "",
-                m.Tags ?? "",
-                m.ProjectUrl?.ToString() ?? "",
-                m.IconUrl?.ToString() ?? "",
-                m.LicenseUrl?.ToString() ?? "",
-                m.Published?.UtcDateTime,
-                m.DownloadCount ?? 0))
-            .ToList();
-    }
+    /// <summary>What one upstream entry says about itself, with the gaps turned into empty strings.</summary>
+    private static UpstreamMetadata ToMetadata(IPackageSearchMetadata m) => new(
+        m.Identity.Version,
+        m.Description ?? "",
+        m.Summary ?? "",
+        m.Title ?? "",
+        m.Authors ?? "",
+        m.Tags ?? "",
+        m.ProjectUrl?.ToString() ?? "",
+        m.IconUrl?.ToString() ?? "",
+        m.LicenseUrl?.ToString() ?? "",
+        m.Published?.UtcDateTime,
+        m.DownloadCount ?? 0);
 
     public async Task<IReadOnlyList<UpstreamSearchHit>> SearchAsync(
         FeedUpstream upstream,

@@ -45,14 +45,13 @@ public sealed class ConnectorService(
                 continue;
             }
 
-            var (versions, answered) = await VersionsAsync(upstream, idLower, cancellationToken);
+            // One call for both: the versions and what the upstream says about them, so an uncached
+            // version is listed with its real description, authors and tags instead of blanks.
+            var (catalog, answered) = await CatalogAsync(upstream, idLower, cancellationToken);
             authoritative |= answered;
+            var described = ByVersion(catalog.Described);
 
-            // What the upstream says about each version, so an uncached one is listed with its real
-            // description, authors and tags instead of blanks.
-            var described = await DescribeAsync(upstream, idLower, cancellationToken);
-
-            foreach (var version in versions)
+            foreach (var version in catalog.Versions)
             {
                 offered.Add(version.Version.ToNormalizedString());
                 var row = Placeholder(idLower, version);
@@ -274,28 +273,9 @@ public sealed class ConnectorService(
         };
     }
 
-    /// <summary>
-    /// The upstream's metadata for one id, by normalised version. Cached for the same time as the version
-    /// list, and never allowed to fail a request: a listing with plain rows beats no listing at all.
-    /// </summary>
-    private async Task<Dictionary<string, UpstreamMetadata>> DescribeAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
+    /// <summary>The upstream's metadata by normalised version, so a placeholder row can be filled in.</summary>
+    private static Dictionary<string, UpstreamMetadata> ByVersion(IReadOnlyList<UpstreamMetadata> items)
     {
-        var now = time.GetUtcNow().UtcDateTime;
-        var items = metadataCache.Get(upstream.Key, idLower, now, settings.UpstreamIndexTtl);
-        if (items is null)
-        {
-            try
-            {
-                items = await client.GetMetadataAsync(upstream, idLower, cancellationToken);
-                metadataCache.Set(upstream.Key, idLower, items, now);
-            }
-            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-            {
-                logger.LogWarning(ex, "Upstream {Upstream} did not describe {Id}; versions are listed without details.", upstream.Name, idLower);
-                items = [];
-            }
-        }
-
         var byVersion = new Dictionary<string, UpstreamMetadata>(StringComparer.OrdinalIgnoreCase);
         foreach (var item in items)
         {
@@ -355,34 +335,44 @@ public sealed class ConnectorService(
     }
 
     /// <summary>
-    /// The upstream's versions, and whether they are a real answer. A list served after a failure is the
-    /// last known one, which is good enough to answer a client but not good enough to conclude that
-    /// anything missing from it was withdrawn.
+    /// The upstream's catalogue for one id, and whether it is a real answer. A catalogue served after a
+    /// failure is the last known one, which is good enough to answer a client but not good enough to
+    /// conclude that anything missing from it was withdrawn.
+    ///
+    /// Versions and descriptions are fetched and cached together because on a v2 gallery they are the same
+    /// paged walk: fetching them separately paid for it twice, which was most of the twenty-three seconds
+    /// a two-thousand-version package took to render (docs/status.md, 2026-09-12).
     /// </summary>
-    private async Task<(IReadOnlyList<UpstreamVersion> Versions, bool Authoritative)> VersionsAsync(
+    private async Task<(UpstreamCatalog Catalog, bool Authoritative)> CatalogAsync(
         FeedUpstream upstream,
         string idLower,
         CancellationToken cancellationToken)
     {
         var now = time.GetUtcNow().UtcDateTime;
         var cached = await index.FindAsync(upstream.Key, idLower, cancellationToken);
-        if (cached is not null && now - cached.FetchedUtc < settings.UpstreamIndexTtl)
+        var describedCache = metadataCache.Get(upstream.Key, idLower, now, settings.UpstreamIndexTtl);
+
+        // Both halves have to be cached before the cache can answer. The version list is in the database
+        // and the descriptions are in memory, so after a restart the list is fresh and the descriptions
+        // are gone, and a listing of blank rows would be the visible result of taking only the first.
+        if (cached is not null && now - cached.FetchedUtc < settings.UpstreamIndexTtl && describedCache is not null)
         {
-            return (Parse(cached), !cached.Stale);
+            return (new UpstreamCatalog(Parse(cached), describedCache), !cached.Stale);
         }
 
         try
         {
-            var versions = await client.GetVersionsAsync(upstream, idLower, cancellationToken);
-            await index.SaveAsync(upstream.Key, idLower, versions, stale: false, now, cancellationToken);
-            return (versions, true);
+            var catalog = await client.GetCatalogAsync(upstream, idLower, cancellationToken);
+            await index.SaveAsync(upstream.Key, idLower, catalog.Versions, stale: false, now, cancellationToken);
+            metadataCache.Set(upstream.Key, idLower, catalog.Described, now);
+            return (catalog, true);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             // A timeout lands here too, which is why the answer is "not authoritative": a version missing
             // from a list we never received must not be mistaken for a version withdrawn upstream.
             logger.LogWarning(ex, "Upstream {Upstream} did not answer for {Id}; serving the last known list.", upstream.Name, idLower);
-            return (cached is null ? [] : Parse(cached), false);
+            return (new UpstreamCatalog(cached is null ? [] : Parse(cached), describedCache ?? []), false);
         }
     }
 

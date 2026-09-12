@@ -30,28 +30,41 @@ public sealed record UpstreamMetadata(
     long Downloads);
 
 /// <summary>
+/// One upstream's answer for one package id: every version it holds, and what it published about the
+/// versions it described in the same breath.
+///
+/// The two travel together because on a v2 gallery they come from the same paged walk of
+/// <c>FindPackagesById()</c>, so asking for them separately pays for that walk twice. A v3 source answers
+/// versions from a cheap index and descriptions from a dearer one. Which of those happened is the
+/// adapter's business; the connector only needs both answers.
+/// </summary>
+/// <param name="Versions">Every version the upstream holds, including ones it does not advertise.</param>
+/// <param name="Described">
+/// What the upstream published about them. May cover fewer versions than <paramref name="Versions"/>, or
+/// none at all: a version with nothing said about it is listed with blanks rather than not listed.
+/// </param>
+public sealed record UpstreamCatalog(
+    IReadOnlyList<UpstreamVersion> Versions,
+    IReadOnlyList<UpstreamMetadata> Described);
+
+/// <summary>
 /// Talks to one upstream feed. Implemented over NuGet's own client library, so both v2 and v3 upstreams
 /// work without FiGet re-implementing either protocol as a client.
 /// </summary>
 public interface IUpstreamClient
 {
     /// <summary>
-    /// Every version the upstream knows for the id, or an empty list when it knows none.
-    /// Throws when the upstream cannot be reached, so the caller can serve the last known list instead.
+    /// Everything the upstream knows about one id: its versions, and what it publishes about them. An
+    /// empty catalogue means the upstream answered and knows no such package. Throws when it cannot be
+    /// reached, so the caller can serve the last known catalogue instead.
     /// </summary>
-    Task<IReadOnlyList<UpstreamVersion>> GetVersionsAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken);
+    Task<UpstreamCatalog> GetCatalogAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken);
 
     /// <summary>
     /// Opens the nupkg for one exact version, or null when the upstream does not have it. Exact versions
     /// matter: a meta-package pins its dependencies, so "only the latest" would break installs.
     /// </summary>
     Task<Stream?> OpenPackageAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken);
-
-    /// <summary>
-    /// What the upstream publishes about every version of one id. Used to describe versions nobody has
-    /// downloaded yet, so a listing shows the real description, authors and tags rather than blanks.
-    /// </summary>
-    Task<IReadOnlyList<UpstreamMetadata>> GetMetadataAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken);
 
     /// <summary>
     /// Searches the upstream, so a package nobody has cached yet can still be found. Throws when the

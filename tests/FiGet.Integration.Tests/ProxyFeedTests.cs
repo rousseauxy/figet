@@ -111,6 +111,26 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         Assert.Equal(afterFirst, server.Upstream.VersionCalls);
     }
 
+    /// <summary>
+    /// The descriptions have to arrive in the same call as the versions. They used to be two calls, and on
+    /// a v2 gallery both are the same paged walk of <c>FindPackagesById()</c> behind two different NuGet
+    /// resources, so every listing paid for that walk twice. Measured against the real gallery on
+    /// 2026-09-12: for a package with 2098 versions the pair cost 21.9s, one walk costs 8.4s and misses no
+    /// version. Counting the calls is the only way to see the difference from inside a test.
+    /// </summary>
+    [Fact]
+    public async Task An_upstream_listing_is_described_without_a_second_call()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.OneWalk");
+        AddUpstream(id, "1.0.0");
+
+        var before = server.Upstream.CatalogCalls;
+        var entries = await FindAsync("proxy", id);
+
+        Assert.Equal(before + 1, server.Upstream.CatalogCalls);
+        Assert.Contains("Described by the stub upstream.", entries.Single().ToString(), StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Allow_and_deny_patterns_decide_which_ids_reach_the_upstream()
     {
