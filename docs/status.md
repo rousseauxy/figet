@@ -991,3 +991,74 @@ Four guesses died on the evidence, each worth recording:
 **Not verified in a browser**, because there is none here; the diagnosis rests on reading rather than
 observation. It is falsifiable: a reload should keep the choice, following a link should now keep it too,
 and an anonymous reader was never affected. If a reload also loses the choice, this is wrong.
+
+## The catalogue outlives the request now, and the 101 MB that came with it — 2026-09-12
+
+The top backlog item: stop refetching a stale catalogue in front of the reader. Measured on the live
+instance, `PnP.PowerShell`, the versions tab:
+
+| | before | after |
+|---|---|---|
+| first view after a container restart | 15.02s | **0.40s** |
+| view once the refresh has landed | 15.02s | **0.65s** |
+| recurring cost every five minutes | 13-15s | none |
+
+Anything cached is served at once, whatever its age; a catalogue past the window is queued for a refresh
+the request does not wait for; only a package nothing is known about still blocks, which is its first view
+and never again. `UpstreamIndexTtl` keeps its name, key and default and now means "refresh after this"
+rather than "expire after this".
+
+The queue is a channel with an in-flight set, so eight readers of the same stale package cause one walk,
+and the worker takes its own scope because the request that asked for it is long gone.
+
+### And then it took the page down
+
+The same change persisted the descriptions alongside the version list, so they would survive a restart.
+That shipped, and `PnP.PowerShell` began answering **500**: `OutOfMemoryException` in
+`ParseDescribed`, deserialising the column it had just written, inside a container capped at 1 GB.
+
+The numbers say why, and they were measured only after the fact:
+
+```
+pnp.powershell   versions: 31,894 chars    metadata: 101,305,359 chars
+dbatools                                   metadata:  30,579,150
+52 rows                                    metadata total: 141 MB
+```
+
+**The estimate written into the commit that shipped it was "somewhere around a megabyte". It was 101 MB,
+about a hundred times out.** A PowerShell gallery writes one `PSCommand_*` tag per exported command, on
+every version; PnP exports hundreds, and there are 2098 versions. The version list is the cheap half by
+three orders of magnitude.
+
+Holding those objects was never the problem - the in-memory cache had done it for weeks. The round trip
+was: the column text, the serialiser's rented buffer and the object graph all live at once.
+
+### What was done
+
+Rolled the deployment back to the previous commit first, which restored service at the old speed (15.02s,
+correct) while the fix was written. The migration had been purely additive, so the older code simply
+ignored the extra column.
+
+Then: the in-memory cache restored, the column dropped, and stale-while-revalidate kept - because it was
+always the *version list* that blocked the request, and that is 31 KB. After a restart the descriptions
+are gone and rows list plainly until the refresh lands behind the page. Verified live: the first view
+shows 2098 undescribed versions in 0.40s, the next shows the 37 the gallery advertises in 0.65s.
+
+### The part worth keeping
+
+**CI passed the commit that broke production**, green in 2m15s, because every catalogue test used one to
+three versions. A hundred-megabyte round trip is invisible at that scale. The suite now stands a package
+up at a realistic weight - four hundred versions carrying twenty kilobytes of tags each - and exercises
+the cached path, which is the one that threw.
+
+### Reclaiming the space, and a second misread
+
+Dropping the column left the file at 142 MB, and a `VACUUM` reported success without changing a byte. The
+first reading - "the vacuum did not work" - was wrong, and the pragmas said so: `page_count` 127 at
+`page_size` 4096 is **508 KB of actual content, with zero free pages**. The vacuum had worked. The file
+was 141 MB of untruncated tail, because in WAL mode SQLite cannot shrink the main file while a connection
+holds it open, and the application had one.
+
+Stopping the container, vacuuming through `journal_mode=DELETE`, and starting it again took the file from
+142,032,896 to **520,192 bytes** - exactly the 127 pages reported. Twice in one episode the number on the
+outside disagreed with the number inside, and both times the pragmas settled it faster than reasoning did.

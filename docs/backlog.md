@@ -9,25 +9,22 @@ Ordered roughly by when it is likely to be worth doing, not by importance.
 
 ## Next
 
-### Keep the upstream catalogue long enough to matter
+### Let the descriptions survive a restart
 
-The two-walk defect is fixed (docs/status.md, "The 23-second page was two walks, not one describe"), which
-took the upstream calls behind a cold `PnP.PowerShell` page from 21.9s to 8.4s. The remaining 8.4s is the
-walk itself: 2098 versions out of a v2 gallery, which has no versions-only endpoint to be cheap about.
+Stale-while-revalidate is done (docs/status.md, "The catalogue outlives the request now"): the version list
+lives in the database, anything cached is served at once whatever its age, and a stale catalogue refreshes
+behind the request. A cold `PnP.PowerShell` page went from 15.02s to 0.40s, and the recurring 13-15s every
+five minutes is gone.
 
-It cannot be made smaller from this side, so it has to be paid less often. Today it is paid every five
-minutes per package: `UpstreamIndexTtl` defaults to five minutes, and the descriptions live in a singleton
-that empties on every restart and is shared with no other replica.
+What is still in memory is the *descriptions*, and that is deliberate after one attempt at the obvious:
+persisting them took the page down with an `OutOfMemoryException`, because describing PnP's 2098 versions
+is 101 MB against 31 KB of version strings. So after a restart the first view of each package lists plainly
+until the refresh lands - correct and instant, just undetailed for a few seconds.
 
-Two changes, in this order:
-
-1. **Serve the cached catalogue while refreshing behind the request.** A version list five minutes old is a
-   fine answer; blocking a page for eight seconds to avoid it is not. Only the first ever view of a package
-   should wait. The care it needs is real: fire-and-forget work in a request wants its own scope, its own
-   cancellation, and de-duplication, so twenty readers do not start twenty walks of the same package.
-2. **Put the descriptions in the database beside the version list**, where the version list already is.
-   That survives a restart and is shared between replicas, neither of which is true today. Needs a
-   migration, which is why it is second.
+Making that survive properly needs the volume reduced first, not the storage changed, which is why the item
+below is now the interesting one: a listing renders ten rows and a page of the full list renders fifty, and
+those are the only descriptions anyone sees. Storing what is rendered is kilobytes. Storing everything is
+not.
 
 ### Ask upstreams only for what the caller will serve
 
