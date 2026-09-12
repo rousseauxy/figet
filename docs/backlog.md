@@ -21,15 +21,20 @@ Raised 2026-09-12. Today there is one signed-in role, and `TokenScopes` (Read, P
 what a *token* may do rather than what a *person* may do. The proposal: a super admin above admin, both
 able to create tokens, with only the super admin able to revoke or delete them.
 
-Worth settling before it is built, because the obvious implementation does not actually restrict
-anything: **an admin who can create tokens can create an admin token**, use it, and delete whatever they
-like. "Admins cannot delete tokens" only means something if token creation is itself capped — nobody may
-mint a token carrying more than they hold. That rule is the feature; the menu item is the easy part.
+**Settled 2026-09-12: only a super admin may issue admin or super-admin tokens.** An admin may still
+create read, push and delete tokens; it is the top two levels that are reserved. This is the rule that
+makes the rest work, because the obvious version restricts nothing — an admin who can create *any* token
+can create an **admin** token, sign in with it, and delete whatever they like. Generalised: nobody may
+mint a token carrying more than they hold. That ceiling is the feature; the menu item is the easy part.
 
-This also wants settling against the identity model rather than the token model. Build plan section 8
-already has Reader / Publisher / FeedAdmin / Admin coming from an OIDC group claim, so a fifth tier
-should be defined there and not bolted onto the scope flags, or the two will disagree the moment sign-in
-stops being "paste an admin token".
+**This has to survive SSO, and SSO does not solve it.** Build plan section 8 has Reader / Publisher /
+FeedAdmin / Admin arriving from an OIDC group claim, so the fifth tier belongs there and not bolted onto
+the `TokenScopes` flags, or the two disagree the moment sign-in stops being "paste an admin token". Note
+what moves and what does not: with SSO, *who is an admin* becomes the identity provider's answer, so
+granting the admin role leaves FiGet entirely and becomes group management in the IdP. What does **not**
+move is the ceiling on minting — a signed-in admin still issues API tokens from inside FiGet, and
+nothing in the group claim stops them issuing one above their own level. The check belongs in the token
+service regardless of where the role came from.
 
 ### Sortable columns on the package grid
 
@@ -45,6 +50,30 @@ caching anything first. FiGet already lists upstream versions and describes them
 tags), but the Dependencies tab is empty until the package is here. NuGet's metadata resource returns
 `DependencySets` in the same call already being made for the description, so this is plumbing
 `UpstreamMetadata` through to the placeholder rows rather than new network traffic.
+
+### Pull should cache the dependency closure, not one package
+
+Raised 2026-09-12. **Pull is currently the only path that does not leave a working offline copy.**
+`EnsureCachedAsync` fetches exactly one `(id, version)`, so pulling `Microsoft.Graph` from the UI caches
+one nupkg — and the air-gapped machine the pull was *for* then fails on first install.
+
+A client install already gets this right, and not because FiGet is clever: the client resolves the graph
+itself and asks for each id separately, which trips look-through per package. The phase 0 recording
+proves it — `tests/fixtures/powershellget-2.2.5/meta-save-module-old-version.json` contains **39
+downloads for one `Save-Module`**: `Microsoft.Graph` 2.30.0 and 38 sub-modules, every one pinned to
+2.30.0. So the closure gets cached when a client does it, and does not when the UI does it.
+
+Four things to decide before building it, none of them obvious:
+
+- **Dependencies are only known after the package is here**, because they are read from its nuspec. So
+  this is a walk — pull, read, resolve, pull again — not a lookup, and it wants a visible result saying
+  what it fetched.
+- **Resolving a range to a version** is a real rule, not a guess: NuGet takes the lowest version that
+  satisfies the range. Getting this wrong quietly caches something nobody will ask for.
+- **A cap.** Microsoft.Graph is 39 packages and hundreds of megabytes; something with a looser range
+  could be far worse. Depth and count limits, and a refusal that explains itself.
+- **Which framework group.** A .NET package has dependency groups per target framework and following
+  all of them explodes; a PowerShell module has one flat set, which is the case that matters first.
 
 ## Soon
 
