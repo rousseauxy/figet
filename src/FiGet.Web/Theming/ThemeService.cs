@@ -51,8 +51,14 @@ public sealed class ThemeService : IThemeService
         ArgumentNullException.ThrowIfNull(environment);
         ArgumentNullException.ThrowIfNull(configuration);
         this.logger = logger;
-        directory = configuration["FiGet:Theming:Path"]
-            ?? Path.Combine(environment.WebRootPath ?? "wwwroot", "themes");
+        // Empty means "not set". Every key in appsettings.json is listed with an empty default so the
+        // shape is discoverable, and `??` only falls back on null — which resolved this to "" in the
+        // container and quietly loaded no packs at all, while every local run, with the key absent
+        // entirely, worked. An empty string is the normal way to say "leave it alone" here.
+        var configured = configuration["FiGet:Theming:Path"];
+        directory = string.IsNullOrWhiteSpace(configured)
+            ? Path.Combine(environment.WebRootPath ?? "wwwroot", "themes")
+            : configured;
         Reload();
     }
 
