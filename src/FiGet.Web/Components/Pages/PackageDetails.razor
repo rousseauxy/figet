@@ -1,5 +1,5 @@
 @page "/feeds/{Name}/packages/{Id}"
-@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@using System.Security.Claims
 @using FiGet.Core.Versions
 @inject IFeedStore Feeds
 @inject IPackageStore Packages
@@ -88,6 +88,12 @@ Install-PSResource -Name @package.Id -Version @latest.NormalizedVersion -Reposit
     protected override async Task OnInitializedAsync()
     {
         feed = await Feeds.FindAsync(Name, HttpContext.RequestAborted);
+        if (feed is not null && !feed.AnonymousRead && !HttpContext.User.HasClaim(ClaimTypes.Role, "admin"))
+        {
+            // Same rule as the feed page: a feed that needs credentials is not confirmed to exist either.
+            feed = null;
+        }
+
         package = feed is null ? null : await Packages.GetPackageAsync(feed.Key, Id.ToLowerInvariant(), includeDependencies: false, HttpContext.RequestAborted);
         if (feed is null || package is null || package.Versions.Count == 0)
         {

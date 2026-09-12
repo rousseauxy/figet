@@ -1,5 +1,5 @@
 @page "/feeds/{Name}"
-@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@using System.Security.Claims
 @using FiGet.Core.Connectors
 @using FiGet.Core.Search
 @using FiGet.Core.Versions
@@ -12,7 +12,10 @@
 @if (feed is null)
 {
     <h1>Feed not found</h1>
-    <p>There is no feed named <code>@Name</code>. <a href="/">Back to feeds</a>.</p>
+    <p>
+        There is no feed named <code>@Name</code>, or it cannot be read without signing in.
+        <a href="/">Back to feeds</a>.
+    </p>
     return;
 }
 
@@ -20,7 +23,10 @@
 <p class="muted url-cell">
     v3 source: <code>@SourceUrl</code>
     <button type="button" class="copy" data-copy="@SourceUrl" title="Copy this URL" aria-label="Copy the v3 source URL">Copy</button>
-    <a href="/feeds/@feed.Name/settings">Settings</a>
+    @if (IsAdmin)
+    {
+        <a href="/feeds/@feed.Name/settings">Settings</a>
+    }
 </p>
 
 <form method="get" class="search">
@@ -118,6 +124,9 @@
 
     private string SourceUrl => $"{PublicUrls.Feed(HttpContext, feed!.Name)}/v3/index.json";
 
+    /// <summary>Reading is open on a feed that allows it; the buttons need the admin claim.</summary>
+    private bool IsAdmin => HttpContext.User.HasClaim(ClaimTypes.Role, "admin");
+
     private bool IsProxy => feed!.Upstreams.Count > 0;
 
     private string Src => (Source ?? "").Trim().ToLowerInvariant();
@@ -126,6 +135,12 @@
     {
         Page = Math.Max(1, Page);
         feed = await Feeds.FindAsync(Name, HttpContext.RequestAborted);
+        if (feed is not null && !feed.AnonymousRead && !IsAdmin)
+        {
+            // A feed that needs credentials is not confirmed to exist either.
+            feed = null;
+        }
+
         if (feed is null)
         {
             HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;

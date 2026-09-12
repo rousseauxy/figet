@@ -2,18 +2,26 @@
 
 <header class="topbar">
     <a class="brand" href="/">FiGet</a>
+    <nav>
+        <a href="/">Feeds</a>
+        <AuthorizeView Policy="@FiGetApp.AdminPolicy">
+            <Authorized>
+                <a href="/tokens">Tokens</a>
+            </Authorized>
+        </AuthorizeView>
+    </nav>
     <AuthorizeView Policy="@FiGetApp.AdminPolicy">
         <Authorized>
-            <nav>
-                <a href="/">Feeds</a>
-                <a href="/tokens">Tokens</a>
-            </nav>
             <form method="post" action="/account/logout" class="logout">
                 <AntiforgeryToken />
                 <span class="muted">@context.User.Identity?.Name</span>
                 <button type="submit" class="link">Sign out</button>
             </form>
         </Authorized>
+        <NotAuthorized>
+            @* Reading is open on feeds that allow it; signing in is what adds the buttons. *@
+            <span class="logout"><a href="/account/login">Sign in</a></span>
+        </NotAuthorized>
     </AuthorizeView>
 </header>
 

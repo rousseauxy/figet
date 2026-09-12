@@ -6,17 +6,52 @@ namespace FiGet.Integration.Tests;
 
 public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFixture<SqliteServerFixture>
 {
+    /// <summary>
+    /// Reading is open, managing is not: without signing in you see the dashboard and the feeds that allow
+    /// anonymous reads, and none of the buttons. This is how the server being replaced behaves.
+    /// </summary>
     [Fact]
-    public async Task Pages_require_sign_in()
+    public async Task Reading_is_open_without_signing_in()
     {
         using var client = CreateBrowser();
 
-        foreach (var path in new[] { "/", "/tokens", "/feeds/public" })
+        var home = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/"));
+        Assert.Contains(">public<", home, StringComparison.Ordinal);
+        Assert.Contains("/account/login", home, StringComparison.Ordinal);
+
+        // A feed that needs credentials is not listed, and neither are the management controls.
+        Assert.DoesNotContain(">private<", home, StringComparison.Ordinal);
+        Assert.DoesNotContain("Create a feed", home, StringComparison.Ordinal);
+
+        // Matched on the link, not the word: a feed may legitimately be named "settings-target".
+        Assert.DoesNotContain("href=\"/tokens\"", home, StringComparison.Ordinal);
+        Assert.DoesNotContain("/settings\"", home, StringComparison.Ordinal);
+
+        var feed = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/public"));
+        Assert.DoesNotContain("/feeds/public/settings", feed, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Managing_still_requires_signing_in()
+    {
+        using var client = CreateBrowser();
+
+        foreach (var path in new[] { "/tokens", "/feeds/public/settings" })
         {
             var response = await client.GetAsync(path);
             HttpAssert.Status(HttpStatusCode.Redirect, response);
             Assert.Contains("/account/login", response.Headers.Location!.ToString(), StringComparison.Ordinal);
         }
+    }
+
+    [Fact]
+    public async Task A_feed_that_needs_credentials_is_not_browsable_anonymously()
+    {
+        using var client = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync("/feeds/private"));
+
+        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/private"));
     }
 
     [Fact]
@@ -34,6 +69,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         var feeds = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/"));
         Assert.Contains(">public<", feeds, StringComparison.Ordinal);
         Assert.Contains(">private<", feeds, StringComparison.Ordinal);
+        Assert.Contains("Create a feed", feeds, StringComparison.Ordinal);
         Assert.Contains("/nuget/public/v3/index.json", feeds, StringComparison.Ordinal);
 
         await HttpAssert.SuccessBodyAsync(await client.GetAsync("/tokens"));
