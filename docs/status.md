@@ -752,3 +752,18 @@ set, so it pads the same way; its `::deep tr[aria-hidden="true"]` rule suggests 
 settled for hiding something that was never there. Worth an entry in both backlogs once the fix here is
 proven, along with the `--no-restore` publish trap, which is a far more serious silent failure than this
 one.
+
+### Done, 2026-09-12 (commit `437fdde`)
+
+The fix above is applied and deployed. The provider now applies its own offset and no `PaginationState`
+reaches the grid, so the padding loop never runs; the pager is the same `fg-btn` one the anonymous view
+uses, and the `.fg-pager .paginator` block is gone.
+
+Verified against a published build, signed in: **1 `<tr>`** where there were 51, **0** empty padding rows,
+**0** `.paginator` elements, and `/_framework/blazor.web.js` still 200. CI green on both jobs; the running
+image matches `figet:dev`; zero error lines.
+
+**Not verified:** the replacement pager's own rendering. It is behind `@if (total > PageSize)` and no feed
+here holds more than fifty packages — upstream searches cap at fifty too — so the branch never ran. The
+markup and styling are the same ones the anonymous version list already renders with two thousand
+versions; what is untested is the `@onclick` wiring into `GoToAsync`.
