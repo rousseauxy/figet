@@ -3,6 +3,7 @@ using System.Reflection.Metadata;
 using FiGet.Application.Ports;
 using FiGet.Domain.Entities;
 using FiGet.Domain.Packages;
+using Microsoft.Extensions.Logging;
 
 namespace FiGet.Application.Packages;
 
@@ -18,7 +19,12 @@ public enum PushOutcome
 public sealed record PushResult(PushOutcome Outcome, string Message, string? Id = null, string? Version = null);
 
 /// <summary>Accepts pushed packages and symbol packages, and deletes versions.</summary>
-public sealed class PackageIngestionService(IPackageIndexer indexer, IPackageStorage storage, IPackageStore store, TimeProvider time)
+public sealed class PackageIngestionService(
+    IPackageIndexer indexer,
+    IPackageStorage storage,
+    IPackageStore store,
+    TimeProvider time,
+    ILogger<PackageIngestionService> logger)
 {
     private const string SymbolsPackageType = "SymbolsPackage";
 
@@ -188,6 +194,53 @@ public sealed class PackageIngestionService(IPackageIndexer indexer, IPackageSto
     /// <see cref="DeleteAsync"/> honours that setting, so on a feed that unlists it would only unlist
     /// again - no answer at all when the caller is looking at a version that is already unlisted.
     /// </summary>
+    /// <summary>
+    /// Forgets every copy this feed cached of one package, so it follows its upstreams again. Versions
+    /// pushed here are left alone: what somebody published to this feed is nobody else's to remove, the
+    /// same rule withdrawal reconciliation follows.
+    ///
+    /// It matters because a cached copy wins the merge. Local beats upstream by design, so one cached
+    /// version keeps being answered - and keeps being latest - however the gallery has moved on, until
+    /// somebody removes it. Nothing is lost: the next download fetches it again.
+    /// </summary>
+    /// <returns>How many versions were removed.</returns>
+    public async Task<int> UncacheAsync(Feed feed, string id, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(feed);
+        var idLower = id.ToLowerInvariant();
+        var package = await store.GetPackageAsync(feed.Key, idLower, includeDependencies: false, cancellationToken);
+        if (package is null)
+        {
+            return 0;
+        }
+
+        // Materialised first: PurgeAsync deletes rows, and the last one takes the package with it.
+        var cached = package.Versions
+            .Where(v => v.Origin == PackageOrigin.Cached)
+            .Select(v => v.NormalizedVersion)
+            .ToList();
+
+        var removed = 0;
+        foreach (var version in cached)
+        {
+            if (await PurgeAsync(feed, id, version, cancellationToken))
+            {
+                removed++;
+            }
+        }
+
+        if (removed > 0)
+        {
+            logger.LogInformation(
+                "Un-cached {Count} version(s) of {Id} from feed {Feed}; it follows its upstreams again.",
+                removed,
+                package.Id,
+                feed.Name);
+        }
+
+        return removed;
+    }
+
     public async Task<bool> PurgeAsync(Feed feed, string id, string version, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(feed);

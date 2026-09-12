@@ -77,6 +77,30 @@
                 <a class="fg-btn fg-btn-sm" href="@TabLink("versions", Page + 1)">Older →</a>
             }
         </nav>
+        @if (IsAdmin && CachedCount > 0)
+        {
+            <section class="fg-panel fg-panel-danger">
+                <h2>Cached copies</h2>
+                <p class="fg-muted fg-small">
+                    This feed holds @CachedCount version@(CachedCount == 1 ? "" : "s") of @displayId. A held
+                    copy is answered instead of the upstream, so it stays the answer - and can stay the
+                    latest - however the gallery moves on. Removing them makes this feed follow its
+                    upstreams again; nothing is lost, since the next download fetches them back.
+                    @if (versions.Any(e => e.Source == VersionSource.Local && e.Payload!.Origin == PackageOrigin.Pushed))
+                    {
+                        <text>Versions pushed to this feed are left alone.</text>
+                    }
+                </p>
+                <form method="post" action="/admin/feeds/@feed!.Name/packages/uncache">
+                    <AntiforgeryToken />
+                    <input type="hidden" name="id" value="@displayId" />
+                    <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                    <button type="submit" class="fg-btn fg-btn-danger">
+                        Un-cache @CachedCount version@(CachedCount == 1 ? "" : "s")
+                    </button>
+                </form>
+            </section>
+        }
         @if (Hidden > 0)
         {
             <p class="fg-muted">
@@ -125,6 +149,9 @@
 }
 
 @code {
+    /// <summary>Versions of this package this feed is holding a copy of, which is what un-caching removes.</summary>
+    private int CachedCount => versions.Count(e => e.Source == VersionSource.Local && e.Payload!.Origin == PackageOrigin.Cached);
+
     /// <summary>How many versions the overview shows before sending you to the full list.</summary>
     private const int RecentCount = 10;
 

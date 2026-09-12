@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
 using System.Xml.Linq;
+using FiGet.Application.Ports;
+using FiGet.Domain.Entities;
 using FiGet.Infrastructure.Persistence;
 using FiGet.Integration.Tests.Infrastructure;
 using FiGet.Testing;
@@ -446,6 +448,67 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         // And the same over v2, which asks with its own casing and must not be contradicted.
         var entries = await FindAsync("proxy", id);
         Assert.Equal(id, Property(entries.Single(), "Id"));
+    }
+
+    /// <summary>
+    /// Un-caching forgets what this feed holds of a package so it follows the gallery again, and leaves
+    /// anything pushed here alone.
+    ///
+    /// Asked for while testing: a cached copy wins the merge, so one held version keeps being answered -
+    /// and keeps being latest - however the upstream moves on, with no way to undo it short of deleting
+    /// versions one at a time. PowerShellGet 2.2.5.1 is how that looks in practice.
+    ///
+    /// Driven through the service rather than the admin button: the button is a form post behind
+    /// authentication and an antiforgery token, and the fixture that has an upstream to un-cache from is
+    /// not the one with the browser harness. What is worth pinning is which rows and files go.
+    /// </summary>
+    [Fact]
+    public async Task Un_caching_a_package_leaves_pushed_versions_and_follows_the_upstream_again()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Uncache");
+        AddUpstream(id, "1.0.0");
+        AddUpstream(id, "1.1.0");
+
+        using var client = server.CreateClient();
+        using (var mine = TestPackages.Create(id, "9.0.0"))
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("proxy", mine));
+        }
+
+        // Downloading from a proxy feed is what caches a version, so this is the state being undone.
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.0.0"));
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.1.0"));
+        Assert.Equal(2, await CountAsync(id, PackageOrigin.Cached));
+
+        var removed = await UncacheAsync(id);
+        Assert.Equal(2, removed);
+
+        // The held copies are gone; what was pushed here is untouched.
+        Assert.Equal(0, await CountAsync(id, PackageOrigin.Cached));
+        Assert.Equal(1, await CountAsync(id, PackageOrigin.Pushed));
+
+        // And the package still resolves - from the upstream now - which is the whole point of the action.
+        var entries = await FindAsync("proxy", id);
+        Assert.Contains(entries, e => Property(e, "Version") == "1.1.0");
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.0.0"));
+    }
+
+    private async Task<int> UncacheAsync(string id)
+    {
+        await using var scope = server.Services.CreateAsyncScope();
+        var feeds = scope.ServiceProvider.GetRequiredService<IFeedStore>();
+        var ingestion = scope.ServiceProvider.GetRequiredService<FiGet.Application.Packages.PackageIngestionService>();
+        var feed = await feeds.FindAsync("proxy", TestContext.Current.CancellationToken);
+        return await ingestion.UncacheAsync(feed!, id, TestContext.Current.CancellationToken);
+    }
+
+    private async Task<int> CountAsync(string id, PackageOrigin origin)
+    {
+        await using var scope = server.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<FiGetDbContext>();
+        var idLower = id.ToLowerInvariant();
+        return await db.PackageVersions
+            .CountAsync(v => v.Package!.IdLower == idLower && v.Origin == origin, TestContext.Current.CancellationToken);
     }
 
     [Fact]

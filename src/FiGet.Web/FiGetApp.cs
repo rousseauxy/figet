@@ -371,6 +371,27 @@ public static class FiGetApp
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}/unlisted");
         });
 
+        // Forget what this feed cached of one package, so it follows the gallery again. Not a delete: the
+        // versions come back on the next download, which is why one button does it rather than a typed
+        // confirmation.
+        admin.MapPost("/feeds/{feed}/packages/uncache", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            PackageIngestionService ingestion,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            var id = form["id"].ToString();
+            if (target is not null && id.Length > 0)
+            {
+                await ingestion.UncacheAsync(target, id, cancellationToken);
+            }
+
+            return Back(form["returnUrl"].ToString(), $"/feeds/{Uri.EscapeDataString(feed)}");
+        });
+
         admin.MapPost("/feeds/{feed}/upstreams/remove", async (
             string feed,
             HttpContext http,
