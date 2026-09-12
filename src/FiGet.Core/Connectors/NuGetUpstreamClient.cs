@@ -78,6 +78,38 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
         }
     }
 
+    public async Task<IReadOnlyList<UpstreamSearchHit>> SearchAsync(
+        FeedUpstream upstream,
+        string query,
+        bool includePrerelease,
+        int skip,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(upstream);
+        using var timeout = Timeout(cancellationToken);
+        var resource = await Repository(upstream).GetResourceAsync<PackageSearchResource>(timeout.Token)
+            ?? throw new InvalidOperationException($"Upstream '{upstream.Name}' does not expose a search resource.");
+
+        var results = await resource.SearchAsync(
+            query,
+            new SearchFilter(includePrerelease),
+            skip,
+            take,
+            NullLogger.Instance,
+            timeout.Token);
+
+        return results
+            .Select(r => new UpstreamSearchHit(
+                r.Identity.Id,
+                r.Identity.Version,
+                r.Description ?? "",
+                r.Authors ?? "",
+                r.Tags ?? "",
+                r.DownloadCount ?? 0))
+            .ToList();
+    }
+
     public void Dispose()
     {
         cache.Dispose();

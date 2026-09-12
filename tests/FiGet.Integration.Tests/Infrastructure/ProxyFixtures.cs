@@ -20,11 +20,14 @@ public sealed class StubUpstreamClient : IUpstreamClient
 
     private int versionCalls;
     private int downloadCalls;
+    private int searchCalls;
 
     /// <summary>How often a version list was actually fetched, as opposed to answered from the cache.</summary>
     public int VersionCalls => Volatile.Read(ref versionCalls);
 
     public int DownloadCalls => Volatile.Read(ref downloadCalls);
+
+    public int SearchCalls => Volatile.Read(ref searchCalls);
 
     /// <summary>Set when a test wants the upstream to behave as unreachable.</summary>
     public bool Fails { get; set; }
@@ -48,6 +51,37 @@ public sealed class StubUpstreamClient : IUpstreamClient
             : [];
 
         return Task.FromResult(versions);
+    }
+
+    /// <summary>Matches on the id, which is all the real galleries are asked for in these tests.</summary>
+    public Task<IReadOnlyList<UpstreamSearchHit>> SearchAsync(
+        FeedUpstream upstream,
+        string query,
+        bool includePrerelease,
+        int skip,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref searchCalls);
+        if (Fails)
+        {
+            throw new InvalidOperationException("The stub upstream is unreachable.");
+        }
+
+        IReadOnlyList<UpstreamSearchHit> hits = packages
+            .Where(p => string.IsNullOrWhiteSpace(query) || p.Key.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .Select(p => new UpstreamSearchHit(
+                p.Key,
+                p.Value.Keys.Select(NuGetVersion.Parse).OrderBy(v => v).Last(),
+                "Stub upstream package.",
+                "stub",
+                "",
+                0))
+            .Skip(skip)
+            .Take(take)
+            .ToList();
+
+        return Task.FromResult(hits);
     }
 
     public Task<Stream?> OpenPackageAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken)

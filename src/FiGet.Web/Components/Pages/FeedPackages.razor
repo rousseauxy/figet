@@ -1,9 +1,11 @@
 @page "/feeds/{Name}"
 @attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@using FiGet.Core.Connectors
 @using FiGet.Core.Search
 @using FiGet.Core.Versions
 @inject IFeedStore Feeds
 @inject IPackageStore Packages
+@inject ConnectorService Connector
 
 <PageTitle>@Name · FiGet</PageTitle>
 
@@ -23,27 +25,56 @@
 
 <form method="get" class="search">
     <input type="search" name="q" value="@Q" placeholder="Search id, title, tags, description" aria-label="Search packages" />
+    @if (IsProxy)
+    {
+        <select name="src" aria-label="Where the package comes from">
+            <option value="" selected="@(Src.Length == 0)">Everywhere</option>
+            <option value="local" selected="@(Src == "local")">Pushed here</option>
+            <option value="cached" selected="@(Src == "cached")">Cached</option>
+            <option value="upstream" selected="@(Src == "upstream")">Upstream only</option>
+        </select>
+    }
     <button type="submit">Search</button>
+    @if (Q?.Length > 0 || Src.Length > 0)
+    {
+        <a class="clear" href="/feeds/@feed.Name">Clear</a>
+    }
 </form>
 
-<p class="muted">@total package@(total == 1 ? "" : "s")@(string.IsNullOrWhiteSpace(Q) ? "" : $" matching “{Q}”").</p>
+<p class="muted">
+    @rows.Count shown@(total > rows.Count ? $" of {total}" : "")@(string.IsNullOrWhiteSpace(Q) ? "" : $" matching “{Q}”").
+    @if (IsProxy && string.IsNullOrWhiteSpace(Q))
+    {
+        <text>Browsing shows what this feed holds; search to reach the upstreams as well.</text>
+    }
+</p>
 
 @if (rows.Count > 0)
 {
     <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>Package</th><th>Latest</th><th>Versions</th><th>Downloads</th><th>Last published</th></tr>
+                <tr><th>Package</th><th>Latest</th><th>Versions</th><th>Source</th><th>Downloads</th><th>Last published</th></tr>
             </thead>
             <tbody>
                 @foreach (var row in rows)
                 {
                     <tr>
-                        <td><a href="/feeds/@feed.Name/packages/@row.Id">@row.Id</a></td>
+                        <td>
+                            @if (row.Local)
+                            {
+                                <a href="/feeds/@feed.Name/packages/@row.Id">@row.Id</a>
+                            }
+                            else
+                            {
+                                @row.Id
+                            }
+                        </td>
                         <td>@row.Latest</td>
-                        <td>@row.Versions</td>
-                        <td>@row.Downloads.ToString("N0", CultureInfo.InvariantCulture)</td>
-                        <td>@row.Published.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) UTC</td>
+                        <td>@(row.Versions > 0 ? row.Versions.ToString(CultureInfo.InvariantCulture) : "—")</td>
+                        <td><span class="badge">@row.Source</span></td>
+                        <td>@(row.Local ? row.Downloads.ToString("N0", CultureInfo.InvariantCulture) : "—")</td>
+                        <td>@(row.Published is null ? "—" : row.Published.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC")</td>
                     </tr>
                 }
             </tbody>
@@ -63,9 +94,8 @@
 }
 
 @code {
-    private string SourceUrl => $"{PublicUrls.Feed(HttpContext, feed!.Name)}/v3/index.json";
-
     private const int PageSize = 50;
+
     private Feed? feed;
     private int total;
     private List<Row> rows = [];
@@ -76,11 +106,21 @@
     [SupplyParameterFromQuery(Name = "q")]
     private string? Q { get; set; }
 
+    /// <summary>Where results may come from: empty, <c>local</c>, <c>cached</c> or <c>upstream</c>.</summary>
+    [SupplyParameterFromQuery(Name = "src")]
+    private string? Source { get; set; }
+
     [SupplyParameterFromQuery(Name = "page")]
     private int Page { get; set; }
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
+
+    private string SourceUrl => $"{PublicUrls.Feed(HttpContext, feed!.Name)}/v3/index.json";
+
+    private bool IsProxy => feed!.Upstreams.Count > 0;
+
+    private string Src => (Source ?? "").Trim().ToLowerInvariant();
 
     protected override async Task OnInitializedAsync()
     {
@@ -92,13 +132,35 @@
             return;
         }
 
+        if (Src != "upstream")
+        {
+            await AddLocalAsync();
+        }
+
+        // A proxy feed searches its upstreams too: a package nobody has cached yet must still be findable,
+        // which is what makes one feed cover both what was pushed here and what the gallery has.
+        if (IsProxy && Src != "local" && Src != "cached" && !string.IsNullOrWhiteSpace(Q))
+        {
+            await AddUpstreamAsync();
+        }
+    }
+
+    private async Task AddLocalAsync()
+    {
         var filter = new PackageSearchFilter(SearchQueryParser.Parse(Q), IncludePrerelease: true, IncludeSemVer2: true, PackageTypeLower: null);
-        var page = await Packages.SearchAsync(feed.Key, filter, (Page - 1) * PageSize, PageSize, HttpContext.RequestAborted);
+        var page = await Packages.SearchAsync(feed!.Key, filter, (Page - 1) * PageSize, PageSize, HttpContext.RequestAborted);
         total = page.TotalHits;
+
         var packages = (await Packages.GetPackagesAsync(page.PackageKeys, HttpContext.RequestAborted)).ToDictionary(p => p.Key);
         foreach (var key in page.PackageKeys)
         {
             if (!packages.TryGetValue(key, out var package))
+            {
+                continue;
+            }
+
+            var pushed = package.Versions.Any(v => v.Origin == PackageOrigin.Pushed);
+            if ((Src == "local" && !pushed) || (Src == "cached" && pushed))
             {
                 continue;
             }
@@ -109,13 +171,49 @@
                 package.Id,
                 latest.Payload!.NormalizedVersion,
                 package.Versions.Count,
+                pushed ? "Pushed here" : "Cached",
                 package.Versions.Sum(v => v.Downloads),
-                package.Versions.Max(v => v.PublishedUtc)));
+                package.Versions.Max(v => v.PublishedUtc),
+                Local: true));
         }
     }
 
-    private string PageLink(int page) =>
-        $"/feeds/{Uri.EscapeDataString(Name)}?page={page}" + (string.IsNullOrWhiteSpace(Q) ? "" : "&q=" + Uri.EscapeDataString(Q));
+    private async Task AddUpstreamAsync()
+    {
+        var known = rows.Select(r => r.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var hits = await Connector.SearchUpstreamsAsync(feed!, Q!, includePrerelease: true, PageSize, HttpContext.RequestAborted);
 
-    private sealed record Row(string Id, string Latest, int Versions, long Downloads, DateTime Published);
+        foreach (var hit in hits.Where(h => !known.Contains(h.Id)))
+        {
+            rows.Add(new Row(
+                hit.Id,
+                hit.Version.ToNormalizedString(),
+                Versions: 0,
+                "Upstream",
+                hit.Downloads,
+                Published: null,
+                Local: false));
+        }
+
+        total = Math.Max(total, rows.Count);
+    }
+
+    private string PageLink(int page)
+    {
+        var link = $"/feeds/{Uri.EscapeDataString(Name)}?page={page}";
+        if (!string.IsNullOrWhiteSpace(Q))
+        {
+            link += "&q=" + Uri.EscapeDataString(Q);
+        }
+
+        if (Src.Length > 0)
+        {
+            link += "&src=" + Uri.EscapeDataString(Src);
+        }
+
+        return link;
+    }
+
+    /// <summary>A row of the table. Upstream-only packages have no local versions, downloads or date.</summary>
+    private sealed record Row(string Id, string Latest, int Versions, string Source, long Downloads, DateTime? Published, bool Local);
 }

@@ -118,10 +118,84 @@ public sealed class ConnectorService(
     }
 
     /// <summary>
+    /// Upstream search hits as listable versions: the same placeholder rows a version listing uses, so a
+    /// protocol search can show a package that nobody has cached yet. Ids already known locally are the
+    /// caller's to filter out, because only the caller knows what it has already listed.
+    /// </summary>
+    public async Task<IReadOnlyList<(string Id, PackageVersion Version)>> SearchPlaceholdersAsync(
+        Feed feed,
+        string query,
+        bool includePrerelease,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        var hits = await SearchUpstreamsAsync(feed, query, includePrerelease, take, cancellationToken);
+        return hits.Select(hit =>
+        {
+            var row = Placeholder(hit.Id.ToLowerInvariant(), new UpstreamVersion(hit.Version, IsSemVer2: false));
+            row.Description = hit.Description;
+            row.Authors = hit.Authors;
+            row.Tags = hit.Tags;
+            row.Downloads = hit.Downloads;
+
+            // The id keeps the upstream's casing: a listing showing "microsoft.powershell.secretstore"
+            // where the gallery says "Microsoft.PowerShell.SecretStore" reads as a different package.
+            return (hit.Id, row);
+        }).ToList();
+    }
+
+    /// <summary>
     /// Metadata for a version that exists only upstream. A listing must be able to show it before anything
     /// has been downloaded, so the fields nobody can know yet stay empty and the real nuspec replaces this
     /// row the moment the package is cached. Marked as cached because that is what it will become.
     /// </summary>
+    /// <summary>
+    /// Searches every upstream of the feed, de-duplicated by id with the first upstream winning. A package
+    /// nobody has cached must still be findable, which is the whole point of putting a proxy feed in front
+    /// of a gallery. An upstream that fails is logged and skipped, so the search still answers with what
+    /// the other upstreams and the local feed hold.
+    /// </summary>
+    public async Task<IReadOnlyList<UpstreamSearchHit>> SearchUpstreamsAsync(
+        Feed feed,
+        string query,
+        bool includePrerelease,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(feed);
+        var hits = new List<UpstreamSearchHit>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var upstream in feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal))
+        {
+            if (hits.Count >= take)
+            {
+                break;
+            }
+
+            IReadOnlyList<UpstreamSearchHit> found;
+            try
+            {
+                found = await client.SearchAsync(upstream, query, includePrerelease, 0, take, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Upstream {Upstream} did not answer a search for {Query}.", upstream.Name, query);
+                continue;
+            }
+
+            foreach (var hit in found)
+            {
+                if (Allows(upstream, hit.Id.ToLowerInvariant()) && seen.Add(hit.Id))
+                {
+                    hits.Add(hit);
+                }
+            }
+        }
+
+        return hits;
+    }
+
     private static PackageVersion Placeholder(string idLower, UpstreamVersion version)
     {
         var normalized = version.Version.ToNormalizedString();

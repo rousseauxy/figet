@@ -284,7 +284,7 @@ public static class NuGetV3Endpoints
         return Results.Stream(stream, isNupkg ? "application/octet-stream" : "application/xml", enableRangeProcessing: true);
     }
 
-    private static async Task<IResult> SearchAsync(HttpContext http, string feed, IPackageStore store, CancellationToken cancellationToken)
+    private static async Task<IResult> SearchAsync(HttpContext http, string feed, IPackageStore store, ConnectorService connector, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, Core.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -342,8 +342,45 @@ public static class NuGetV3Endpoints
             });
         }
 
+        // A proxy feed searches its upstreams too, so a package nobody has cached here is still findable.
+        var term = query["q"].ToString();
+        if (request.Feed.Upstreams.Count > 0 && !string.IsNullOrWhiteSpace(term))
+        {
+            var known = data.Select(d => d.PackageId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var (upstreamId, metadata) in await connector.SearchPlaceholdersAsync(request.Feed, term, prerelease, take, cancellationToken))
+            {
+                if (!known.Add(upstreamId))
+                {
+                    continue;
+                }
+
+                var urls = new UrlSet(feedUrl, upstreamId.ToLowerInvariant());
+                data.Add(new SearchResult
+                {
+                    Id = urls.RegistrationIndex,
+                    Registration = urls.RegistrationIndex,
+                    PackageId = upstreamId,
+                    Version = FullVersion(metadata),
+                    Description = metadata.Description,
+                    Summary = metadata.Summary,
+                    Title = metadata.Title,
+                    IconUrl = metadata.IconUrl,
+                    LicenseUrl = metadata.LicenseUrl,
+                    ProjectUrl = metadata.ProjectUrl,
+                    Tags = SplitTags(metadata.Tags),
+                    Authors = SplitAuthors(metadata.Authors),
+                    TotalDownloads = metadata.Downloads,
+                    PackageTypes = SplitPackageTypes(metadata.PackageTypes).Select(t => new SearchPackageType(t)).ToList(),
+                    Versions = [new SearchVersion(FullVersion(metadata), metadata.Downloads, urls.Leaf(metadata.NormalizedVersionLower))],
+                });
+            }
+        }
+
         return Results.Json(
-            new SearchResponse(new SearchContext("http://schema.nuget.org/schema#", feedUrl + "/v3/registration/"), page.TotalHits, data),
+            new SearchResponse(
+                new SearchContext("http://schema.nuget.org/schema#", feedUrl + "/v3/registration/"),
+                Math.Max(page.TotalHits, data.Count),
+                data),
             Json);
     }
 

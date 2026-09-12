@@ -125,7 +125,7 @@ public static class NuGetV2Endpoints
     /// Free-text search. PowerShellGet puts its own syntax in searchTerm, including the leading space of
     /// " tag:x", which the shared search parser already understands.
     /// </summary>
-    private static async Task<IResult> SearchAsync(HttpContext http, string feed, IPackageStore store, ILoggerFactory loggers, CancellationToken cancellationToken)
+    private static async Task<IResult> SearchAsync(HttpContext http, string feed, IPackageStore store, ConnectorService connector, ILoggerFactory loggers, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -148,7 +148,7 @@ public static class NuGetV2Endpoints
 
         var term = Unquote(query["searchTerm"]) ?? "";
         var prerelease = Bool(query["includePrerelease"]) || (filter?.LatestOnly != true);
-        var rows = await SearchRowsAsync(store, request!.Feed.Key, term, filter, prerelease, SemVer2(query), cancellationToken);
+        var rows = await SearchRowsAsync(store, connector, request!.Feed, term, prerelease, SemVer2(query), cancellationToken);
         return Page(http, request.Feed.Name, rows, filter, order, query);
     }
 
@@ -176,7 +176,7 @@ public static class NuGetV2Endpoints
         var semVer2 = SemVer2(query);
         var rows = filter?.RequiredId is { Length: > 0 } id
             ? await RowsForIdAsync(store, connector, request!.Feed, id, semVer2, cancellationToken)
-            : await SearchRowsAsync(store, request!.Feed.Key, "", filter, includePrerelease: true, semVer2, cancellationToken);
+            : await SearchRowsAsync(store, connector, request!.Feed, "", includePrerelease: true, semVer2, cancellationToken);
 
         return Page(http, request.Feed.Name, rows, filter, order, query);
     }
@@ -374,15 +374,15 @@ public static class NuGetV2Endpoints
     /// </summary>
     private static async Task<IReadOnlyList<V2Row>> SearchRowsAsync(
         IPackageStore store,
-        int feedKey,
+        ConnectorService connector,
+        Feed feed,
         string term,
-        ODataFilter? filter,
         bool includePrerelease,
         bool includeSemVer2,
         CancellationToken cancellationToken)
     {
         var search = new PackageSearchFilter(SearchQueryParser.Parse(term), includePrerelease, includeSemVer2, null);
-        var page = await store.SearchAsync(feedKey, search, 0, MaxPackagesScanned, cancellationToken);
+        var page = await store.SearchAsync(feed.Key, search, 0, MaxPackagesScanned, cancellationToken);
         var packages = await store.GetPackagesAsync(page.PackageKeys, cancellationToken);
         var byKey = packages.ToDictionary(p => p.Key);
 
@@ -392,6 +392,28 @@ public static class NuGetV2Endpoints
             if (byKey.TryGetValue(key, out var package))
             {
                 rows.AddRange(V2Row.ForPackage(package, includeSemVer2));
+            }
+        }
+
+        // On a proxy feed a search also reaches the upstreams, so Find-Module finds a module that nobody
+        // has cached here yet. Ids already listed locally keep their local rows.
+        if (feed.Upstreams.Count > 0 && !string.IsNullOrWhiteSpace(term))
+        {
+            var known = rows.Select(r => r.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var (id, placeholder) in await connector.SearchPlaceholdersAsync(feed, term, includePrerelease, DefaultTop, cancellationToken))
+            {
+                if (known.Contains(id))
+                {
+                    continue;
+                }
+
+                var merged = VersionListBuilder.Build(
+                    [VersionListBuilder.ToCandidate(placeholder) with { Source = VersionSource.Upstream }],
+                    includeSemVer2);
+                if (merged.Count > 0)
+                {
+                    rows.Add(new V2Row(id, merged[0]));
+                }
             }
         }
 

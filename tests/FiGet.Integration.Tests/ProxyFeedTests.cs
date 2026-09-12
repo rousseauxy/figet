@@ -190,6 +190,40 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         Assert.Equal(before + 1, server.Upstream.DownloadCalls);
     }
 
+    /// <summary>
+    /// Find-Module with a name goes through Search(), so a proxy feed has to reach its upstreams there as
+    /// well. Searching only what is cached is what made the feed look empty until someone downloaded.
+    /// </summary>
+    [Fact]
+    public async Task Search_finds_a_package_that_nobody_has_cached_yet()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Search");
+        AddUpstream(id, "1.0.0");
+
+        using var client = server.CreateClient();
+        var body = await HttpAssert.SuccessBodyAsync(await client.GetAsync(
+            $"nuget/proxy/Search()?$filter=IsLatestVersion&searchTerm='{id}'&targetFramework=''&includePrerelease=false&$skip=0&$top=40"));
+
+        var entries = XDocument.Parse(body).Root!.Elements(Atom + "entry").ToList();
+        Assert.Contains(entries, e => Property(e, "Id") == id);
+
+        var v3 = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/query?q={id}"));
+        Assert.Contains(id, v3, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_denied_id_is_not_returned_by_search_either()
+    {
+        var secret = "allowed." + Guid.NewGuid().ToString("N")[..8] + ".secret";
+        AddUpstream(secret, "1.0.0");
+
+        using var client = server.CreateClient();
+        var body = await HttpAssert.SuccessBodyAsync(await client.GetAsync(
+            $"nuget/guarded/Search()?$filter=IsLatestVersion&searchTerm='{secret}'&$top=40"));
+
+        Assert.Empty(XDocument.Parse(body).Root!.Elements(Atom + "entry"));
+    }
+
     private void AddUpstream(string id, string version)
     {
         using var package = TestPackages.Create(id, version);

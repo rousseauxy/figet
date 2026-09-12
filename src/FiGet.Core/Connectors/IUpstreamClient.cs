@@ -7,6 +7,11 @@ namespace FiGet.Core.Connectors;
 public readonly record struct UpstreamVersion(NuGetVersion Version, bool IsSemVer2);
 
 /// <summary>
+/// One package an upstream's search returned. Enough to list it before anything has been downloaded.
+/// </summary>
+public sealed record UpstreamSearchHit(string Id, NuGetVersion Version, string Description, string Authors, string Tags, long Downloads);
+
+/// <summary>
 /// Talks to one upstream feed. Implemented over NuGet's own client library, so both v2 and v3 upstreams
 /// work without FiGet re-implementing either protocol as a client.
 /// </summary>
@@ -23,6 +28,12 @@ public interface IUpstreamClient
     /// matter: a meta-package pins its dependencies, so "only the latest" would break installs.
     /// </summary>
     Task<Stream?> OpenPackageAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Searches the upstream, so a package nobody has cached yet can still be found. Throws when the
+    /// upstream cannot be reached, which the caller turns into "local results only" rather than an error.
+    /// </summary>
+    Task<IReadOnlyList<UpstreamSearchHit>> SearchAsync(FeedUpstream upstream, string query, bool includePrerelease, int skip, int take, CancellationToken cancellationToken);
 }
 
 /// <summary>

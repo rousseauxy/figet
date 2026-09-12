@@ -93,7 +93,10 @@ button {
 }
 button.link { background: none; color: var(--accent); padding: 0; }
 button.danger { background: none; color: var(--danger); border: 1px solid var(--line); padding: 0.2rem 0.6rem; }
-.search { display: flex; gap: 0.5rem; max-width: 36rem; }
+.search { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; max-width: 48rem; }
+.search input[type=search] { flex: 1 1 16rem; }
+.search select { width: auto; flex: 0 0 auto; }
+.search .clear { align-self: center; font-size: 0.9rem; }
 .pager { display: flex; gap: 1rem; margin-top: 1rem; }
 .error, .validation-message { color: var(--danger); margin: 0; }
 .ok { color: var(--ok); margin: 0; }

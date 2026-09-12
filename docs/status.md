@@ -189,6 +189,7 @@ The management API and the smaller connector extras are still open.**
 | Allow and deny patterns per upstream, deny winning, with a match timeout | `ConnectorService.Allows` |
 | Upstream credentials referenced by environment variable, never stored | `FeedUpstream.CredentialRef` |
 | Feeds with upstreams declared in configuration | `FiGet:Feeds:N:Upstreams:M:*` in docs/configuration.md |
+| Search reaches the upstreams, so a package nobody has cached is still findable | `ConnectorService.SearchUpstreamsAsync`, used by v2 `Search()`, v3 `query` and the browse UI |
 
 ### Evidence
 
@@ -208,14 +209,40 @@ v3 registration and flat container showing the same merged list.
   install.
 - **A feed that names upstreams is a proxy feed**, whatever the configured kind says.
 
+### Verified against a real gallery
+
+A proxy feed in front of the PowerShell Gallery was driven on the test instance on 2026-09-12. Pester came
+back with its 144 versions, once each, with exactly one flagged latest: the case the server being replaced
+gets wrong. A version was downloaded through look-through in about a second and served from the cache in
+twenty-five milliseconds afterwards, and the cached row then carried the real hash, size and description
+rather than the listing placeholder.
+
 ### Still open in phase 3
 
 - The management API of section 4.5 (`/api/packages/{feed}/versions|latest|delete`).
-- Search on a proxy feed is still local only; fanning out is opt-in per section 5, rule 6.
 - The v3 registration page, registration leaf and catalog entry still answer from local rows, so an
   upstream-only version is complete in the index but not addressable on its own leaf.
 - Cache pruning by age or size, and the drop-folder importer.
-- **The upstream client itself is stubbed in the tests.** Nothing has yet talked to a real gallery.
+
+## Browse UI and theming — 2026-09-12
+
+Reported while using the test instance: search returned only what was cached, clearing the search box did
+not restore the list, and there was no way to tell a pushed package from a cached one.
+
+- **Search on a proxy feed now reaches the upstreams**, in the browse UI and in both protocols. Ids already
+  held locally keep their local rows, so nothing appears twice.
+- **A clear control** resets the search and the filter, instead of needing an empty search to be submitted.
+- **Where a package came from is shown and filterable**: pushed here, cached, or upstream only. One feed
+  still holds both, as on the server being replaced, but now you can tell them apart.
+- **Theme packs**: a JSON file of token overrides compiled into a stylesheet served at
+  `/themes/{name}.css` and layered after `app.css`, with an entity tag and a reload that needs no restart.
+  The token names match the design system used by the other applications here, so a pack converts
+  mechanically between them. `wwwroot/themes/graphite.json` is a worked example.
+
+Still to do: port the full design-system token set and component classes, so a pack can restyle every
+control rather than the colours the base stylesheet defines today. The themed dropdown used elsewhere is an
+interactive component, and these pages are statically rendered, so that one needs a decision before it can
+be reused.
 
 ## Phase 2: v2 OData — 2026-09-12
 
