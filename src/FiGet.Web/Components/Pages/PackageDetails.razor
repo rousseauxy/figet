@@ -81,7 +81,8 @@
         {
             <p class="fg-muted">
                 @Hidden version@(Hidden == 1 ? "" : "s") the upstream no longer advertises
-                @(Hidden == 1 ? "is" : "are") hidden. They stay installable by exact version.
+                @(Hidden == 1 ? "is" : "are") hidden. @(Hidden == 1 ? "It stays" : "They stay")
+                installable by exact version, and appear@(Hidden == 1 ? "s" : "") here once pulled.
             </p>
         }
         break;
@@ -115,7 +116,8 @@
         {
             <p class="fg-muted">
                 @Hidden version@(Hidden == 1 ? "" : "s") the upstream no longer advertises
-                @(Hidden == 1 ? "is" : "are") hidden. They stay installable by exact version.
+                @(Hidden == 1 ? "is" : "are") hidden. @(Hidden == 1 ? "It stays" : "They stay")
+                installable by exact version, and appear@(Hidden == 1 ? "s" : "") here once pulled.
             </p>
         }
 
@@ -139,10 +141,15 @@
     private IReadOnlyList<VersionListEntry<PackageVersion>> versions = [];
 
     /// <summary>
-    /// What the tables show. A version the upstream has withdrawn is hidden here the way the gallery hides
-    /// it, but only from the tables: <c>versions</c> stays whole, because the latest is computed across all
-    /// of them and an exact version must still resolve. An admin sees everything, having to be able to find
-    /// an unlisted version in order to pull, relist or delete it.
+    /// What the tables show: everything this feed holds, plus the upstream versions still advertised.
+    /// Withdrawn versions nobody here holds are gallery history — 2062 of PnP.PowerShell's 2098 — and are
+    /// left out. <c>versions</c> stays whole, because the latest is computed across all of it and an exact
+    /// version must still resolve.
+    ///
+    /// Deliberately not "an admin sees everything". A cached or pushed version stays visible whoever is
+    /// looking, unlisted or not, which is what an admin needs in order to relist or delete it; and a reader
+    /// and an admin seeing different lists makes "why did Install-Module pick that version" a question the
+    /// two of them cannot answer together.
     /// </summary>
     private IReadOnlyList<VersionListEntry<PackageVersion>> visible = [];
     private IReadOnlyList<PackageDependency> dependencies = [];
@@ -302,7 +309,7 @@
             .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream), includeSemVer2: true)
             .Where(entry => entry.Payload is not null)];
 
-        visible = IsAdmin ? versions : [.. versions.Where(entry => entry.Listed)];
+        visible = [.. versions.Where(entry => entry.Listed || entry.Source == VersionSource.Local)];
         latest = versions.Latest(includePrerelease: true) ?? versions[^1];
         shown = latest.Payload;
         dependencies = [.. shown!.Dependencies.OrderBy(dependency => dependency.Ordinal)];
