@@ -1,3 +1,4 @@
+using FiGet.Application.Connectors;
 using FiGet.Domain.Entities;
 
 namespace FiGet.Web.Configuration;
@@ -123,6 +124,17 @@ public sealed class ConnectorOptions
     /// package with hundreds of versions on a v2 gallery is a paged walk, not one request.
     /// </summary>
     public TimeSpan UpstreamTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// How many package ids one replica keeps upstream descriptions for in memory before dropping the
+    /// oldest. The descriptions are the large part - a couple of thousand versions of one module can be
+    /// a hundred megabytes of tags - and every replica holds its own copy, so this is the setting that
+    /// decides the memory a busy instance settles at. Zero or less means the default.
+    ///
+    /// Lowering it costs listings their description text until the next refresh, not their correctness:
+    /// what a client needs to resolve a package is in the database.
+    /// </summary>
+    public int MaxDescribedPackages { get; set; } = UpstreamMetadataCache.DefaultMaxPackages;
 }
 
 public sealed class AuthOptions
