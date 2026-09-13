@@ -59,6 +59,19 @@ public sealed class StubUpstreamClient : IUpstreamClient
     /// </summary>
     public bool Describes { get; set; } = true;
 
+    /// <summary>
+    /// While set, catalogue calls wait here until released. Lets a test keep a refresh in flight for as long
+    /// as it needs, so what it asserts about duplicate refreshes does not depend on how quickly one finishes.
+    /// </summary>
+    private TaskCompletionSource? catalogGate;
+
+    /// <summary>Makes catalogue calls wait until <see cref="ReleaseCatalogues"/> is called.</summary>
+    public void HoldCatalogues() =>
+        Volatile.Write(ref catalogGate, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+
+    /// <summary>Lets any waiting catalogue calls finish, and stops holding new ones.</summary>
+    public void ReleaseCatalogues() => Interlocked.Exchange(ref catalogGate, null)?.TrySetResult();
+
     /// <summary>Dependencies this upstream declares, keyed by "id|version".</summary>
     private readonly ConcurrentDictionary<string, List<UpstreamDependency>> dependencies = new(StringComparer.OrdinalIgnoreCase);
 
@@ -125,14 +138,21 @@ public sealed class StubUpstreamClient : IUpstreamClient
     /// walks one paged endpoint for both. <see cref="CatalogCalls"/> counts the walks, so a test can prove
     /// a listing costs one and not two.
     /// </summary>
-    public Task<UpstreamCatalog> GetCatalogAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
+    public async Task<UpstreamCatalog> GetCatalogAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
     {
+        // Counted on the way in, before the gate: a test holding the upstream needs to see that a caller
+        // arrived, not only that one finished.
         Interlocked.Increment(ref versionCalls);
+        if (Volatile.Read(ref catalogGate) is { } gate)
+        {
+            await gate.Task.WaitAsync(cancellationToken);
+        }
+
         FailIfAsked();
 
         if (!packages.TryGetValue(idLower, out var found))
         {
-            return Task.FromResult(new UpstreamCatalog([], []));
+            return new UpstreamCatalog([], []);
         }
 
         var versions = found.Keys
@@ -161,7 +181,7 @@ public sealed class StubUpstreamClient : IUpstreamClient
         // The spelling this upstream knows the package by, recovered from the key it was added under:
         // a real gallery answers a lower-cased request with its own casing, and so must this.
         var casedId = packages.Keys.FirstOrDefault(k => k.Equals(idLower, StringComparison.OrdinalIgnoreCase)) ?? idLower;
-        return Task.FromResult(new UpstreamCatalog(versions, Describes ? described : [], casedId));
+        return new UpstreamCatalog(versions, Describes ? described : [], casedId);
     }
 
     /// <summary>Matches on the id, which is all the real galleries are asked for in these tests.</summary>

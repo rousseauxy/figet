@@ -77,6 +77,17 @@ public sealed class StaleCatalogueTests(StaleCatalogueFixture server) : IClassFi
     /// Readers arriving together cause one walk, not one each. Without collapsing duplicates, a package
     /// that goes stale while twenty people are looking at it would queue twenty identical fetches of the
     /// same several megabytes.
+    ///
+    /// The first version of this test raced and sometimes failed, because it measured the wrong thing. With
+    /// a zero window every read is stale, and the queue promises one refresh *in flight at a time* - not one
+    /// per burst. So if the refresh finished while readers were still arriving, a later one rightly started
+    /// another, and under a loaded machine a third. It allowed two.
+    ///
+    /// Holding the upstream keeps the refresh from finishing mid-burst, so every duplicate lands while one is
+    /// in flight. Counting while held would prove nothing, though: the refresh loop takes one item at a time,
+    /// so even with collapsing broken the other seven would wait in the queue and never reach the upstream.
+    /// The difference shows only once released - one queued refresh runs once, eight run eight times - so
+    /// that is where this asserts, after letting the queue drain.
     /// </summary>
     [Fact]
     public async Task Readers_of_the_same_stale_catalogue_cause_one_refresh()
@@ -84,22 +95,35 @@ public sealed class StaleCatalogueTests(StaleCatalogueFixture server) : IClassFi
         var id = FiGetServerFixture.UniqueId("Stale.Once");
         AddUpstream(id, "1.0.0");
 
+        // First view: nothing cached, so this one fetches and waits.
         await FindAsync(id);
         var afterFirst = server.Upstream.CatalogCalls;
 
-        await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => FindAsync(id)));
-
-        // The refresh is out of band, so it is waited for rather than assumed - bounded, because a test
-        // that hangs on a broken queue tells nobody anything.
-        var deadline = DateTime.UtcNow.AddSeconds(20);
-        while (server.Upstream.CatalogCalls == afterFirst && DateTime.UtcNow < deadline)
+        server.Upstream.HoldCatalogues();
+        try
         {
-            await Task.Delay(100);
+            // Every reader is answered from the stale catalogue at once, and each asks for a refresh.
+            await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => FindAsync(id)));
+
+            // Wait for the refresh to reach the upstream, bounded so a broken queue fails rather than hangs.
+            var deadline = DateTime.UtcNow.AddSeconds(20);
+            while (server.Upstream.CatalogCalls == afterFirst && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(50);
+            }
+
+            Assert.Equal(afterFirst + 1, server.Upstream.CatalogCalls);
+        }
+        finally
+        {
+            server.Upstream.ReleaseCatalogues();
         }
 
-        var refreshes = server.Upstream.CatalogCalls - afterFirst;
-        Assert.True(refreshes >= 1, "the stale catalogue was never refreshed behind the request");
-        Assert.True(refreshes <= 2, $"eight readers caused {refreshes} refreshes; duplicates are not being collapsed");
+        // Let the queue drain. Waiting longer can only expose duplicates, never invent them: nothing else is
+        // queued when collapsing works, so the count cannot rise.
+        await Task.Delay(1000);
+
+        Assert.Equal(afterFirst + 1, server.Upstream.CatalogCalls);
     }
 
     /// <summary>
