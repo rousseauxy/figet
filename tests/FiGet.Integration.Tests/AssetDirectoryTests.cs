@@ -74,6 +74,25 @@ public abstract partial class AssetDirectoryTests
         Assert.Equal("bytes", response.Headers.AcceptRanges.Single());
     }
 
+    /// <summary>
+    /// Found fetching a package from the gallery's CDN, which labels files <c>binary/octet-stream</c>: that
+    /// says as little as <c>application/octet-stream</c> does, so the extension decides for both.
+    /// </summary>
+    [Theory]
+    [InlineData("application/octet-stream")]
+    [InlineData("binary/octet-stream")]
+    public async Task A_content_type_that_says_nothing_lets_the_extension_decide(string sent)
+    {
+        using var admin = server.CreateClient(FiGetServerFixture.AdminToken);
+        using var body = new ByteArrayContent([1, 2, 3]);
+        body.Headers.ContentType = new MediaTypeHeaderValue(sent);
+        var path = $"endpoints/files/content/{Unique()}/bundle.zip";
+        HttpAssert.Status(HttpStatusCode.Created, await admin.PutAsync(path, body));
+
+        using var response = await admin.GetAsync(path);
+        Assert.Equal("application/x-zip-compressed", response.Content.Headers.ContentType?.MediaType);
+    }
+
     [Fact]
     public async Task Put_never_replaces_post_does_and_patch_needs_something_to_replace()
     {

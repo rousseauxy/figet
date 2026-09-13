@@ -16,7 +16,8 @@ public static class AssetContentTypes
     /// Two sent types are ignored on purpose. <c>application/x-www-form-urlencoded</c> is what curl labels
     /// <c>--data-binary</c> with by default, so honouring it would serve every file uploaded the documented
     /// way as a web form. <c>application/octet-stream</c> is what a client sends when it does not know, and
-    /// the extension usually does.
+    /// the extension usually does - as is <c>binary/octet-stream</c>, a non-standard spelling of the same
+    /// shrug that some storage services and CDNs serve, and that a file fetched by URL arrives with.
     /// </summary>
     public static string Resolve(string? sent, string fileName)
     {
@@ -24,6 +25,7 @@ public static class AssetContentTypes
             && parsed.MediaType.HasValue
             && !parsed.MediaType.Equals("application/x-www-form-urlencoded", StringComparison.OrdinalIgnoreCase)
             && !parsed.MediaType.Equals(Fallback, StringComparison.OrdinalIgnoreCase)
+            && !parsed.MediaType.Equals("binary/octet-stream", StringComparison.OrdinalIgnoreCase)
             && !parsed.MediaType.StartsWith("multipart/", StringComparison.OrdinalIgnoreCase))
         {
             return parsed.ToString();
