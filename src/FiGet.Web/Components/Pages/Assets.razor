@@ -1,0 +1,71 @@
+@page "/assets"
+@using System.Security.Claims
+@inject IFeedStore Feeds
+
+<PageTitle>Assets · FiGet</PageTitle>
+
+@* The asset directories, apart from the package feeds. Both are feeds underneath - they share tokens and
+   settings - but a reader looking for an installer and a reader looking for a module are after different
+   things, reach them through different URLs and clients, and a single list mixing both served neither. *@
+
+<div class="fg-page-head">
+    <h1>Assets</h1>
+    <span class="fg-muted fg-small">@directories.Count director@(directories.Count == 1 ? "y" : "ies")</span>
+</div>
+
+@if (directories.Count == 0)
+{
+    <p class="fg-empty">
+        @(IsAdmin ? "No asset directories yet." : "No asset directory on this server is readable without signing in.")
+    </p>
+}
+else
+{
+    <div class="fg-table-wrap">
+        <table class="fg-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Read</th>
+                    <th>Download URL</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var directory in directories)
+                {
+                    var url = $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(directory.Name)}/content/";
+                    <tr>
+                        <td><a href="/assets/@directory.Name">@directory.Name</a></td>
+                        <td>@(directory.AnonymousRead ? "Anonymous" : "Token")</td>
+                        <td>
+                            <div class="fg-url">
+                                <code>@url</code>
+                                <button type="button" class="fg-copy" data-copy="@url" title="Copy this URL" aria-label="Copy the download URL of @directory.Name">Copy</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (IsAdmin)
+{
+    <p class="fg-result-count">Asset directories are created in the <a href="/admin/feeds">admin area</a>, as a feed that holds files.</p>
+}
+
+@code {
+    private IReadOnlyList<Feed> directories = [];
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private bool IsAdmin => HttpContext.User.HasClaim(ClaimTypes.Role, "admin");
+
+    protected override async Task OnInitializedAsync()
+    {
+        var all = await Feeds.ListAsync(HttpContext.RequestAborted);
+        directories = all.Where(f => f.Kind == FeedKind.Assets && (IsAdmin || f.AnonymousRead)).ToList();
+    }
+}

@@ -1,0 +1,45 @@
+@page "/assets/{Name}"
+@using System.Security.Claims
+@inject IFeedStore Feeds
+@inject Microsoft.Extensions.Options.IOptions<UploadOptions> Upload
+
+@if (directory is null)
+{
+    <PageTitle>Not found · FiGet</PageTitle>
+    <h1>Asset directory not found</h1>
+    <p class="fg-muted">
+        There is no asset directory named <code>@Name</code>, or it cannot be read without signing in.
+        <a href="/assets">Back to assets</a>.
+    </p>
+    return;
+}
+
+<PageTitle>@directory.Name · FiGet</PageTitle>
+<AssetBrowser Feed="directory" Path="@Folder" IsAdmin="IsAdmin" MaxAssetBytes="Upload.Value.MaxAssetSizeBytes" />
+
+@code {
+    private Feed? directory;
+
+    [Parameter]
+    public string Name { get; set; } = "";
+
+    [SupplyParameterFromQuery(Name = "path")]
+    private string? Folder { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private bool IsAdmin => HttpContext.User.HasClaim(ClaimTypes.Role, "admin");
+
+    protected override async Task OnInitializedAsync()
+    {
+        var feed = await Feeds.FindAsync(Name, HttpContext.RequestAborted);
+
+        // A package feed is not an asset directory, and one that needs credentials is not confirmed to exist.
+        directory = feed is { Kind: FeedKind.Assets } && (feed.AnonymousRead || IsAdmin) ? feed : null;
+        if (directory is null)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+        }
+    }
+}

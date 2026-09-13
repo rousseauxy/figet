@@ -79,6 +79,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         var all = await Feeds.ListAsync(HttpContext.RequestAborted);
-        feeds = IsAdmin ? all : all.Where(f => f.AnonymousRead).ToList();
+        // Asset directories have their own page; this one is the package feeds.
+        feeds = all.Where(f => f.Kind != FeedKind.Assets && (IsAdmin || f.AnonymousRead)).ToList();
     }
 }

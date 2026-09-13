@@ -539,7 +539,7 @@ public static class FiGetApp
             var form = await http.Request.ReadFormAsync(cancellationToken);
             var target = await feeds.FindAsync(directory, cancellationToken);
             var returnUrl = form["returnUrl"].ToString();
-            var fallback = $"/feeds/{Uri.EscapeDataString(directory)}";
+            var fallback = $"/assets/{Uri.EscapeDataString(directory)}";
             var url = form["url"].ToString().Trim();
             var name = form["name"].ToString().Trim();
             if (name.Length == 0 && Uri.TryCreate(url, UriKind.Absolute, out var parsedUrl))
@@ -619,7 +619,7 @@ public static class FiGetApp
                 audit.Record(http, "asset.folder.create", folder.Value, $"directory={target.Name}");
             }
 
-            return Back(form["returnUrl"].ToString(), $"/feeds/{Uri.EscapeDataString(directory)}");
+            return Back(form["returnUrl"].ToString(), $"/assets/{Uri.EscapeDataString(directory)}");
         });
 
         admin.MapPost("/assets/{directory}/delete", async (
@@ -640,7 +640,7 @@ public static class FiGetApp
                 audit.Record(http, "asset.delete", path.Value, $"directory={target.Name} recursive=True");
             }
 
-            return Back(form["returnUrl"].ToString(), $"/feeds/{Uri.EscapeDataString(directory)}");
+            return Back(form["returnUrl"].ToString(), $"/assets/{Uri.EscapeDataString(directory)}");
         });
 
         admin.MapPost("/feeds/{feed}/upstreams/remove", async (

@@ -242,7 +242,7 @@ public abstract partial class AssetTransferTests
 
         using var browser = CreateBrowser();
         HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(browser, FiGetServerFixture.AdminToken));
-        var page = await HttpAssert.SuccessBodyAsync(await browser.GetAsync($"feeds/files?path={folder}"));
+        var page = await HttpAssert.SuccessBodyAsync(await browser.GetAsync($"assets/files?path={folder}"));
         var token = WebUtility.HtmlDecode(UploadToken().Match(page).Groups["value"].Value);
 
         using (var import = new HttpRequestMessage(HttpMethod.Post, $"admin/assets/files/import?format=zip&path={folder}") { Content = new ByteArrayContent(Zip(("page.txt", "from the page"))) })
@@ -253,7 +253,7 @@ public abstract partial class AssetTransferTests
 
         Assert.Equal(["page.txt"], await ZipEntriesAsync(browser, $"admin/assets/files/export?format=zip&path={folder}"));
 
-        var fetchForm = FormElement().Matches(await HttpAssert.SuccessBodyAsync(await browser.GetAsync($"feeds/files?path={folder}")))
+        var fetchForm = FormElement().Matches(await HttpAssert.SuccessBodyAsync(await browser.GetAsync($"assets/files?path={folder}")))
             .Single(f => f.Value.Contains("/fetch\"", StringComparison.Ordinal)).Value;
         var fields = HiddenInput().Matches(fetchForm).ToDictionary(m => WebUtility.HtmlDecode(m.Groups["name"].Value), m => WebUtility.HtmlDecode(m.Groups["value"].Value));
         fields["url"] = new Uri(server.BaseAddress, $"endpoints/files/content/{folder}/page.txt").ToString();

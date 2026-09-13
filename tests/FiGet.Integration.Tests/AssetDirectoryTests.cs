@@ -372,13 +372,34 @@ public abstract partial class AssetDirectoryTests
         HttpAssert.Status(HttpStatusCode.Created, await admin.PutAsync($"endpoints/files/content/{folder}/listed.msi", new ByteArrayContent([1])));
 
         using var anonymous = server.CreateClient();
-        var page = await HttpAssert.SuccessBodyAsync(await anonymous.GetAsync($"feeds/files?path={folder}"));
+        var page = await HttpAssert.SuccessBodyAsync(await anonymous.GetAsync($"assets/files?path={folder}"));
 
         Assert.Contains($"/endpoints/files/content/{folder}/listed.msi", page, StringComparison.Ordinal);
         Assert.DoesNotContain("data-asset-upload", page, StringComparison.Ordinal);
 
         // A directory that needs a token is not confirmed to exist to a stranger.
-        HttpAssert.Status(HttpStatusCode.NotFound, await anonymous.GetAsync("feeds/vault"));
+        HttpAssert.Status(HttpStatusCode.NotFound, await anonymous.GetAsync("assets/vault"));
+    }
+
+    /// <summary>
+    /// Asset directories have their own list and their own address; the feed list and the feed pages are
+    /// package feeds only, the same split the protocol endpoints make.
+    /// </summary>
+    [Fact]
+    public async Task Asset_directories_are_listed_under_assets_and_not_among_the_feeds()
+    {
+        using var anonymous = server.CreateClient();
+        var assets = await HttpAssert.SuccessBodyAsync(await anonymous.GetAsync("assets"));
+        Assert.Contains("href=\"/assets/files\"", assets, StringComparison.Ordinal);
+        Assert.DoesNotContain("href=\"/assets/public\"", assets, StringComparison.Ordinal);
+
+        var feeds = await HttpAssert.SuccessBodyAsync(await anonymous.GetAsync("/"));
+        Assert.Contains("href=\"/feeds/public\"", feeds, StringComparison.Ordinal);
+        Assert.DoesNotContain("href=\"/feeds/files\"", feeds, StringComparison.Ordinal);
+
+        HttpAssert.Status(HttpStatusCode.NotFound, await anonymous.GetAsync("feeds/files"));
+
+        HttpAssert.Status(HttpStatusCode.NotFound, await anonymous.GetAsync("assets/public"));
     }
 
     [Fact]
@@ -395,7 +416,7 @@ public abstract partial class AssetDirectoryTests
             HttpAssert.Status(HttpStatusCode.Created, await admin.PostAsync($"endpoints/files/dir/{folder}", null));
         }
 
-        var page = await HttpAssert.SuccessBodyAsync(await browser.GetAsync($"feeds/files?path={folder}"));
+        var page = await HttpAssert.SuccessBodyAsync(await browser.GetAsync($"assets/files?path={folder}"));
         Assert.Contains("data-asset-upload", page, StringComparison.Ordinal);
         var token = UploadToken().Match(page);
         Assert.True(token.Success, "The drop zone carries no antiforgery token.");

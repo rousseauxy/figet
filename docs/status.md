@@ -1976,3 +1976,10 @@ request body at that size.
 One cosmetic finding: the gallery's CDN labels a package `binary/octet-stream`, a non-standard spelling of
 "unknown", and it was stored with that type because only `application/octet-stream` makes the extension
 decide.
+
+## Assets get their own page - 2026-09-13
+
+Asset directories moved out of the feed list into an **Assets** entry of their own in the top bar: `/assets`
+lists them and `/assets/{name}` browses one. The feed list and `/feeds/{name}` are package feeds only, and a
+feed page for an asset directory answers 404, the same split the protocol endpoints already make. No redirect
+from the old address, by choice: the pages had been live for an hour.

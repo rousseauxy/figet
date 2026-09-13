@@ -7,7 +7,7 @@
    is a link, a file is a download, and the one piece of script is the upload drop zone an admin sees. *@
 
 <p class="fg-crumbs">
-    <a href="/">Feeds</a>
+    <a href="/assets">Assets</a>
     <span class="fg-crumb-sep">/</span>
     @if (Folder.IsRoot)
     {
@@ -262,6 +262,6 @@ else
 
     private string FolderLink(AssetPath folder) =>
         folder.IsRoot
-            ? $"/feeds/{Uri.EscapeDataString(Feed.Name)}"
-            : $"/feeds/{Uri.EscapeDataString(Feed.Name)}?path={Uri.EscapeDataString(folder.Value)}";
+            ? $"/assets/{Uri.EscapeDataString(Feed.Name)}"
+            : $"/assets/{Uri.EscapeDataString(Feed.Name)}?path={Uri.EscapeDataString(folder.Value)}";
 }
