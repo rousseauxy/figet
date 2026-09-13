@@ -74,6 +74,24 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
         return new UpstreamCatalog(versions.Select(v => new UpstreamVersion(v, IsSemVer2(v))).ToList(), described, casedId);
     }
 
+    public async Task<IReadOnlyList<UpstreamVersion>?> GetVersionsAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(upstream);
+        using var timeout = Timeout(cancellationToken);
+        var repository = Repository(upstream);
+
+        // No service index is a v2 gallery, where there is no cheaper call than the catalogue itself.
+        if (await repository.GetResourceAsync<ServiceIndexResourceV3>(timeout.Token) is null)
+        {
+            return null;
+        }
+
+        var byId = await repository.GetResourceAsync<FindPackageByIdResource>(timeout.Token)
+            ?? throw new InvalidOperationException($"Upstream '{upstream.Name}' does not expose a package resource.");
+        var versions = await byId.GetAllVersionsAsync(idLower, cache, NullLogger.Instance, timeout.Token);
+        return versions.Select(v => new UpstreamVersion(v, IsSemVer2(v))).ToList();
+    }
+
     public async Task<Stream?> OpenPackageAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(upstream);

@@ -677,6 +677,67 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         Assert.False(await db.CachedUpstreamTagSets.AnyAsync(t => t.Hash == hash && !db.CachedUpstreamDescriptions.Any(d => d.TagSetHash == t.Hash), TestContext.Current.CancellationToken));
     }
 
+    /// <summary>
+    /// The v3 flat container needs version numbers and nothing else, so against an upstream that can list versions on
+    /// their own it does not wait for the catalogue: with every catalogue call held, the list still comes back. The
+    /// full description is queued behind it and arrives once released.
+    /// </summary>
+    [Fact]
+    public async Task The_flat_container_asks_a_v3_upstream_for_versions_alone()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.VersionsOnly");
+        var idLower = id.ToLowerInvariant();
+        AddUpstream(id, "1.0.0");
+        AddUpstream(id, "2.0.0");
+
+        server.Upstream.AnswersVersionsOnly = true;
+        server.Upstream.HoldCatalogues();
+        try
+        {
+            using var client = server.CreateClient();
+            var before = server.Upstream.VersionsOnlyCalls;
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var body = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(
+                await client.GetAsync($"nuget/proxy/v3/flatcontainer/{idLower}/index.json", cancel.Token)))!;
+
+            Assert.Equal(["1.0.0", "2.0.0"], body["versions"]!.AsArray().Select(v => (string?)v));
+            Assert.Equal(before + 1, server.Upstream.VersionsOnlyCalls);
+        }
+        finally
+        {
+            server.Upstream.ReleaseCatalogues();
+            server.Upstream.AnswersVersionsOnly = false;
+        }
+
+        // The queued refresh describes it, so a listing that needs descriptions has them.
+        for (var attempt = 0; attempt < 50 && Property((await FindAsync("proxy", id))[0], "Description").Length == 0; attempt++)
+        {
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal("Described by the stub upstream.", Property((await FindAsync("proxy", id))[0], "Description"));
+    }
+
+    /// <summary>A registration needs the facts, so it never takes the versions-only path, even where it is available.</summary>
+    [Fact]
+    public async Task A_registration_still_reads_the_full_catalogue()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.NotVersionsOnly");
+        AddUpstream(id, "1.0.0");
+        server.Upstream.AnswersVersionsOnly = true;
+        try
+        {
+            var before = server.Upstream.VersionsOnlyCalls;
+            using var client = server.CreateClient();
+            await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/registration/{id.ToLowerInvariant()}/index.json"));
+            Assert.Equal(before, server.Upstream.VersionsOnlyCalls);
+        }
+        finally
+        {
+            server.Upstream.AnswersVersionsOnly = false;
+        }
+    }
+
     private void AddSecondUpstream(string id, string version)
     {
         using var package = TestPackages.Create(id, version);

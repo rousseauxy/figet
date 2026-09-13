@@ -99,6 +99,14 @@ public interface IUpstreamClient
     Task<Stream?> OpenPackageAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Only the versions of one id, when the upstream can answer that more cheaply than the full catalogue - a v3
+    /// source's flat container, 0.17 s where describing the same versions took 3.2 s. Null when it cannot: on a v2
+    /// gallery the versions come from the same paged walk as the descriptions, and asking for them alone costs more.
+    /// Throws when the upstream cannot be reached.
+    /// </summary>
+    Task<IReadOnlyList<UpstreamVersion>?> GetVersionsAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Searches the upstream, so a package nobody has cached yet can still be found. Throws when the
     /// upstream cannot be reached, which the caller turns into "local results only" rather than an error.
     /// </summary>

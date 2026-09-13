@@ -33,7 +33,13 @@ public sealed class ConnectorService(
     /// A cached list is used while it is fresh; a failing upstream falls back to its last known list and
     /// is logged, because answering from a slightly old list beats failing a client's install.
     /// </summary>
-    public async Task<UpstreamCandidates> UpstreamCandidatesAsync(Feed feed, string idLower, CancellationToken cancellationToken)
+    /// <param name="versionsOnly">
+    /// For a caller that serves version numbers and nothing else - the v3 flat container. It never reads whether a
+    /// version is listed or what it depends on, so the upstream need not describe anything for it: a v3 upstream is
+    /// asked for versions alone, and stored descriptions are not loaded. Every other caller reads those facts and must
+    /// leave this false (docs/backlog.md has why it is not the default).
+    /// </param>
+    public async Task<UpstreamCandidates> UpstreamCandidatesAsync(Feed feed, string idLower, CancellationToken cancellationToken, bool versionsOnly = false)
     {
         ArgumentNullException.ThrowIfNull(feed);
         if (await ServedLocallyAsync(feed, idLower, cancellationToken))
@@ -64,7 +70,7 @@ public sealed class ConnectorService(
 
             // One call for both: the versions and what the upstream says about them, so an uncached
             // version is listed with its real description, authors and tags instead of blanks.
-            var (catalog, answered, cached) = await CatalogAsync(upstream, idLower, cancellationToken);
+            var (catalog, answered, cached) = await CatalogAsync(upstream, idLower, cancellationToken, versionsOnly);
             authoritative |= answered;
             var described = ByVersion(catalog.Described);
 
@@ -635,7 +641,8 @@ public sealed class ConnectorService(
     private async Task<(UpstreamCatalog Catalog, bool Authoritative, CachedUpstreamCatalog? Remembered)> CatalogAsync(
         FeedUpstream upstream,
         string idLower,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool versionsOnly = false)
     {
         var now = time.GetUtcNow().UtcDateTime;
         var cached = await index.FindAsync(upstream.Key, idLower, cancellationToken);
@@ -656,7 +663,7 @@ public sealed class ConnectorService(
             // order things are written in: descriptions are saved right after the catalogue row's facts, in the same
             // call, so a package with stored descriptions had its facts written too. A catalogue row the facts
             // migration left blank has no descriptions stored, loads nothing here, and keeps its "no news" meaning.
-            if (described.Count == 0)
+            if (described.Count == 0 && !versionsOnly)
             {
                 described = await descriptions.LoadAsync(
                     upstream.Key,
@@ -683,6 +690,16 @@ public sealed class ConnectorService(
 
         try
         {
+            // Versions alone where that is cheaper, with the full description queued behind the request rather than
+            // waited for. Stored exactly as a catalogue that described nothing is - the facts stay "no news" - so
+            // nothing downstream can mistake the missing descriptions for "nothing hidden".
+            if (versionsOnly && await client.GetVersionsAsync(upstream, idLower, cancellationToken) is { } versions)
+            {
+                await index.SaveAsync(upstream.Key, idLower, "", versions, [], stale: false, now, cancellationToken);
+                refreshes.Enqueue(upstream, idLower);
+                return (new UpstreamCatalog(versions, []), true, null);
+            }
+
             var catalog = await client.GetCatalogAsync(upstream, idLower, cancellationToken);
             await index.SaveAsync(upstream.Key, idLower, catalog.Id, catalog.Versions, catalog.Described, stale: false, now, cancellationToken);
             await descriptions.SaveAsync(upstream.Key, idLower, catalog.Described, cancellationToken);

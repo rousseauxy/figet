@@ -242,7 +242,7 @@ public static class NuGetV3Endpoints
             return error;
         }
 
-        var (_, list) = await MergedAsync(store, connector, request!.Feed, id, includeDependencies: false, cancellationToken);
+        var (_, list) = await MergedAsync(store, connector, request!.Feed, id, includeDependencies: false, cancellationToken, versionsOnly: true);
         if (list.Count == 0)
         {
             return Results.NotFound();
@@ -610,7 +610,8 @@ public static class NuGetV3Endpoints
         Domain.Entities.Feed feed,
         string id,
         bool includeDependencies,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool versionsOnly = false)
     {
         var idLower = id.ToLowerInvariant();
         if (feed.Upstreams.Count == 0)
@@ -623,7 +624,7 @@ public static class NuGetV3Endpoints
 
         // Upstreams first: that refresh unlists cached copies the upstream has withdrawn, and the local
         // rows have to be read after it to reflect that in this same response.
-        var upstream = await connector.UpstreamCandidatesAsync(feed, idLower, cancellationToken);
+        var upstream = await connector.UpstreamCandidatesAsync(feed, idLower, cancellationToken, versionsOnly);
         var package = await store.GetPackageAsync(feed.Key, idLower, includeDependencies, cancellationToken);
 
         // A registration URL is lower-cased by convention, so `id` here is "powershellget" however the

@@ -35,6 +35,32 @@ public sealed class StubUpstreamClient : IUpstreamClient
 
     public int SearchCalls => Volatile.Read(ref searchCalls);
 
+    private int versionsOnlyCalls;
+
+    /// <summary>How often the versions-only call was answered.</summary>
+    public int VersionsOnlyCalls => Volatile.Read(ref versionsOnlyCalls);
+
+    /// <summary>
+    /// Whether this upstream answers the versions-only call, the way a v3 source does. Off by default, which is how a
+    /// v2 gallery behaves: every listing then comes from the full catalogue.
+    /// </summary>
+    public bool AnswersVersionsOnly { get; set; }
+
+    public Task<IReadOnlyList<UpstreamVersion>?> GetVersionsAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
+    {
+        FailIfAsked();
+        if (!AnswersVersionsOnly)
+        {
+            return Task.FromResult<IReadOnlyList<UpstreamVersion>?>(null);
+        }
+
+        Interlocked.Increment(ref versionsOnlyCalls);
+        IReadOnlyList<UpstreamVersion> versions = packages.TryGetValue(idLower, out var found)
+            ? found.Keys.Select(v => new UpstreamVersion(NuGetVersion.Parse(v), IsSemVer2: false)).ToList()
+            : [];
+        return Task.FromResult<IReadOnlyList<UpstreamVersion>?>(versions);
+    }
+
     /// <summary>Set when a test wants the upstream to behave as unreachable.</summary>
     public bool Fails { get; set; }
 
@@ -244,6 +270,9 @@ public sealed class RoutingUpstreamClient(StubUpstreamClient fallback, IReadOnly
 
     public Task<Stream?> OpenPackageAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken) =>
         For(upstream).OpenPackageAsync(upstream, idLower, version, cancellationToken);
+
+    public Task<IReadOnlyList<UpstreamVersion>?> GetVersionsAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken) =>
+        For(upstream).GetVersionsAsync(upstream, idLower, cancellationToken);
 }
 
 /// <summary>
