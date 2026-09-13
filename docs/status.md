@@ -1751,3 +1751,24 @@ version is a text prefix of a longer sibling.
 The misdirection came from real evidence each time. What finally separated cause from coincidence was a
 test built to fail differently under each explanation - two listed versions - rather than another
 observation that fitted them all.
+
+### Correction: the phone clipping outside tables was the camera, not the page
+
+The section above says the feed page's header URL, search bar and "shown of" line run past the right edge
+on a phone. That was wrong, and the measurement behind it was wrong in a way worth knowing.
+
+Chrome's headless mode now drives a real browser window, and a real window has a minimum width - about 500
+px. Asking for `--window-size=390` laid every "phone" page out at roughly 489 px and then cropped the
+screenshot to 390, so anything between 390 and 489 looked cut off. It was cropped, not overflowing. The clue
+was a script reporting `document.documentElement.clientWidth` as 489 on a page asked for at 390.
+
+Re-measured at a genuine 390 px, by loading each page inside an iframe exactly that wide, with a script
+reporting any element whose right edge passes the viewport while its parent's does not:
+
+    home   viewport 390   tallest row 73 px   nothing sticks out
+    feed   viewport 375   tallest row 74 px   nothing sticks out   (375: a vertical scrollbar)
+
+So the search bar, header URL and result count fit. And the table fix is now confirmed at a true phone width
+- the tallest row is 73 px where it was about a thousand - which needs saying, because its earlier check
+went through the same cropped window. Long ids breaking mid-word is real and unaffected: that concerns where
+text wraps, not how wide the page is.

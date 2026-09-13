@@ -33,6 +33,21 @@ tags left out - not the single blob that failed.
 
 ### Ask upstreams only for what the caller will serve
 
+**Read this first - its premise changed on 2026-09-13.** Descriptions are no longer cosmetic. The `listed`
+flag and each version's dependencies now come from the same described call, and both change what a client
+is told: skipping them brings back a first install that pulls in no dependencies, and hidden versions that
+look current. Those two facts are also persisted now, but a versions-only fetch would stop *refreshing*
+them. So "versions only" is not free for any caller that feeds a registration, a v2 entry or the
+withdrawal reconcile - which is most of them. Only the flat-container version list truly needs nothing but
+versions.
+
+It also pays off only against a **v3** upstream, and the one upstream in production is the v2 PowerShell
+Gallery, where this saves nothing. Not worth doing until a v3 upstream exists, and then only for callers that
+can prove they read neither flag.
+
+---
+
+
 Raised 2026-09-12, from the observation that a client calling the API usually needs only versions. True,
 and the shapes agree: `/v3/flatcontainer/{id}/index.json` returns a bare version array, and a registration
 index above 128 versions inlines no leaves, so neither needs a description at all.
@@ -134,16 +149,16 @@ upstream. It is the one thing the commercial server cannot answer - its guidance
 heaviest by volume and belongs with usage statistics and cache pruning, not with an audit trail. Worth
 doing; not yet decided when.
 
-### The rest of the pages on a phone
+### Break long package ids after the dots
 
-Tables were fixed on 2026-09-13 (docs/status.md, "Tables stretched down the page on a phone"). Checked at
-390 px, three things outside tables still run past the right edge on a feed's page: the v3 source URL in
-the header, the search bar with its filter, and the "shown of" line beneath it. None are table cells, so
-the table rule does not reach them.
-
-Worth doing while there: long package ids wrap at any character, so they break mid-word -
+Long package ids wrap at any character, so in a narrow column they break mid-word -
 "Microsoft.Entra.A / pplications". Breaking after the dots would read far better on a phone and on desktop
-alike, with a `<wbr>` after each dot or an equivalent.
+alike: a `<wbr>` after each dot in the rendered id, or an equivalent.
+
+An earlier version of this entry also listed the feed page's header URL, search bar and result count as
+running off the right edge on a phone. That was a measurement artefact - headless Chrome enforces a minimum
+window width and cropped a wider layout - and at a true 390 px all three fit (docs/status.md, "Correction:
+the phone clipping outside tables was the camera, not the page").
 
 ### Add our reproduction to the PSResourceGet fix
 
