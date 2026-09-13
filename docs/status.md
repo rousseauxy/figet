@@ -1894,3 +1894,20 @@ download URL with copy, the drop zone, a "new folder" disclosure, and a table of
 and delete; on the phone the table scrolls inside its wrapper like every other table. The page capture had its
 scripts removed, so the drop zone's own drag, progress and confirm-before-replace were not exercised in a
 browser; the request it sends is the one the page-upload test sends.
+
+## Pages failed under concurrent load on SQL Server - 2026-09-13
+
+Found while repeating the full suite on SQL Server: the asset browse page tests failed now and then with 500,
+never on SQLite. The server log named it: "A second operation was started on this context instance before a
+previous operation completed", thrown in `FeedPackages.OnInitializedAsync`.
+
+**Why.** Server-side rendering does not wait for a component's async initialisation before it initialises
+the components inside it. `App.razor` reads the chosen theme from the database, and the page inside reads its
+feed, both through the request's one database context - so the two queries overlapped. SQLite runs queries
+synchronously and never let them; SQL Server did. Present since the theme became an admin setting, and not
+specific to asset directories: every statically rendered page that reads the database was exposed, which on
+SQL Server - the production database - is all of them.
+
+**Fix.** The theme is read through a scope of its own. `PageRenderTests` loads the feed page and the home page
+60 times at once, on both providers. Before the fix, on SQL Server, 45, 51 and 45 of 60 loads failed in three
+runs; SQLite passed. After it, 0 of 60 three times, and the full suite passed ten runs in a row on SQL Server.

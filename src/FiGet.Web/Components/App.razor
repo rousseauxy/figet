@@ -67,18 +67,25 @@
     private Microsoft.Extensions.Options.IOptions<FiGet.Web.Configuration.FiGetOptions> Options { get; set; } = default!;
 
     [Inject]
-    private FiGet.Application.Ports.ISettingStore Settings { get; set; } = default!;
+    private IServiceScopeFactory Scopes { get; set; } = default!;
 
     private string? theme;
 
     /// <summary>
     /// A choice made in the admin area beats the configured one, so the look can change without a
     /// redeploy; configuration is what a fresh instance with no rows still answers with. One row by
-    /// primary key per render - these pages already read feeds from the same database.
+    /// primary key per render.
+    ///
+    /// Read through a scope of its own, never the request's. The renderer does not wait for this to finish
+    /// before it initialises the page inside, and the page reads the database too: sharing the request's one
+    /// context, the two queries overlapped and the page answered 500. SQLite runs queries synchronously and
+    /// never showed it; on SQL Server most concurrent page loads failed (PageRenderTests).
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
-        var stored = await Settings.GetAsync(FiGet.Domain.Entities.SettingKeys.Theme, CancellationToken.None);
+        await using var scope = Scopes.CreateAsyncScope();
+        var settings = scope.ServiceProvider.GetRequiredService<FiGet.Application.Ports.ISettingStore>();
+        var stored = await settings.GetAsync(FiGet.Domain.Entities.SettingKeys.Theme, CancellationToken.None);
         theme = string.IsNullOrWhiteSpace(stored) ? Options.Value.Theming.Theme : stored;
     }
 }
