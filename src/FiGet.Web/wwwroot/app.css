@@ -728,6 +728,11 @@ legend {
 .fg-url { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
 .fg-url code { overflow-wrap: anywhere; font-size: 0.78rem; }
 
+/* The same floor, for the same reason, where a URL sits in a table cell: it breaks at any character, so
+   without one the cell collapses to one character on a phone and stretches its row down the page. Scoped
+   to tables, because a URL shown in a narrow panel elsewhere has no such problem and no room to spare. */
+.fg-table .fg-url { min-width: 14rem; }
+
 .fg-copy {
   background: var(--inset);
   color: var(--text-2);
@@ -877,5 +882,13 @@ legend {
 /* The first column is always a name or an id, and some are very long — a fully qualified module id, or
    a version with a prerelease label. Every other cell stays on one line, but forcing this one to as well
    pushed the table past its container, which turned into a horizontal scrollbar and clipped the buttons
-   in the last column. Only this column is allowed to wrap. */
-.fg-table td:first-child { white-space: normal; overflow-wrap: anywhere; }
+   in the last column. Only this column is allowed to wrap.
+
+   It needs a floor, though. `overflow-wrap: anywhere` does not only let text wrap: it shrinks the cell's
+   minimum width to a single character, and the table's automatic layout takes that literally. On a phone
+   the columns that never wrap claimed the whole width and this one collapsed - a feed name broke into
+   "galle / ry" and each row grew roughly a thousand pixels tall around it, with the name floating in the
+   middle and the next row far off-screen. With a minimum, long ids still wrap as intended but the column
+   never falls below a readable width, and a table wider than a phone scrolls sideways inside its wrapper,
+   which is what a table of records should do there. */
+.fg-table td:first-child { white-space: normal; overflow-wrap: anywhere; min-width: 8rem; }
