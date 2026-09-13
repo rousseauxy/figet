@@ -1,0 +1,215 @@
+@page "/admin/feeds/{Name}/retention"
+@attribute [Authorize]
+@layout AdminLayout
+@inherits FeedAdminPage
+@using FiGet.Application.Packages
+@inject RetentionService Retention
+@inject FiGet.Http.AuditLog Audit
+
+<PageTitle>Retention · @Name · FiGet</PageTitle>
+
+<FeedAdminHeader Feed="Target" Name="@Name" Section="Retention and cache pruning">
+    <Lede>@RetentionIntro Leave a field empty for no rule.</Lede>
+</FeedAdminHeader>
+
+@if (Target is { } feed)
+{
+    @if (RetentionDone is { } done)
+    {
+        <div class="fg-alert fg-alert-ok" role="status">@done</div>
+    }
+    @if (saved)
+    {
+        <div class="fg-alert fg-alert-ok" role="status">Retention saved. The preview below shows what the next run removes.</div>
+    }
+
+    <section class="fg-panel">
+        <h2>Rules</h2>
+        <EditForm Model="RetentionInput!" FormName="feed-retention" OnValidSubmit="SaveRetentionAsync" method="post" class="fg-form">
+            <div class="fg-field">
+                <label for="retain-stable">Stable versions to keep per package</label>
+                <InputNumber id="retain-stable" @bind-Value="RetentionInput!.KeepStable" min="1" />
+            </div>
+            <div class="fg-field">
+                <label for="retain-prerelease">Prerelease versions to keep per package</label>
+                <InputNumber id="retain-prerelease" @bind-Value="RetentionInput!.KeepPrerelease" min="0" />
+            </div>
+            <label class="fg-check"><InputCheckbox id="retain-major" @bind-Value="RetentionInput!.PerMajorVersion" /> Count per major version (1.x keeps its own newest beside 2.x)</label>
+            <div class="fg-field">
+                <label for="retain-used">Always keep a version downloaded within (days)</label>
+                <InputNumber id="retain-used" @bind-Value="RetentionInput!.KeepIfUsedWithinDays" min="1" />
+            </div>
+            @if (feed.Upstreams.Count > 0 || feed.Kind == FeedKind.Proxy)
+            {
+                <div class="fg-field">
+                    <label for="prune-cache">Delete cached copies not downloaded for (days)</label>
+                    <InputNumber id="prune-cache" @bind-Value="RetentionInput!.PruneCachedAfterDays" min="1" />
+                </div>
+            }
+            @if (retentionError is not null)
+            {
+                <p class="fg-error">@retentionError</p>
+            }
+            <button type="submit" class="fg-btn fg-btn-primary">Save retention</button>
+        </EditForm>
+    </section>
+
+    @if (RetentionRules.Of(feed).Any)
+    {
+        <section class="fg-panel">
+            <h2>Next run</h2>
+            @if (preview.Count == 0)
+            {
+                <p class="fg-muted fg-small">Nothing to remove.</p>
+            }
+            else
+            {
+                <p class="fg-small">
+                    @preview.Count.ToString("N0", CultureInfo.InvariantCulture) version(s) would go@(PreviewBytes > 0 ? $", freeing {Display.Size(PreviewBytes)}" : "").
+                    @if (preview.Count > RetentionService.MaxRemovalsPerRun)
+                    {
+                        <span>One run removes at most @RetentionService.MaxRemovalsPerRun.ToString("N0", CultureInfo.InvariantCulture); the rest follow in the next runs.</span>
+                    }
+                </p>
+                <div class="fg-table-wrap">
+                    <table class="fg-table">
+                        <thead>
+                            <tr><th>Package</th><th>Version</th><th>Why</th><th>Last used</th><th>Size</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var removal in preview.Take(25))
+                            {
+                                <tr>
+                                    <td>@removal.Version.Id</td>
+                                    <td class="fg-num">@removal.Version.NormalizedVersion</td>
+                                    <td>@ReasonText(removal.Reason)</td>
+                                    <td class="fg-num">@removal.Version.LastUsedUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                                    <td class="fg-num">@Display.Size(removal.Version.Size)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (preview.Count > 25)
+                {
+                    <p class="fg-muted fg-small">And @((preview.Count - 25).ToString("N0", CultureInfo.InvariantCulture)) more.</p>
+                }
+                <form method="post" action="/admin/feeds/@feed.Name/retention/run" data-busy>
+                    <AntiforgeryToken />
+                    <button type="submit" class="fg-btn fg-btn-danger">Run now</button>
+                </form>
+            }
+        </section>
+    }
+}
+
+@code {
+    private IReadOnlyList<RetentionRemoval> preview = [];
+    private string? retentionError;
+    private bool saved;
+
+    [SupplyParameterFromForm(FormName = "feed-retention")]
+    private RetentionForm? RetentionInput { get; set; }
+
+    [SupplyParameterFromQuery(Name = "retention")]
+    private string? RetentionResult { get; set; }
+
+    protected override bool AppliesToAssets => false;
+
+    private long PreviewBytes => preview.Where(r => r.Reason == RetentionReason.UnusedCache || Target!.DeletionBehavior == PackageDeletionBehavior.HardDelete).Sum(r => r.Version.Size);
+
+    /// <summary>The outcome of "Run now", carried on the redirect as unlisted.deleted.pruned.bytes[.more].</summary>
+    private string? RetentionDone
+    {
+        get
+        {
+            var parts = RetentionResult?.Split('.') ?? [];
+            if (parts.Length < 4 || !parts.Take(4).All(p => long.TryParse(p, NumberStyles.None, CultureInfo.InvariantCulture, out _)))
+            {
+                return null;
+            }
+
+            var n = parts.Take(4).Select(p => long.Parse(p, CultureInfo.InvariantCulture)).ToArray();
+            return $"Retention ran: {n[0]} unlisted, {n[1]} deleted, {n[2]} cached copies pruned, {Display.Size(n[3])} freed."
+                + (parts.Length > 4 ? " More remain for the next run." : "");
+        }
+    }
+
+    private string RetentionIntro => Target is not { } feed ? "" :
+        "Checked every hour. Pushed versions beyond what is kept are "
+        + (feed.DeletionBehavior == PackageDeletionBehavior.HardDelete ? "deleted, files included" : "unlisted, as this feed's delete behaviour says")
+        + "; the newest version of a package is always kept."
+        + (feed.Upstreams.Count > 0 ? " Cached copies nobody has downloaded for the pruning period are deleted: the upstream still has them, and the next request caches one again." : "");
+
+    private static string ReasonText(RetentionReason reason) => reason switch
+    {
+        RetentionReason.OlderStable => "Older stable version",
+        RetentionReason.OlderPrerelease => "Older prerelease",
+        _ => "Cached, not downloaded",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        RetentionInput ??= Target is null ? new RetentionForm() : RetentionForm.From(Target);
+    }
+
+    private async Task LoadAsync()
+    {
+        if (await LoadFeedAsync())
+        {
+            preview = await Retention.PreviewAsync(Target!, HttpContext.RequestAborted);
+        }
+    }
+
+    private async Task SaveRetentionAsync()
+    {
+        if (Target is not { } feed)
+        {
+            return;
+        }
+
+        var rules = RetentionInput!.ToRules();
+        if (rules.Problem() is { } problem)
+        {
+            retentionError = problem;
+            return;
+        }
+
+        if (await Feeds.UpdateRetentionAsync(feed.Key, rules, HttpContext.RequestAborted))
+        {
+            Audit.Record(
+                HttpContext,
+                "feed.retention",
+                feed.Name,
+                $"keepStable={rules.KeepStable?.ToString(CultureInfo.InvariantCulture) ?? "all"} keepPrerelease={rules.KeepPrerelease?.ToString(CultureInfo.InvariantCulture) ?? "all"} perMajor={rules.PerMajorVersion} keepIfUsedDays={rules.KeepIfUsedWithinDays?.ToString(CultureInfo.InvariantCulture) ?? "-"} pruneCachedDays={rules.PruneCachedAfterDays?.ToString(CultureInfo.InvariantCulture) ?? "never"}");
+            saved = true;
+        }
+
+        await LoadAsync();
+    }
+
+    private sealed class RetentionForm
+    {
+        public int? KeepStable { get; set; }
+
+        public int? KeepPrerelease { get; set; }
+
+        public bool PerMajorVersion { get; set; }
+
+        public int? KeepIfUsedWithinDays { get; set; }
+
+        public int? PruneCachedAfterDays { get; set; }
+
+        public static RetentionForm From(Feed feed) => new()
+        {
+            KeepStable = feed.RetainStableVersions,
+            KeepPrerelease = feed.RetainPrereleaseVersions,
+            PerMajorVersion = feed.RetainPerMajorVersion,
+            KeepIfUsedWithinDays = feed.RetainIfUsedWithinDays,
+            PruneCachedAfterDays = feed.PruneCachedAfterDays,
+        };
+
+        public RetentionRules ToRules() => new(KeepStable, KeepPrerelease, PerMajorVersion, KeepIfUsedWithinDays, PruneCachedAfterDays);
+    }
+}

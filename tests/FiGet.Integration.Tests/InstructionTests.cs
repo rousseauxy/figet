@@ -47,7 +47,7 @@ public abstract partial class InstructionTests
         // A manager saves a client address and an own install command through the settings page.
         using var admin = CreateBrowser();
         HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(admin));
-        var settings = await HttpAssert.SuccessBodyAsync(await admin.GetAsync($"/admin/feeds/{feed}"));
+        var settings = await HttpAssert.SuccessBodyAsync(await admin.GetAsync($"/admin/feeds/{feed}/instructions"));
         var form = FormWith(settings, "feed-instructions");
         var fields = Hidden(form);
         fields[BrowserSignIn.InputName(form, "client-base")] = "https://packages.internal.example/";
@@ -55,7 +55,7 @@ public abstract partial class InstructionTests
         fields[TextAreaName(form, "feed-instructions")] = TextAreaValue(form, "feed-instructions");
         using (var content = new FormUrlEncodedContent(fields))
         {
-            Assert.Contains("Instructions saved.", await HttpAssert.SuccessBodyAsync(await admin.PostAsync($"/admin/feeds/{feed}", content)), StringComparison.Ordinal);
+            Assert.Contains("Instructions saved.", await HttpAssert.SuccessBodyAsync(await admin.PostAsync($"/admin/feeds/{feed}/instructions", content)), StringComparison.Ordinal);
         }
 
         await using (var scope = server.Services.CreateAsyncScope())

@@ -1,0 +1,192 @@
+@page "/admin/feeds/{Name}/name"
+@page "/admin/assets/{Name}/name"
+@attribute [Authorize]
+@layout AdminLayout
+@inherits FeedAdminPage
+@using System.ComponentModel.DataAnnotations
+@inject IPackageStorage Storage
+@inject IAssetStorage AssetStorage
+@inject NavigationManager Navigation
+@inject FiGet.Http.AuditLog Audit
+@inject Microsoft.Extensions.Options.IOptions<FiGet.Web.Configuration.FiGetOptions> Options
+
+<PageTitle>Name and deletion · @Name · FiGet</PageTitle>
+
+<FeedAdminHeader Feed="Target" Name="@Name" Section="Name and deletion" />
+
+@if (Target is { } feed)
+{
+    @if (NamingMessage is { } naming)
+    {
+        <div class="@(naming.IsError ? "fg-alert fg-alert-danger" : "fg-alert fg-alert-ok")" role="status">@naming.Text</div>
+    }
+    @if (deleteError is not null)
+    {
+        <div class="fg-alert fg-alert-danger" role="alert">@deleteError</div>
+    }
+
+    <section class="fg-panel">
+        <h2>Name</h2>
+        <p class="fg-muted fg-small">
+            Clients reach this @Noun by its name: <code>@ClientUrl</code>. Renaming changes that address. Keep the old name as an
+            alternate name and every client registered with it goes on working while it is updated; each client still using it
+            is in the audit log, and below is when it was last used.
+        </p>
+        <form method="post" action="/admin/feeds/@feed.Name/rename" class="fg-form">
+            <AntiforgeryToken />
+            <div class="fg-field">
+                <label for="rename-to">New name</label>
+                <input id="rename-to" name="name" required maxlength="64" autocomplete="off" placeholder="@feed.Name" />
+            </div>
+            <label class="fg-check"><input type="checkbox" name="keepOldName" value="true" checked /> Keep '@feed.Name' as an alternate name</label>
+            @if (IsConfigured(feed.Name))
+            {
+                <p class="fg-muted fg-small">
+                    '@feed.Name' is also listed in the server configuration (<code>FiGet:Feeds</code>), which creates it on start when it
+                    is missing. Keep the old name, or remove it from the configuration too; otherwise the next restart creates a new,
+                    empty @Noun called '@feed.Name'.
+                </p>
+            }
+            <button type="submit" class="fg-btn fg-btn-primary">Rename @Noun</button>
+        </form>
+    </section>
+
+    <section class="fg-panel">
+        <h2>Alternate names</h2>
+        @if (aliases.Count == 0)
+        {
+            <p class="fg-empty">None: this @Noun answers only to '@feed.Name'.</p>
+        }
+        else
+        {
+            <div class="fg-table-wrap">
+                <table class="fg-table">
+                    <thead>
+                        <tr><th>Name</th><th>Added</th><th>Last used by a client</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var alias in aliases)
+                        {
+                            <tr>
+                                <td>
+                                    <code>@alias.Name</code>
+                                    @if (IsConfigured(alias.Name))
+                                    {
+                                        <div class="fg-small fg-muted">Named in FiGet:Feeds: removing it creates an empty @Noun of this name at the next restart.</div>
+                                    }
+                                </td>
+                                <td class="fg-num">@alias.CreatedUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                                <td class="fg-num">@(alias.LastUsedUtc is { } used ? used.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC" : "not since it was added")</td>
+                                <td class="fg-cell-actions">
+                                    <form method="post" action="/admin/feeds/@feed.Name/aliases/remove">
+                                        <AntiforgeryToken />
+                                        <input type="hidden" name="key" value="@alias.Key" />
+                                        <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger" title="Clients still using this name get 404">Remove</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        <form method="post" action="/admin/feeds/@feed.Name/aliases/add" class="fg-form fg-form-inline">
+            <AntiforgeryToken />
+            <div class="fg-field">
+                <label for="alias-name">Add an alternate name</label>
+                <input id="alias-name" name="name" required maxlength="64" autocomplete="off" />
+            </div>
+            <button type="submit" class="fg-btn">Add alternate name</button>
+        </form>
+    </section>
+
+    <section class="fg-panel fg-panel-danger">
+        <h2>Delete this @Noun</h2>
+        <p class="fg-muted fg-small">
+            Removes the @Noun with its @versionCount.ToString("N0", CultureInfo.InvariantCulture)
+            @(IsAssets ? "file(s)" : "package version(s), their files,") and any token scoped to it.
+            This cannot be undone.
+        </p>
+        <EditForm Model="Confirm!" FormName="delete-feed" OnValidSubmit="DeleteAsync" method="post" class="fg-form">
+            <div class="fg-field">
+                <label for="confirm-name">Type the @Noun name to confirm</label>
+                <InputText id="confirm-name" @bind-Value="Confirm!.Name" autocomplete="off" placeholder="@feed.Name" />
+            </div>
+            <button type="submit" class="fg-btn fg-btn-danger">Delete @Noun</button>
+        </EditForm>
+    </section>
+}
+
+@code {
+    private int versionCount;
+    private IReadOnlyList<FeedAlias> aliases = [];
+    private string? deleteError;
+
+    [SupplyParameterFromForm(FormName = "delete-feed")]
+    private ConfirmForm? Confirm { get; set; }
+
+    /// <summary>What the last rename or alternate-name change did, carried on the redirect back here.</summary>
+    [SupplyParameterFromQuery(Name = "naming")]
+    private string? Naming { get; set; }
+
+    protected override bool AdminOnly => true;
+
+    private (string Text, bool IsError)? NamingMessage => Naming switch
+    {
+        "renamed" => ($"Renamed to '{Target!.Name}'.", false),
+        "alias-added" => ("Alternate name added.", false),
+        "alias-removed" => ("Alternate name removed. A client still using it now gets 404.", false),
+        "taken" => ("That name is already taken by a feed, an asset directory, or an alternate name of one.", true),
+        "invalid" => ("Use letters, digits, dot, dash or underscore, starting with a letter or digit (at most 64).", true),
+        "unchanged" => ($"The {Noun} is already called that.", true),
+        "gone" => ("That alternate name no longer exists.", true),
+        _ => null,
+    };
+
+    private string ClientUrl => IsAssets
+        ? $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(Target!.Name)}/content/"
+        : PublicUrls.Feed(HttpContext, Target!.Name) + "/";
+
+    /// <summary>Whether FiGet:Feeds names this, which recreates a feed of that name on start when no feed or alternate name has it.</summary>
+    private bool IsConfigured(string name) =>
+        Options.Value.Feeds.Any(seed => string.Equals(seed.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        Confirm ??= new();
+        if (await LoadFeedAsync())
+        {
+            aliases = await Feeds.ListAliasesAsync(Target!.Key, HttpContext.RequestAborted);
+            versionCount = IsAssets
+                ? await Feeds.CountAssetsAsync(Target!.Key, HttpContext.RequestAborted)
+                : await Feeds.CountVersionsAsync(Target!.Key, HttpContext.RequestAborted);
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (Target is not { } feed || !IsAdmin)
+        {
+            return;
+        }
+
+        if (!string.Equals(Confirm!.Name?.Trim(), feed.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            deleteError = $"Type '{feed.Name}' exactly to confirm the deletion.";
+            return;
+        }
+
+        // Files first: a row without files is visible and fixable, an orphaned file is neither.
+        Audit.Record(HttpContext, "feed.delete", feed.Name);
+        await Storage.DeleteFeedAsync(feed.Key, HttpContext.RequestAborted);
+        await AssetStorage.DeleteFeedAsync(feed.Key, HttpContext.RequestAborted);
+        await Feeds.DeleteAsync(feed.Key, HttpContext.RequestAborted);
+        Navigation.NavigateTo(IsAssets ? "/admin/assets" : "/admin/feeds", forceLoad: false);
+    }
+
+    private sealed class ConfirmForm
+    {
+        [Required(ErrorMessage = "Type the feed name.")]
+        public string Name { get; set; } = "";
+    }
+}

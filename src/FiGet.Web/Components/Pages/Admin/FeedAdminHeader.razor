@@ -1,0 +1,46 @@
+@* The top of every page of a feed's settings: where it sits, and its title - the feed's name on the settings page itself. *@
+
+@if (Feed is null)
+{
+    <h1>Not found</h1>
+    <p class="fg-muted">There is no feed or asset directory named <code>@Name</code> with this page that you can manage.</p>
+}
+else
+{
+    var assets = Feed.Kind == FeedKind.Assets;
+    <p class="fg-crumbs">
+        <a href="@(assets ? "/admin/assets" : "/admin/feeds")">@(assets ? "Assets" : "Feeds")</a>
+        <span class="fg-crumb-sep">/</span>
+        @if (Section is null)
+        {
+            <span>@Feed.Name</span>
+        }
+        else
+        {
+            <a href="@FeedAdminPaths.Settings(Feed)">@Feed.Name</a>
+            <span class="fg-crumb-sep">/</span>
+            <span>@Section</span>
+        }
+    </p>
+    <h1>@(Section ?? Feed.Name)</h1>
+    @if (Lede is not null)
+    {
+        <p class="fg-lede">@Lede</p>
+    }
+}
+
+@code {
+    [Parameter]
+    public Feed? Feed { get; set; }
+
+    /// <summary>The name the page was asked for, for the not-found message.</summary>
+    [Parameter]
+    public string Name { get; set; } = "";
+
+    /// <summary>The page's title; null on the settings page, whose title is the feed's name.</summary>
+    [Parameter]
+    public string? Section { get; set; }
+
+    [Parameter]
+    public RenderFragment? Lede { get; set; }
+}

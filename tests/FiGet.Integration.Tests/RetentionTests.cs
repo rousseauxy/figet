@@ -43,14 +43,14 @@ public abstract partial class RetentionTests
 
         using var admin = CreateBrowser();
         HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(admin));
-        var page = await HttpAssert.SuccessBodyAsync(await admin.GetAsync($"/admin/feeds/{feed}"));
+        var page = await HttpAssert.SuccessBodyAsync(await admin.GetAsync($"/admin/feeds/{feed}/retention"));
         Assert.Contains("2 version(s) would go", page, StringComparison.Ordinal);
 
         using (var content = new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = Antiforgery(page) }))
         {
             var ran = await admin.PostAsync($"/admin/feeds/{feed}/retention/run", content);
             HttpAssert.Status(HttpStatusCode.Redirect, ran);
-            Assert.Contains("retention=0.2.0.", ran.Headers.Location!.OriginalString, StringComparison.Ordinal);
+            Assert.StartsWith($"/admin/feeds/{feed}/retention?retention=0.2.0.", ran.Headers.Location!.OriginalString, StringComparison.Ordinal);
         }
 
         Assert.Equal(["1.2.0"], await VersionsAsync(feed, id));

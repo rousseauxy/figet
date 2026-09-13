@@ -2,46 +2,20 @@
 @page "/admin/assets/{Name}"
 @attribute [Authorize]
 @layout AdminLayout
-@using System.ComponentModel.DataAnnotations
-@using FiGet.Application.Accounts
-@using FiGet.Application.Ports
-@using FiGet.Application.Packages
-@inject RetentionService Retention
-@inject TimeProvider Time
-@inject IFeedStore Feeds
-@inject FeedAccessService Access
-@inject IFeedPermissionStore Permissions
-@inject IUserStore Users
-@inject IGroupStore Groups
-@inject IPackageStorage Storage
-@inject IAssetStorage AssetStorage
-@inject NavigationManager Navigation
+@inherits FeedAdminPage
 @inject FiGet.Http.AuditLog Audit
-@inject Microsoft.Extensions.Options.IOptions<FiGet.Web.Configuration.FiGetOptions> Options
 
 <PageTitle>@Name settings · FiGet</PageTitle>
 
-@if (feed is null)
-{
-    <h1>Feed not found</h1>
-    <p class="fg-muted">There is no feed or asset directory named <code>@Name</code> that you can manage.</p>
-}
-else
-{
-    <h1>@feed.Name</h1>
+<FeedAdminHeader Feed="Target" Name="@Name" />
 
+@if (Target is { } feed)
+{
     @if (message is not null)
     {
         <div class="@(messageIsError ? "fg-alert fg-alert-danger" : "fg-alert fg-alert-ok")">@message</div>
     }
 
-    @*
-        Stacked rather than tiled. These sections were in a grid of auto-fit minmax(21rem, 1fr), so three
-        panels of wildly unequal height sat in one row: a short Settings panel and a short Source URLs
-        panel beside a very tall Upstreams panel, leaving the danger zone orphaned far below with nothing
-        next to it. Each of these wants the full width anyway, because a source URL should not wrap
-        mid-token and a table should not scroll sideways inside a column.
-    *@
     <section class="fg-panel">
         <h2>Settings</h2>
         <EditForm Model="Settings!" FormName="feed-settings" OnValidSubmit="SaveAsync" method="post" class="fg-form">
@@ -108,617 +82,67 @@ else
     }
     else
     {
-    <section class="fg-panel">
-        <h2>Source URLs</h2>
-        <dl class="fg-facts">
-            <dt>NuGet v3</dt>
-            <dd>
-                <div class="fg-url">
-                    <code>@V3Url</code>
-                    <button type="button" class="fg-copy" data-copy="@V3Url" title="Copy this URL" aria-label="Copy the v3 source URL">Copy</button>
-                </div>
-            </dd>
-            <dt>Feed root</dt>
-            <dd>
-                <div class="fg-url">
-                    <code>@FeedUrl</code>
-                    <button type="button" class="fg-copy" data-copy="@FeedUrl" title="Copy this URL" aria-label="Copy the feed root URL">Copy</button>
-                </div>
-            </dd>
-        </dl>
-    </section>
-
-    <section class="fg-panel" id="upstreams">
-        <h2>Upstreams</h2>
-        @if (UpstreamMessage is { } upstreamMessage)
-        {
-            <div class="@(upstreamMessage.IsError ? "fg-alert fg-alert-danger" : "fg-alert fg-alert-ok")" role="status">@upstreamMessage.Text</div>
-        }
-        @if (feed.Upstreams.Count == 0)
-        {
-            <p class="fg-muted fg-small">
-                None. This feed serves only what was pushed to it. Add an upstream to also offer, and
-                cache on demand, everything another feed holds.
-            </p>
-        }
-        else
-        {
-            <div class="fg-table-wrap">
-                <table class="fg-table">
-                    <thead>
-                        <tr><th>Priority</th><th>Name</th><th>Protocol</th><th>URL</th><th></th></tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var (upstream, index) in feed.Upstreams.OrderBy(u => u.Ordinal).Select((u, i) => (u, i)))
-                        {
-                            <tr>
-                                <td class="fg-num">
-                                    <div class="fg-row fg-priority">
-                                        <span>@(index + 1)</span>
-                                        @if (feed.Upstreams.Count > 1)
-                                        {
-                                            <form method="post" action="/admin/feeds/@feed.Name/upstreams/move">
-                                                <AntiforgeryToken />
-                                                <input type="hidden" name="key" value="@upstream.Key" />
-                                                <input type="hidden" name="direction" value="up" />
-                                                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                                                <button type="submit" class="fg-btn fg-btn-sm" disabled="@(index == 0)" title="Ask this upstream earlier" aria-label="Move @upstream.Name up">↑</button>
-                                            </form>
-                                            <form method="post" action="/admin/feeds/@feed.Name/upstreams/move">
-                                                <AntiforgeryToken />
-                                                <input type="hidden" name="key" value="@upstream.Key" />
-                                                <input type="hidden" name="direction" value="down" />
-                                                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                                                <button type="submit" class="fg-btn fg-btn-sm" disabled="@(index == feed.Upstreams.Count - 1)" title="Ask this upstream later" aria-label="Move @upstream.Name down">↓</button>
-                                            </form>
-                                        }
-                                    </div>
-                                </td>
-                                <td>
-                                    @upstream.Name
-                                    @if (!upstream.Enabled)
-                                    {
-                                        <span class="fg-badge fg-badge-plain" title="Not asked until it is enabled again">disabled</span>
-                                    }
-                                </td>
-                                <td><span class="fg-badge">@upstream.Kind</span></td>
-                                <td><code>@upstream.Url</code></td>
-                                <td class="fg-cell-actions">
-                                    @if (EditingKey == upstream.Key)
-                                    {
-                                        <a class="fg-btn fg-btn-sm" href="@UpstreamsAnchor" aria-expanded="true">Close</a>
-                                    }
-                                    else
-                                    {
-                                        <a class="fg-btn fg-btn-sm" href="@EditUrl(upstream.Key.ToString(CultureInfo.InvariantCulture))" aria-expanded="false">Edit</a>
-                                    }
-                                    <form method="post" action="/admin/feeds/@feed.Name/upstreams/remove">
-                                        <AntiforgeryToken />
-                                        <input type="hidden" name="key" value="@upstream.Key" />
-                                        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                                        <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger" title="Stop using this upstream">Remove</button>
-                                    </form>
-                                </td>
-                            </tr>
-
-                            @* Inline, in a row of its own directly under the upstream, as on the goods overview of the sibling
-                               application: the row being changed stays in view. Opened by a link rather than a script, because
-                               this page is static; the fragment brings the form back into view after the reload. *@
-                            @if (EditingKey == upstream.Key)
-                            {
-                                <tr class="fg-row-panel" id="upstream-@upstream.Key">
-                                    <td colspan="5">
-                                        <UpstreamForm Feed="feed" Upstream="upstream" Error="@UpstreamError" Cancel="@UpstreamsAnchor" />
-                                    </td>
-                                </tr>
-                            }
-                        }
-                    </tbody>
-                </table>
-            </div>
-            <p class="fg-muted fg-small">
-                The first upstream that holds a package id serves it; upstreams further down are not asked about
-                that id, so two different packages that share a name are never mixed. Removing an upstream keeps the
-                packages already cached from it: they were downloaded, and something out there depends on them.
-            </p>
-        }
-
-        @if (Editing == "new")
-        {
-            <div id="upstream-new">
-                <UpstreamForm Feed="feed" Error="@UpstreamError" Cancel="@UpstreamsAnchor" />
-            </div>
-        }
-        else
-        {
-            <a class="fg-btn fg-btn-primary" href="@EditUrl("new")">Add upstream</a>
-        }
-    </section>
-    }
-
-    @if (!IsAssets)
-    {
-    <section class="fg-panel" id="retention">
-        <h2>Retention and cache pruning</h2>
-        <p class="fg-muted fg-small">
-            @RetentionIntro Leave a field empty for no rule.
-        </p>
-
-        @if (RetentionDone is { } done)
-        {
-            <div class="fg-alert fg-alert-ok" role="status">@done</div>
-        }
-
-        <EditForm Model="RetentionInput!" FormName="feed-retention" OnValidSubmit="SaveRetentionAsync" method="post" class="fg-form">
-            <div class="fg-field">
-                <label for="retain-stable">Stable versions to keep per package</label>
-                <InputNumber id="retain-stable" @bind-Value="RetentionInput!.KeepStable" min="1" />
-            </div>
-            <div class="fg-field">
-                <label for="retain-prerelease">Prerelease versions to keep per package</label>
-                <InputNumber id="retain-prerelease" @bind-Value="RetentionInput!.KeepPrerelease" min="0" />
-            </div>
-            <label class="fg-check"><InputCheckbox id="retain-major" @bind-Value="RetentionInput!.PerMajorVersion" /> Count per major version (1.x keeps its own newest beside 2.x)</label>
-            <div class="fg-field">
-                <label for="retain-used">Always keep a version downloaded within (days)</label>
-                <InputNumber id="retain-used" @bind-Value="RetentionInput!.KeepIfUsedWithinDays" min="1" />
-            </div>
-            @if (feed.Upstreams.Count > 0 || feed.Kind == FeedKind.Proxy)
-            {
-                <div class="fg-field">
-                    <label for="prune-cache">Delete cached copies not downloaded for (days)</label>
-                    <InputNumber id="prune-cache" @bind-Value="RetentionInput!.PruneCachedAfterDays" min="1" />
-                </div>
-            }
-            @if (retentionError is not null)
-            {
-                <p class="fg-error">@retentionError</p>
-            }
-            <button type="submit" class="fg-btn fg-btn-primary">Save retention</button>
-        </EditForm>
-
-        @if (RetentionRules.Of(feed).Any)
-        {
-            <h3>Next run</h3>
-            @if (preview.Count == 0)
-            {
-                <p class="fg-muted fg-small">Nothing to remove.</p>
-            }
-            else
-            {
-                <p class="fg-small">
-                    @preview.Count.ToString("N0", CultureInfo.InvariantCulture) version(s) would go@(PreviewBytes > 0 ? $", freeing {Display.Size(PreviewBytes)}" : "").
-                    @if (preview.Count > RetentionService.MaxRemovalsPerRun)
-                    {
-                        <span>One run removes at most @RetentionService.MaxRemovalsPerRun.ToString("N0", CultureInfo.InvariantCulture); the rest follow in the next runs.</span>
-                    }
-                </p>
-                <div class="fg-table-wrap">
-                    <table class="fg-table">
-                        <thead>
-                            <tr><th>Package</th><th>Version</th><th>Why</th><th>Last used</th><th>Size</th></tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var removal in preview.Take(25))
-                            {
-                                <tr>
-                                    <td>@removal.Version.Id</td>
-                                    <td class="fg-num">@removal.Version.NormalizedVersion</td>
-                                    <td>@ReasonText(removal.Reason)</td>
-                                    <td class="fg-num">@removal.Version.LastUsedUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
-                                    <td class="fg-num">@Display.Size(removal.Version.Size)</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-                @if (preview.Count > 25)
-                {
-                    <p class="fg-muted fg-small">And @((preview.Count - 25).ToString("N0", CultureInfo.InvariantCulture)) more.</p>
-                }
-                <form method="post" action="/admin/feeds/@feed.Name/retention/run" data-busy>
-                    <AntiforgeryToken />
-                    <button type="submit" class="fg-btn fg-btn-danger">Run now</button>
-                </form>
-            }
-        }
-    </section>
-    }
-
-    <section class="fg-panel" id="instructions">
-        <h2>Instructions</h2>
-        <p class="fg-muted fg-small">
-            The commands this @Noun's pages show. One command per line; a line starting with <code>#</code> is a caption above
-            the commands after it. Placeholders: @(IsAssets ? "{directory} {folderUrl}" : "{feed} {feedUrl} {v3Url}, and on package pages {id} {version}").
-            Empty restores the default.
-        </p>
-        <EditForm Model="InstructionsInput!" FormName="feed-instructions" OnValidSubmit="SaveInstructionsAsync" method="post" class="fg-form">
-            <div class="fg-field">
-                <label for="client-base">Address clients use (empty: @PublicUrls.Base(HttpContext))</label>
-                <InputText id="client-base" @bind-Value="InstructionsInput!.ClientBaseUrl" placeholder="https://packages.internal.example" />
-                <span class="fg-small fg-muted">Only what the pages show for copying. What the server answers to clients keeps its public address.</span>
-            </div>
-            @if (IsAssets)
-            {
-                <div class="fg-field">
-                    <label for="file-instructions">Download commands</label>
-                    <InputTextArea id="file-instructions" @bind-Value="InstructionsInput!.Files" rows="4" class="fg-mono" />
-                </div>
-            }
-            else
-            {
-                <div class="fg-field">
-                    <label for="feed-instructions">Connect a client (feed page)</label>
-                    <InputTextArea id="feed-instructions" @bind-Value="InstructionsInput!.Feed" rows="6" class="fg-mono" />
-                </div>
-                <div class="fg-field">
-                    <label for="package-instructions">Install a package (package and version pages)</label>
-                    <InputTextArea id="package-instructions" @bind-Value="InstructionsInput!.Package" rows="4" class="fg-mono" />
-                </div>
-            }
-            @if (instructionsError is not null)
-            {
-                <p class="fg-error">@instructionsError</p>
-            }
-            <button type="submit" class="fg-btn fg-btn-primary">Save instructions</button>
-        </EditForm>
-    </section>
-
-    <section class="fg-panel" id="access">
-        <h2>Access</h2>
-        <p class="fg-muted fg-small">
-            @(feed.AnonymousRead ? "Anyone can read this " + Noun + "; grants below add more than reading." : "Only the accounts and groups below, and admins, can see this " + Noun + ".")
-            Read lists and downloads; Publish also pushes, uploads, pulls and removes; Manage also changes these settings and
-            this list. Admins and super admins manage everything without a grant.
-        </p>
-
-        @if (grants.Count == 0)
-        {
-            <p class="fg-empty">No grants yet.</p>
-        }
-        else
-        {
-            <div class="fg-table-wrap">
-                <table class="fg-table">
-                    <thead>
-                        <tr><th>Who</th><th>Level</th><th></th></tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var grant in grants)
-                        {
-                            <tr>
-                                <td>
-                                    <span class="fg-badge fg-badge-plain">@(grant.UserKey is null ? "Group" : "User")</span>
-                                    @grant.Name
-                                </td>
-                                <td><span class="fg-badge @(grant.Level == FeedAccessLevel.Manage ? "fg-badge-accent" : grant.Level == FeedAccessLevel.Publish ? "fg-badge-info" : "")">@grant.Level</span></td>
-                                <td class="fg-cell-actions">
-                                    <form method="post" action="/admin/feeds/@feed.Name/access/remove">
-                                        <AntiforgeryToken />
-                                        <input type="hidden" name="grant" value="@grant.Key" />
-                                        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                                        <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Remove</button>
-                                    </form>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
-
-        <form method="post" action="/admin/feeds/@feed.Name/access/set" class="fg-form">
-            <AntiforgeryToken />
-            <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-            <div class="fg-field">
-                <label for="grant-who">Grant to</label>
-                <select id="grant-who" name="who" required>
-                    <option value="">Choose an account or a group</option>
-                    @if (groupChoices.Count > 0)
-                    {
-                        <optgroup label="Groups">
-                            @foreach (var group in groupChoices)
-                            {
-                                <option value="group:@group.Key">@group.Name</option>
-                            }
-                        </optgroup>
-                    }
-                    <optgroup label="Accounts">
-                        @foreach (var user in userChoices)
-                        {
-                            <option value="user:@user.Key">@user.UserName@(string.IsNullOrEmpty(user.DisplayName) ? "" : $" ({user.DisplayName})")</option>
-                        }
-                    </optgroup>
-                </select>
-            </div>
-            <div class="fg-field">
-                <label for="grant-level">Level</label>
-                <select id="grant-level" name="level">
-                    <option value="@FeedAccessLevel.Read">Read</option>
-                    <option value="@FeedAccessLevel.Publish">Publish</option>
-                    <option value="@FeedAccessLevel.Manage">Manage</option>
-                </select>
-            </div>
-            <p class="fg-muted fg-small">Granting to someone who already has a grant replaces its level.</p>
-            <button type="submit" class="fg-btn fg-btn-primary">Grant access</button>
-        </form>
-    </section>
-
-    @if (IsAdmin)
-    {
-    <section class="fg-panel" id="name">
-        <h2>Name</h2>
-        @if (NamingMessage is { } naming)
-        {
-            <div class="@(naming.IsError ? "fg-alert fg-alert-danger" : "fg-alert fg-alert-ok")" role="status">@naming.Text</div>
-        }
-        <p class="fg-muted fg-small">
-            Clients reach this @Noun by its name: <code>@ClientUrl</code>. Renaming changes that address. Keep the old name as an
-            alternate name and every client registered with it goes on working while it is updated; each client still using it
-            is in the audit log, and below is when it was last used.
-        </p>
-        <form method="post" action="/admin/feeds/@feed.Name/rename" class="fg-form">
-            <AntiforgeryToken />
-            <div class="fg-field">
-                <label for="rename-to">New name</label>
-                <input id="rename-to" name="name" required maxlength="64" autocomplete="off" placeholder="@feed.Name" />
-            </div>
-            <label class="fg-check"><input type="checkbox" name="keepOldName" value="true" checked /> Keep '@feed.Name' as an alternate name</label>
-            @if (IsConfigured(feed.Name))
-            {
-                <p class="fg-muted fg-small">
-                    '@feed.Name' is also listed in the server configuration (<code>FiGet:Feeds</code>), which creates it on start when it
-                    is missing. Keep the old name, or remove it from the configuration too; otherwise the next restart creates a new,
-                    empty @Noun called '@feed.Name'.
-                </p>
-            }
-            <button type="submit" class="fg-btn fg-btn-primary">Rename @Noun</button>
-        </form>
-
-        <h3>Alternate names</h3>
-        @if (aliases.Count == 0)
-        {
-            <p class="fg-empty">None: this @Noun answers only to '@feed.Name'.</p>
-        }
-        else
-        {
-            <div class="fg-table-wrap">
-                <table class="fg-table">
-                    <thead>
-                        <tr><th>Name</th><th>Added</th><th>Last used by a client</th><th></th></tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var alias in aliases)
-                        {
-                            <tr>
-                                <td>
-                                    <code>@alias.Name</code>
-                                    @if (IsConfigured(alias.Name))
-                                    {
-                                        <div class="fg-small fg-muted">Named in FiGet:Feeds: removing it creates an empty @Noun of this name at the next restart.</div>
-                                    }
-                                </td>
-                                <td class="fg-num">@alias.CreatedUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
-                                <td class="fg-num">@(alias.LastUsedUtc is { } used ? used.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC" : "not since it was added")</td>
-                                <td class="fg-cell-actions">
-                                    <form method="post" action="/admin/feeds/@feed.Name/aliases/remove">
-                                        <AntiforgeryToken />
-                                        <input type="hidden" name="key" value="@alias.Key" />
-                                        <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger" title="Clients still using this name get 404">Remove</button>
-                                    </form>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
-        <form method="post" action="/admin/feeds/@feed.Name/aliases/add" class="fg-form">
-            <AntiforgeryToken />
-            <div class="fg-field">
-                <label for="alias-name">Add an alternate name</label>
-                <input id="alias-name" name="name" required maxlength="64" autocomplete="off" />
-            </div>
-            <button type="submit" class="fg-btn">Add alternate name</button>
-        </form>
-    </section>
-
-    <section class="fg-panel fg-panel-danger">
-        <h2>Delete this @Noun</h2>
-        <p class="fg-muted fg-small">
-            Removes the @Noun with its @versionCount.ToString("N0", CultureInfo.InvariantCulture)
-            @(IsAssets ? "file(s)" : "package version(s), their files,") and any token scoped to it.
-            This cannot be undone.
-        </p>
-        <EditForm Model="Confirm!" FormName="delete-feed" OnValidSubmit="DeleteAsync" method="post" class="fg-form">
-            <div class="fg-field">
-                <label for="confirm-name">Type the @Noun name to confirm</label>
-                <InputText id="confirm-name" @bind-Value="Confirm!.Name" autocomplete="off" placeholder="@feed.Name" />
-            </div>
-            <button type="submit" class="fg-btn fg-btn-danger">Delete @Noun</button>
-        </EditForm>
-    </section>
+        <section class="fg-panel">
+            <h2>Source URLs</h2>
+            <dl class="fg-facts">
+                <dt>NuGet v3</dt>
+                <dd>
+                    <div class="fg-url">
+                        <code>@V3Url</code>
+                        <button type="button" class="fg-copy" data-copy="@V3Url" title="Copy this URL" aria-label="Copy the v3 source URL">Copy</button>
+                    </div>
+                </dd>
+                <dt>Feed root</dt>
+                <dd>
+                    <div class="fg-url">
+                        <code>@FeedUrl</code>
+                        <button type="button" class="fg-copy" data-copy="@FeedUrl" title="Copy this URL" aria-label="Copy the feed root URL">Copy</button>
+                    </div>
+                </dd>
+            </dl>
+        </section>
     }
 }
 
 @code {
-    private Feed? feed;
     private int versionCount;
-    private IReadOnlyList<FeedGrant> grants = [];
-    private IReadOnlyList<User> userChoices = [];
-    private IReadOnlyList<GroupSummary> groupChoices = [];
-    private IReadOnlyList<FeedAlias> aliases = [];
-
-    /// <summary>The upstream whose form is open under its row, by key, or "new" for the add form under the table.</summary>
-    [SupplyParameterFromQuery(Name = "edit")]
-    private string? Editing { get; set; }
-
-    private int? EditingKey => int.TryParse(Editing, NumberStyles.None, CultureInfo.InvariantCulture, out var key) ? key : null;
-
-    private string UpstreamsAnchor => $"/admin/feeds/{Uri.EscapeDataString(feed!.Name)}#upstreams";
-
-    private string EditUrl(string which) => $"/admin/feeds/{Uri.EscapeDataString(feed!.Name)}?edit={which}#upstream-{which}";
-
-    /// <summary>Why the open form was refused, shown inside it.</summary>
-    private string? UpstreamError => UpstreamResult switch
-    {
-        "taken" => "Another upstream of this feed already has that name.",
-        "invalid" => "An upstream needs a name and a URL.",
-        _ => null,
-    };
-
-    /// <summary>What the last upstream edit did, carried on the redirect back here.</summary>
-    [SupplyParameterFromQuery(Name = "upstream")]
-    private string? UpstreamResult { get; set; }
-
-    private (string Text, bool IsError)? UpstreamMessage => UpstreamResult switch
-    {
-        "saved" => ("Upstream saved.", false),
-        "added" => ("Upstream added. It is asked after the others; move it up to ask it earlier.", false),
-        "gone" => ("That upstream no longer exists.", true),
-        _ => null,
-    };
-
-    /// <summary>What the last rename or alternate-name change did, carried on the redirect back here.</summary>
-    [SupplyParameterFromQuery(Name = "naming")]
-    private string? Naming { get; set; }
-
-    private (string Text, bool IsError)? NamingMessage => Naming switch
-    {
-        "renamed" => ($"Renamed to '{feed!.Name}'.", false),
-        "alias-added" => ("Alternate name added.", false),
-        "alias-removed" => ("Alternate name removed. A client still using it now gets 404.", false),
-        "taken" => ("That name is already taken by a feed, an asset directory, or an alternate name of one.", true),
-        "invalid" => ("Use letters, digits, dot, dash or underscore, starting with a letter or digit (at most 64).", true),
-        "unchanged" => ($"The {Noun} is already called that.", true),
-        "gone" => ("That alternate name no longer exists.", true),
-        _ => null,
-    };
-
-    private string ClientUrl => IsAssets ? AssetContentUrl : FeedUrl + "/";
-
-    /// <summary>Whether FiGet:Feeds names this, which recreates a feed of that name on start when no feed or alternate name has it.</summary>
-    private bool IsConfigured(string name) =>
-        Options.Value.Feeds.Any(seed => string.Equals(seed.Name, name, StringComparison.OrdinalIgnoreCase));
-
-    /// <summary>Deleting a feed stays with admins: Manage is about a feed's settings and access, not whether it exists.</summary>
-    private bool IsAdmin => HttpContext.User.IsInRole(FiGetApp.AdminRole);
     private string? message;
     private bool messageIsError;
-    private IReadOnlyList<RetentionRemoval> preview = [];
-    private string? retentionError;
-    private string? instructionsError;
-
-    [SupplyParameterFromForm(FormName = "feed-instructions")]
-    private InstructionsForm? InstructionsInput { get; set; }
-
-    [SupplyParameterFromForm(FormName = "feed-retention")]
-    private RetentionForm? RetentionInput { get; set; }
-
-    [SupplyParameterFromQuery(Name = "retention")]
-    private string? RetentionResult { get; set; }
-
-    private long PreviewBytes => preview.Where(r => r.Reason == RetentionReason.UnusedCache || feed!.DeletionBehavior == PackageDeletionBehavior.HardDelete).Sum(r => r.Version.Size);
-
-    /// <summary>The outcome of "Run now", carried on the redirect as unlisted.deleted.pruned.bytes[.more].</summary>
-    private string? RetentionDone
-    {
-        get
-        {
-            var parts = RetentionResult?.Split('.') ?? [];
-            if (parts.Length < 4 || !parts.Take(4).All(p => long.TryParse(p, NumberStyles.None, CultureInfo.InvariantCulture, out _)))
-            {
-                return null;
-            }
-
-            var n = parts.Take(4).Select(p => long.Parse(p, CultureInfo.InvariantCulture)).ToArray();
-            return $"Retention ran: {n[0]} unlisted, {n[1]} deleted, {n[2]} cached copies pruned, {Display.Size(n[3])} freed."
-                + (parts.Length > 4 ? " More remain for the next run." : "");
-        }
-    }
-
-    private string RetentionIntro =>
-        "Checked every hour. Pushed versions beyond what is kept are "
-        + (feed!.DeletionBehavior == PackageDeletionBehavior.HardDelete ? "deleted, files included" : "unlisted, as this feed's delete behaviour says")
-        + "; the newest version of a package is always kept."
-        + (feed.Upstreams.Count > 0 ? " Cached copies nobody has downloaded for the pruning period are deleted: the upstream still has them, and the next request caches one again." : "");
-
-    private static string ReasonText(RetentionReason reason) => reason switch
-    {
-        RetentionReason.OlderStable => "Older stable version",
-        RetentionReason.OlderPrerelease => "Older prerelease",
-        _ => "Cached, not downloaded",
-    };
-
-    [Parameter]
-    public string Name { get; set; } = "";
-
-    [CascadingParameter]
-    private HttpContext HttpContext { get; set; } = default!;
 
     [SupplyParameterFromForm(FormName = "feed-settings")]
     private SettingsForm? Settings { get; set; }
 
-    [SupplyParameterFromForm(FormName = "delete-feed")]
-    private ConfirmForm? Confirm { get; set; }
-
-    private string FeedUrl => PublicUrls.Feed(HttpContext, feed!.Name);
-
-    /// <summary>Where the buttons return to.</summary>
-    private string ReturnUrl => HttpContext.Request.Path + HttpContext.Request.QueryString;
+    private string FeedUrl => PublicUrls.Feed(HttpContext, Target!.Name);
 
     private string V3Url => $"{FeedUrl}/v3/index.json";
 
-    private bool IsAssets => feed?.Kind == FeedKind.Assets;
+    private string AssetContentUrl => $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(Target!.Name)}/content/";
 
-    private string Noun => IsAssets ? "directory" : "feed";
-
-    private string AssetContentUrl => $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(feed!.Name)}/content/";
-
-    private string AssetListUrl => $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(feed!.Name)}/dir/";
+    private string AssetListUrl => $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(Target!.Name)}/dir/";
 
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
-        Confirm ??= new();
-        RetentionInput ??= feed is null ? new RetentionForm() : RetentionForm.From(feed);
-        InstructionsInput ??= feed is null ? new InstructionsForm() : InstructionsForm.From(feed);
-        // Only seed the settings form on a GET; on a post it already carries what was submitted.
-        Settings ??= feed is null
+
+        // Only seeded on a GET; on a post it already carries what was submitted.
+        Settings ??= Target is not { } feed
             ? new SettingsForm()
             : new SettingsForm { AnonymousRead = feed.AnonymousRead, AllowOverwrite = feed.AllowOverwrite, DeletionBehavior = feed.DeletionBehavior, MergePushedIdsWithUpstreams = feed.MergePushedIdsWithUpstreams };
     }
 
     private async Task LoadAsync()
     {
-        feed = await Feeds.FindAsync(Name, HttpContext.RequestAborted);
-
-        // Checked here, before any form handler on this page runs: every handler returns early without a feed. A feed the
-        // account cannot manage reads as not found, whether or not it could read it.
-        if (feed is not null && await Access.LevelAsync(feed, FiGetApp.Actor(HttpContext.User), HttpContext.RequestAborted) < FeedAccessLevel.Manage)
+        if (await LoadFeedAsync())
         {
-            feed = null;
+            versionCount = IsAssets
+                ? await Feeds.CountAssetsAsync(Target!.Key, HttpContext.RequestAborted)
+                : await Feeds.CountVersionsAsync(Target!.Key, HttpContext.RequestAborted);
         }
-
-        if (feed is null)
-        {
-            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
-            return;
-        }
-
-        grants = await Permissions.ListAsync(feed.Key, HttpContext.RequestAborted);
-        userChoices = await Users.ListAsync(HttpContext.RequestAborted);
-        groupChoices = await Groups.ListAsync(HttpContext.RequestAborted);
-        aliases = IsAdmin ? await Feeds.ListAliasesAsync(feed.Key, HttpContext.RequestAborted) : [];
-        preview = feed.Kind == FeedKind.Assets ? [] : await Retention.PreviewAsync(feed, HttpContext.RequestAborted);
-        versionCount = feed is null ? 0
-            : feed.Kind == FeedKind.Assets ? await Feeds.CountAssetsAsync(feed.Key, HttpContext.RequestAborted)
-            : await Feeds.CountVersionsAsync(feed.Key, HttpContext.RequestAborted);
     }
 
     private async Task SaveAsync()
     {
-        if (feed is null)
+        if (Target is not { } feed)
         {
             return;
         }
@@ -741,137 +165,6 @@ else
         await LoadAsync();
     }
 
-    private async Task SaveInstructionsAsync()
-    {
-        if (feed is null)
-        {
-            return;
-        }
-
-        var input = InstructionsInput!;
-        var clientBase = string.IsNullOrWhiteSpace(input.ClientBaseUrl) ? null : input.ClientBaseUrl.Trim().TrimEnd('/');
-        if (clientBase is not null && (!Uri.TryCreate(clientBase, UriKind.Absolute, out var parsed) || parsed.Scheme is not ("http" or "https") || clientBase.Length > 512))
-        {
-            instructionsError = "The client address must be an absolute http:// or https:// URL.";
-            return;
-        }
-
-        if (new[] { input.Package, input.Feed, input.Files }.Any(t => (t?.Length ?? 0) > InstructionTemplates.MaxLength))
-        {
-            instructionsError = $"A template is at most {InstructionTemplates.MaxLength} characters.";
-            return;
-        }
-
-        var package = IsAssets ? null : InstructionTemplates.Normalize(input.Package, InstructionTemplates.DefaultPackage);
-        var feedTemplate = IsAssets ? null : InstructionTemplates.Normalize(input.Feed, InstructionTemplates.DefaultFeed);
-        var files = IsAssets ? InstructionTemplates.Normalize(input.Files, InstructionTemplates.DefaultFiles) : null;
-        if (await Feeds.UpdateInstructionsAsync(feed.Key, clientBase, package, feedTemplate, files, HttpContext.RequestAborted))
-        {
-            Audit.Record(
-                HttpContext,
-                "feed.instructions",
-                feed.Name,
-                $"clientBaseUrl={clientBase ?? "public"} package={(package is null ? "default" : "custom")} feed={(feedTemplate is null ? "default" : "custom")} files={(files is null ? "default" : "custom")}");
-            (message, messageIsError) = ("Instructions saved.", false);
-        }
-
-        await LoadAsync();
-        InstructionsInput = InstructionsForm.From(feed!);
-    }
-
-    private async Task SaveRetentionAsync()
-    {
-        if (feed is null || IsAssets)
-        {
-            return;
-        }
-
-        var rules = RetentionInput!.ToRules();
-        if (rules.Problem() is { } problem)
-        {
-            retentionError = problem;
-            return;
-        }
-
-        if (await Feeds.UpdateRetentionAsync(feed.Key, rules, HttpContext.RequestAborted))
-        {
-            Audit.Record(
-                HttpContext,
-                "feed.retention",
-                feed.Name,
-                $"keepStable={rules.KeepStable?.ToString(CultureInfo.InvariantCulture) ?? "all"} keepPrerelease={rules.KeepPrerelease?.ToString(CultureInfo.InvariantCulture) ?? "all"} perMajor={rules.PerMajorVersion} keepIfUsedDays={rules.KeepIfUsedWithinDays?.ToString(CultureInfo.InvariantCulture) ?? "-"} pruneCachedDays={rules.PruneCachedAfterDays?.ToString(CultureInfo.InvariantCulture) ?? "never"}");
-            (message, messageIsError) = ("Retention saved. The preview below shows what the next run removes.", false);
-        }
-
-        await LoadAsync();
-    }
-
-    private async Task DeleteAsync()
-    {
-        if (feed is null || !IsAdmin)
-        {
-            return;
-        }
-
-        if (!string.Equals(Confirm!.Name?.Trim(), feed.Name, StringComparison.OrdinalIgnoreCase))
-        {
-            (message, messageIsError) = ($"Type '{feed.Name}' exactly to confirm the deletion.", true);
-            return;
-        }
-
-        // Files first: a row without files is visible and fixable, an orphaned file is neither.
-        Audit.Record(HttpContext, "feed.delete", feed.Name);
-        await Storage.DeleteFeedAsync(feed.Key, HttpContext.RequestAborted);
-        await AssetStorage.DeleteFeedAsync(feed.Key, HttpContext.RequestAborted);
-        await Feeds.DeleteAsync(feed.Key, HttpContext.RequestAborted);
-        Navigation.NavigateTo(IsAssets ? "/admin/assets" : "/admin/feeds", forceLoad: false);
-    }
-
-    private sealed class InstructionsForm
-    {
-        // Kept non-null: an empty textarea binds as null.
-        public string ClientBaseUrl { get; set => field = value ?? ""; } = "";
-
-        public string Package { get; set => field = value ?? ""; } = "";
-
-        public string Feed { get; set => field = value ?? ""; } = "";
-
-        public string Files { get; set => field = value ?? ""; } = "";
-
-        /// <summary>The stored template, or the default when none is stored, so the box shows what the pages show.</summary>
-        public static InstructionsForm From(Feed feed) => new()
-        {
-            ClientBaseUrl = feed.ClientBaseUrl ?? "",
-            Package = feed.PackageInstructions ?? InstructionTemplates.DefaultPackage,
-            Feed = feed.FeedInstructions ?? InstructionTemplates.DefaultFeed,
-            Files = feed.FileInstructions ?? InstructionTemplates.DefaultFiles,
-        };
-    }
-
-    private sealed class RetentionForm
-    {
-        public int? KeepStable { get; set; }
-
-        public int? KeepPrerelease { get; set; }
-
-        public bool PerMajorVersion { get; set; }
-
-        public int? KeepIfUsedWithinDays { get; set; }
-
-        public int? PruneCachedAfterDays { get; set; }
-
-        public static RetentionForm From(Feed feed) => new()
-        {
-            KeepStable = feed.RetainStableVersions,
-            KeepPrerelease = feed.RetainPrereleaseVersions,
-            PerMajorVersion = feed.RetainPerMajorVersion,
-            KeepIfUsedWithinDays = feed.RetainIfUsedWithinDays,
-            PruneCachedAfterDays = feed.PruneCachedAfterDays,
-        };
-
-        public RetentionRules ToRules() => new(KeepStable, KeepPrerelease, PerMajorVersion, KeepIfUsedWithinDays, PruneCachedAfterDays);
-    }
-
     private sealed class SettingsForm
     {
         public bool AnonymousRead { get; set; }
@@ -881,11 +174,5 @@ else
         public PackageDeletionBehavior DeletionBehavior { get; set; } = PackageDeletionBehavior.Unlist;
 
         public bool MergePushedIdsWithUpstreams { get; set; }
-    }
-
-    private sealed class ConfirmForm
-    {
-        [Required(ErrorMessage = "Type the feed name.")]
-        public string Name { get; set; } = "";
     }
 }

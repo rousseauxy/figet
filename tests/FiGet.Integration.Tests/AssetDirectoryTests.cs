@@ -441,10 +441,21 @@ public abstract partial class AssetDirectoryTests
         Assert.DoesNotContain("href=\"/admin/feeds/public\"", assets, StringComparison.Ordinal);
         Assert.Contains("Create an asset directory", assets, StringComparison.Ordinal);
 
+        // A directory's own menu: its settings pages, without the ones only package feeds have.
         var settings = await HttpAssert.SuccessBodyAsync(await browser.GetAsync("admin/assets/files"));
-        Assert.Contains("Delete this directory", settings, StringComparison.Ordinal);
         Assert.Contains("href=\"/assets/files\"", settings, StringComparison.Ordinal);
-        Assert.DoesNotContain("/unlisted\"", settings, StringComparison.Ordinal);
+        foreach (var page in (string[])["instructions", "access", "name"])
+        {
+            Assert.Contains($"href=\"/admin/assets/files/{page}\"", settings, StringComparison.Ordinal);
+        }
+
+        foreach (var page in (string[])["/unlisted\"", "/upstreams\"", "/retention\""])
+        {
+            Assert.DoesNotContain(page, settings, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("Delete this directory", await HttpAssert.SuccessBodyAsync(await browser.GetAsync("admin/assets/files/name")), StringComparison.Ordinal);
+        HttpAssert.Status(HttpStatusCode.NotFound, await browser.GetAsync("admin/feeds/files/upstreams"));
 
         // One set of links, twice: the side column for a wide screen and the menu that opens on a phone.
         Assert.Contains("fg-admin-menu", settings, StringComparison.Ordinal);

@@ -314,21 +314,21 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
         var feed = await CreateFeedAsync("delete-target", anonymousRead: true);
 
-        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/admin/feeds/{feed}"));
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/admin/feeds/{feed}/name"));
         var form = FormBlock(page, "delete-feed");
         var confirmField = FieldName(form, "confirm-name");
 
         var wrong = HiddenFields(form);
         wrong[confirmField] = "not-the-name";
         using var wrongContent = new FormUrlEncodedContent(wrong);
-        var refused = await HttpAssert.SuccessBodyAsync(await client.PostAsync($"/admin/feeds/{feed}", wrongContent));
+        var refused = await HttpAssert.SuccessBodyAsync(await client.PostAsync($"/admin/feeds/{feed}/name", wrongContent));
         Assert.Contains("exactly to confirm", refused, StringComparison.Ordinal);
         Assert.NotNull(await FindFeedAsync(feed));
 
         var right = HiddenFields(form);
         right[confirmField] = feed;
         using var rightContent = new FormUrlEncodedContent(right);
-        var response = await client.PostAsync($"/admin/feeds/{feed}", rightContent);
+        var response = await client.PostAsync($"/admin/feeds/{feed}/name", rightContent);
         Assert.True(response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.Redirect, $"Unexpected status {response.StatusCode}.");
         Assert.Null(await FindFeedAsync(feed));
     }
@@ -355,7 +355,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         Assert.Empty((await FindFeedAsync(feed))!.Upstreams);
 
         // The same post from the settings page with the add form open, token and all, still works.
-        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/admin/feeds/{feed}?edit=new"));
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/admin/feeds/{feed}/upstreams"));
         var form = FormElement().Matches(page).Single(f => f.Value.Contains("upstreams/add", StringComparison.Ordinal)).Value;
         var fields = HiddenFields(form);
         foreach (var (key, value) in upstream)

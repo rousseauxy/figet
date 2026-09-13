@@ -1,0 +1,132 @@
+@page "/admin/feeds/{Name}/instructions"
+@page "/admin/assets/{Name}/instructions"
+@attribute [Authorize]
+@layout AdminLayout
+@inherits FeedAdminPage
+@inject FiGet.Http.AuditLog Audit
+
+<PageTitle>Instructions · @Name · FiGet</PageTitle>
+
+<FeedAdminHeader Feed="Target" Name="@Name" Section="Instructions">
+    <Lede>
+        The commands this @Noun's pages show. One command per line; a line starting with <code>#</code> is a caption above
+        the commands after it. Placeholders: @(IsAssets ? "{directory} {folderUrl}" : "{feed} {feedUrl} {v3Url}, and on package pages {id} {version}").
+        Empty restores the default.
+    </Lede>
+</FeedAdminHeader>
+
+@if (Target is not null)
+{
+    @if (saved)
+    {
+        <div class="fg-alert fg-alert-ok" role="status">Instructions saved.</div>
+    }
+
+    <section class="fg-panel">
+        <EditForm Model="InstructionsInput!" FormName="feed-instructions" OnValidSubmit="SaveInstructionsAsync" method="post" class="fg-form">
+            <div class="fg-field">
+                <label for="client-base">Address clients use (empty: @PublicUrls.Base(HttpContext))</label>
+                <InputText id="client-base" @bind-Value="InstructionsInput!.ClientBaseUrl" placeholder="https://packages.internal.example" />
+                <span class="fg-small fg-muted">Only what the pages show for copying. What the server answers to clients keeps its public address.</span>
+            </div>
+            @if (IsAssets)
+            {
+                <div class="fg-field">
+                    <label for="file-instructions">Download commands</label>
+                    <InputTextArea id="file-instructions" @bind-Value="InstructionsInput!.Files" rows="4" class="fg-mono" />
+                </div>
+            }
+            else
+            {
+                <div class="fg-field">
+                    <label for="feed-instructions">Connect a client (feed page)</label>
+                    <InputTextArea id="feed-instructions" @bind-Value="InstructionsInput!.Feed" rows="6" class="fg-mono" />
+                </div>
+                <div class="fg-field">
+                    <label for="package-instructions">Install a package (package and version pages)</label>
+                    <InputTextArea id="package-instructions" @bind-Value="InstructionsInput!.Package" rows="4" class="fg-mono" />
+                </div>
+            }
+            @if (instructionsError is not null)
+            {
+                <p class="fg-error">@instructionsError</p>
+            }
+            <button type="submit" class="fg-btn fg-btn-primary">Save instructions</button>
+        </EditForm>
+    </section>
+}
+
+@code {
+    private string? instructionsError;
+    private bool saved;
+
+    [SupplyParameterFromForm(FormName = "feed-instructions")]
+    private InstructionsForm? InstructionsInput { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadFeedAsync();
+        InstructionsInput ??= Target is null ? new InstructionsForm() : InstructionsForm.From(Target);
+    }
+
+    private async Task SaveInstructionsAsync()
+    {
+        if (Target is not { } feed)
+        {
+            return;
+        }
+
+        var input = InstructionsInput!;
+        var clientBase = string.IsNullOrWhiteSpace(input.ClientBaseUrl) ? null : input.ClientBaseUrl.Trim().TrimEnd('/');
+        if (clientBase is not null && (!Uri.TryCreate(clientBase, UriKind.Absolute, out var parsed) || parsed.Scheme is not ("http" or "https") || clientBase.Length > 512))
+        {
+            instructionsError = "The client address must be an absolute http:// or https:// URL.";
+            return;
+        }
+
+        if (new[] { input.Package, input.Feed, input.Files }.Any(t => (t?.Length ?? 0) > InstructionTemplates.MaxLength))
+        {
+            instructionsError = $"A template is at most {InstructionTemplates.MaxLength} characters.";
+            return;
+        }
+
+        var package = IsAssets ? null : InstructionTemplates.Normalize(input.Package, InstructionTemplates.DefaultPackage);
+        var feedTemplate = IsAssets ? null : InstructionTemplates.Normalize(input.Feed, InstructionTemplates.DefaultFeed);
+        var files = IsAssets ? InstructionTemplates.Normalize(input.Files, InstructionTemplates.DefaultFiles) : null;
+        if (await Feeds.UpdateInstructionsAsync(feed.Key, clientBase, package, feedTemplate, files, HttpContext.RequestAborted))
+        {
+            Audit.Record(
+                HttpContext,
+                "feed.instructions",
+                feed.Name,
+                $"clientBaseUrl={clientBase ?? "public"} package={(package is null ? "default" : "custom")} feed={(feedTemplate is null ? "default" : "custom")} files={(files is null ? "default" : "custom")}");
+            saved = true;
+        }
+
+        if (await LoadFeedAsync())
+        {
+            InstructionsInput = InstructionsForm.From(Target!);
+        }
+    }
+
+    private sealed class InstructionsForm
+    {
+        // Kept non-null: an empty textarea binds as null.
+        public string ClientBaseUrl { get; set => field = value ?? ""; } = "";
+
+        public string Package { get; set => field = value ?? ""; } = "";
+
+        public string Feed { get; set => field = value ?? ""; } = "";
+
+        public string Files { get; set => field = value ?? ""; } = "";
+
+        /// <summary>The stored template, or the default when none is stored, so the box shows what the pages show.</summary>
+        public static InstructionsForm From(Feed feed) => new()
+        {
+            ClientBaseUrl = feed.ClientBaseUrl ?? "",
+            Package = feed.PackageInstructions ?? InstructionTemplates.DefaultPackage,
+            Feed = feed.FeedInstructions ?? InstructionTemplates.DefaultFeed,
+            Files = feed.FileInstructions ?? InstructionTemplates.DefaultFiles,
+        };
+    }
+}

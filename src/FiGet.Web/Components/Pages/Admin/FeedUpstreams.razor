@@ -1,0 +1,146 @@
+@page "/admin/feeds/{Name}/upstreams"
+@attribute [Authorize]
+@layout AdminLayout
+@inherits FeedAdminPage
+
+<PageTitle>Upstreams · @Name · FiGet</PageTitle>
+
+<FeedAdminHeader Feed="Target" Name="@Name" Section="Upstreams">
+    <Lede>Other feeds whose packages this feed offers, and caches when they are downloaded. A feed with an upstream is a proxy feed.</Lede>
+</FeedAdminHeader>
+
+@if (Target is { } feed)
+{
+    @if (UpstreamMessage is { } upstreamMessage)
+    {
+        <div class="@(upstreamMessage.IsError ? "fg-alert fg-alert-danger" : "fg-alert fg-alert-ok")" role="status">@upstreamMessage.Text</div>
+    }
+
+    <section class="fg-panel">
+        @if (feed.Upstreams.Count == 0)
+        {
+            <p class="fg-empty">
+                None. This feed serves only what was pushed to it. Add an upstream to also offer, and cache on demand,
+                everything another feed holds.
+            </p>
+        }
+        else
+        {
+            <div class="fg-table-wrap">
+                <table class="fg-table">
+                    <thead>
+                        <tr><th>Priority</th><th>Name</th><th>Protocol</th><th>URL</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var (upstream, index) in feed.Upstreams.OrderBy(u => u.Ordinal).Select((u, i) => (u, i)))
+                        {
+                            <tr>
+                                <td class="fg-num">
+                                    <div class="fg-row fg-priority">
+                                        <span>@(index + 1)</span>
+                                        @if (feed.Upstreams.Count > 1)
+                                        {
+                                            <form method="post" action="/admin/feeds/@feed.Name/upstreams/move">
+                                                <AntiforgeryToken />
+                                                <input type="hidden" name="key" value="@upstream.Key" />
+                                                <input type="hidden" name="direction" value="up" />
+                                                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                                                <button type="submit" class="fg-btn fg-btn-sm" disabled="@(index == 0)" title="Ask this upstream earlier" aria-label="Move @upstream.Name up">↑</button>
+                                            </form>
+                                            <form method="post" action="/admin/feeds/@feed.Name/upstreams/move">
+                                                <AntiforgeryToken />
+                                                <input type="hidden" name="key" value="@upstream.Key" />
+                                                <input type="hidden" name="direction" value="down" />
+                                                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                                                <button type="submit" class="fg-btn fg-btn-sm" disabled="@(index == feed.Upstreams.Count - 1)" title="Ask this upstream later" aria-label="Move @upstream.Name down">↓</button>
+                                            </form>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    @upstream.Name
+                                    @if (!upstream.Enabled)
+                                    {
+                                        <span class="fg-badge fg-badge-plain" title="Not asked until it is enabled again">disabled</span>
+                                    }
+                                </td>
+                                <td><span class="fg-badge">@upstream.Kind</span></td>
+                                <td><code>@upstream.Url</code></td>
+                                <td class="fg-cell-actions">
+                                    @if (EditingKey == upstream.Key)
+                                    {
+                                        <a class="fg-btn fg-btn-sm" href="@PagePath(FeedAdminPaths.Upstreams)" aria-expanded="true">Close</a>
+                                    }
+                                    else
+                                    {
+                                        <a class="fg-btn fg-btn-sm" href="@EditUrl(upstream.Key)" aria-expanded="false">Edit</a>
+                                    }
+                                    <form method="post" action="/admin/feeds/@feed.Name/upstreams/remove">
+                                        <AntiforgeryToken />
+                                        <input type="hidden" name="key" value="@upstream.Key" />
+                                        <input type="hidden" name="returnUrl" value="@PagePath(FeedAdminPaths.Upstreams)" />
+                                        <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger" title="Stop using this upstream">Remove</button>
+                                    </form>
+                                </td>
+                            </tr>
+
+                            @* Inline, in a row of its own directly under the upstream, as on the goods overview of the sibling
+                               application: the row being changed stays in view. Opened by a link rather than a script, because
+                               this page is static; the fragment brings the form back into view after the reload. *@
+                            @if (EditingKey == upstream.Key)
+                            {
+                                <tr class="fg-row-panel" id="upstream-@upstream.Key">
+                                    <td colspan="5">
+                                        <UpstreamForm Feed="feed" Upstream="upstream" Error="@UpstreamError" Cancel="@PagePath(FeedAdminPaths.Upstreams)" />
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="fg-muted fg-small">
+                The first upstream that holds a package id serves it; upstreams further down are not asked about
+                that id, so two different packages that share a name are never mixed. Removing an upstream keeps the
+                packages already cached from it: they were downloaded, and something out there depends on them.
+            </p>
+        }
+
+        <Accordion Id="add-upstream" Title="Add upstream" Open="@(feed.Upstreams.Count == 0)">
+            <UpstreamForm Feed="feed" />
+        </Accordion>
+    </section>
+}
+
+@code {
+    /// <summary>The upstream whose form is open under its row.</summary>
+    [SupplyParameterFromQuery(Name = "edit")]
+    private int? EditingKey { get; set; }
+
+    /// <summary>What the last upstream change did, carried on the redirect back here.</summary>
+    [SupplyParameterFromQuery(Name = "upstream")]
+    private string? UpstreamResult { get; set; }
+
+    private string EditUrl(int key) =>
+        $"{PagePath(FeedAdminPaths.Upstreams)}?edit={key.ToString(CultureInfo.InvariantCulture)}#upstream-{key.ToString(CultureInfo.InvariantCulture)}";
+
+    private (string Text, bool IsError)? UpstreamMessage => UpstreamResult switch
+    {
+        "saved" => ("Upstream saved.", false),
+        "added" => ("Upstream added. It is asked after the others; move it up to ask it earlier.", false),
+        "gone" => ("That upstream no longer exists.", true),
+        _ => null,
+    };
+
+    /// <summary>Why the open form was refused, shown inside it.</summary>
+    private string? UpstreamError => UpstreamResult switch
+    {
+        "taken" => "Another upstream of this feed already has that name.",
+        "invalid" => "An upstream needs a name and a URL.",
+        _ => null,
+    };
+
+    protected override bool AppliesToAssets => false;
+
+    protected override async Task OnInitializedAsync() => await LoadFeedAsync();
+}

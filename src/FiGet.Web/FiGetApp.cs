@@ -631,7 +631,7 @@ public static class FiGetApp
                 audit.Record(http, "upstream.add", upstream.Name, $"feed={feed} url={upstream.Url} kind={upstream.Kind}");
             }
 
-            return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
+            return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}/upstreams");
         });
 
         // The two buttons of the unlisted view. Relisting offers a version again; deleting removes it for
@@ -904,7 +904,7 @@ public static class FiGetApp
                 audit.Record(http, "upstream.remove", removed?.Name ?? $"upstream #{upstreamKey}", $"feed={feed}{(removed is null ? "" : " url=" + removed.Url)}");
             }
 
-            return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
+            return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}/upstreams");
         });
 
         // Account row actions on the users page. The rules - who may change whom, and never the last super admin -
@@ -991,7 +991,7 @@ public static class FiGetApp
                 }
             }
 
-            return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
+            return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}/access");
         });
 
         manageFeed.MapPost("/feeds/{feed}/access/remove", async (
@@ -1018,7 +1018,7 @@ public static class FiGetApp
                 }
             }
 
-            return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
+            return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}/access");
         });
 
         // Group membership and deletion. Creating and renaming are forms on the groups pages themselves.
@@ -1100,7 +1100,7 @@ public static class FiGetApp
             var report = await retention.RunAsync(target, cancellationToken);
             audit.Record(http, "retention.run", target.Name, RetentionJobService.Describe(target.Name, report));
             return Results.Redirect(
-                $"/admin/feeds/{Uri.EscapeDataString(target.Name)}?retention={report.Unlisted}.{report.Deleted}.{report.Pruned}.{report.FreedBytes}{(report.StoppedAtLimit ? ".more" : "")}#retention");
+                $"/admin/feeds/{Uri.EscapeDataString(target.Name)}/retention?retention={report.Unlisted}.{report.Deleted}.{report.Pruned}.{report.FreedBytes}{(report.StoppedAtLimit ? ".more" : "")}");
         });
 
         // Renaming changes the URL every client has registered, so it stays with admins, like deleting.
@@ -1239,10 +1239,10 @@ public static class FiGetApp
             }
 
             // A refused edit reopens its form, so what was typed is corrected where it was typed.
-            var settings = $"/admin/feeds/{Uri.EscapeDataString(target.Name)}";
+            var upstreams = $"/admin/feeds/{Uri.EscapeDataString(target.Name)}/upstreams";
             return Results.Redirect(code is "taken" or "invalid"
-                ? $"{settings}?edit={before!.Key}&upstream={code}#upstream-{before.Key}"
-                : $"{settings}?upstream={code}#upstreams");
+                ? $"{upstreams}?edit={before!.Key}&upstream={code}#upstream-{before.Key}"
+                : $"{upstreams}?upstream={code}");
         });
 
         manageFeed.MapPost("/feeds/{feed}/upstreams/move", async (
@@ -1293,7 +1293,7 @@ public static class FiGetApp
         };
     }
 
-    /// <summary>Back to the name panel of a feed's settings page - by its current name - with a code saying what happened.</summary>
+    /// <summary>Back to the feed's name and deletion page - by its current name - with a code saying what happened.</summary>
     private static IResult NamingResult(Feed feed, string name, FeedNameChange outcome, string done)
     {
         var code = outcome switch
@@ -1305,7 +1305,7 @@ public static class FiGetApp
             _ => "gone",
         };
 
-        return Results.Redirect((feed.Kind == FeedKind.Assets ? "/admin/assets/" : "/admin/feeds/") + Uri.EscapeDataString(name) + "?naming=" + code + "#name");
+        return Results.Redirect(Components.Pages.Admin.FeedAdminPaths.Settings(feed, name) + "/" + Components.Pages.Admin.FeedAdminPaths.Naming + "?naming=" + code);
     }
 
     /// <summary>An admin endpoint that changes one feed or asset directory, and the level it needs on it.</summary>

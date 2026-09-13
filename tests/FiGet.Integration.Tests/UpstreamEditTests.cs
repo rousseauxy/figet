@@ -34,7 +34,7 @@ public sealed partial class UpstreamEditTests(ProxyServerFixture server) : IClas
         using var admin = await AdminAsync();
         using (var response = await PostAsync(admin, feed, ("key", Key(upstream)), ("name", "stub"), ("url", "https://stub.invalid/v3/index.json"), ("kind", "V3"), ("enabled", "true")))
         {
-            Assert.Equal($"/admin/feeds/{feed}?upstream=saved#upstreams", response.Headers.Location?.OriginalString);
+            Assert.Equal($"/admin/feeds/{feed}/upstreams?upstream=saved", response.Headers.Location?.OriginalString);
         }
 
         Assert.Equal(["2.0.0"], await VersionsAsync(client, feed, id));
@@ -52,14 +52,14 @@ public sealed partial class UpstreamEditTests(ProxyServerFixture server) : IClas
         using var admin = await AdminAsync();
         using (var response = await PostAsync(admin, feed, ("key", Key(second)), ("name", "FIRST"), ("url", "https://moved.invalid/v3/index.json"), ("enabled", "true")))
         {
-            Assert.Equal($"/admin/feeds/{feed}?edit={Key(second)}&upstream=taken#upstream-{Key(second)}", response.Headers.Location?.OriginalString);
+            Assert.Equal($"/admin/feeds/{feed}/upstreams?edit={Key(second)}&upstream=taken#upstream-{Key(second)}", response.Headers.Location?.OriginalString);
             var reopened = await HttpAssert.SuccessBodyAsync(await admin.GetAsync(response.Headers.Location));
             Assert.Contains("role=\"alert\">Another upstream of this feed already has that name.</div>", reopened, StringComparison.Ordinal);
         }
 
         using (var response = await PostAsync(admin, feed, ("key", Key(second)), ("name", "second"), ("url", "")))
         {
-            Assert.Equal($"/admin/feeds/{feed}?edit={Key(second)}&upstream=invalid#upstream-{Key(second)}", response.Headers.Location?.OriginalString);
+            Assert.Equal($"/admin/feeds/{feed}/upstreams?edit={Key(second)}&upstream=invalid#upstream-{Key(second)}", response.Headers.Location?.OriginalString);
         }
 
         var unchanged = (await FindAsync(feed))!.Upstreams.Single(u => u.Key == second.Key);
@@ -81,14 +81,14 @@ public sealed partial class UpstreamEditTests(ProxyServerFixture server) : IClas
 
         using var client = server.CreateClient();
         HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/{feed}/v3/flatcontainer/{id.ToLowerInvariant()}/index.json"));
-        var page = await HttpAssert.SuccessBodyAsync(await admin.GetAsync($"/admin/feeds/{feed}"));
+        var page = await HttpAssert.SuccessBodyAsync(await admin.GetAsync($"/admin/feeds/{feed}/upstreams"));
         Assert.Contains(">disabled</span>", page, StringComparison.Ordinal);
-        Assert.Contains($"href=\"/admin/feeds/{feed}?edit={Key(upstream)}#upstream-{Key(upstream)}\"", page, StringComparison.Ordinal);
-        Assert.Contains($"href=\"/admin/feeds/{feed}?edit=new#upstream-new\"", page, StringComparison.Ordinal);
+        Assert.Contains($"href=\"/admin/feeds/{feed}/upstreams?edit={Key(upstream)}#upstream-{Key(upstream)}\"", page, StringComparison.Ordinal);
+        Assert.Contains("<details class=\"fg-accordion\" id=\"add-upstream\">", page, StringComparison.Ordinal);
         Assert.DoesNotContain("upstreams/update", page, StringComparison.Ordinal);
 
         // Opened, the form sits in a row under its upstream, filled in with what is stored - the checkbox included.
-        var edit = await HttpAssert.SuccessBodyAsync(await admin.GetAsync($"/admin/feeds/{feed}?edit={Key(upstream)}"));
+        var edit = await HttpAssert.SuccessBodyAsync(await admin.GetAsync($"/admin/feeds/{feed}/upstreams?edit={Key(upstream)}"));
         var row = Regex.Match(edit, $"<tr class=\"fg-row-panel\" id=\"upstream-{Key(upstream)}\">.*?</tr>", RegexOptions.Singleline).Value;
         Assert.Contains("upstreams/update", row, StringComparison.Ordinal);
         Assert.Contains("value=\"https://stub.invalid/v3/index.json\"", row, StringComparison.Ordinal);
@@ -137,7 +137,7 @@ public sealed partial class UpstreamEditTests(ProxyServerFixture server) : IClas
     /// <summary>Posts the edit form with the antiforgery token of the feed's settings page.</summary>
     private static async Task<HttpResponseMessage> PostAsync(HttpClient browser, string feed, params (string Name, string Value)[] fields)
     {
-        var html = await HttpAssert.SuccessBodyAsync(await browser.GetAsync($"/admin/feeds/{feed}"));
+        var html = await HttpAssert.SuccessBodyAsync(await browser.GetAsync($"/admin/feeds/{feed}/upstreams"));
         var values = fields.ToDictionary(f => f.Name, f => f.Value);
         values["__RequestVerificationToken"] = WebUtility.HtmlDecode(AntiforgeryPattern().Match(html).Groups["value"].Value);
         using var content = new FormUrlEncodedContent(values);

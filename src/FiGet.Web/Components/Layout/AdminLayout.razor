@@ -95,19 +95,36 @@
 
             if (Managed is { } managed)
             {
+                // One page per section of the settings. Name and deletion only for admins: renaming changes every client's
+                // URL and deleting removes the feed, which a grant of Manage does not cover.
                 var name = Uri.EscapeDataString(managed.Name);
-                groups.Add(managed.IsAssets
-                    ? new NavGroup(managed.Name,
-                    [
-                        new("Settings", $"/admin/assets/{name}"),
-                        new("Browse files", $"/assets/{name}", Highlights: false),
-                    ], TitleInMenuBar: true)
-                    : new NavGroup(managed.Name,
-                    [
-                        new("Settings", $"/admin/feeds/{name}"),
-                        new("Unlisted versions", $"/admin/feeds/{name}/unlisted"),
-                        new("View as a reader", $"/feeds/{name}", Highlights: false),
-                    ], TitleInMenuBar: true));
+                var isAdmin = HttpContext?.User.IsInRole(FiGetApp.AdminRole) == true;
+                var root = (managed.IsAssets ? "/admin/assets/" : "/admin/feeds/") + name;
+                var links = new List<NavLink> { new("Settings", root) };
+                if (!managed.IsAssets)
+                {
+                    links.Add(new("Upstreams", $"{root}/upstreams"));
+                    links.Add(new("Retention", $"{root}/retention"));
+                }
+
+                links.Add(new("Instructions", $"{root}/instructions"));
+                links.Add(new("Access", $"{root}/access"));
+                if (isAdmin)
+                {
+                    links.Add(new("Name and deletion", $"{root}/name"));
+                }
+
+                if (managed.IsAssets)
+                {
+                    links.Add(new("Browse files", $"/assets/{name}", Highlights: false));
+                }
+                else
+                {
+                    links.Add(new("Unlisted versions", $"{root}/unlisted"));
+                    links.Add(new("View as a reader", $"/feeds/{name}", Highlights: false));
+                }
+
+                groups.Add(new NavGroup(managed.Name, links, TitleInMenuBar: true));
             }
 
             return groups;

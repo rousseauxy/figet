@@ -43,7 +43,7 @@ public abstract partial class FeedRenameTests
         using (var response = await PostAsync(admin, $"/admin/feeds/{old}", $"/admin/feeds/{old}/rename", ("name", renamed), ("keepOldName", "true")))
         {
             HttpAssert.Status(HttpStatusCode.Redirect, response);
-            Assert.Equal($"/admin/feeds/{renamed}?naming=renamed#name", response.Headers.Location?.OriginalString);
+            Assert.Equal($"/admin/feeds/{renamed}/name?naming=renamed", response.Headers.Location?.OriginalString);
         }
 
         var lower = id.ToLowerInvariant();
@@ -57,7 +57,7 @@ public abstract partial class FeedRenameTests
         // The old name is still the feed's: nothing else can be created under it.
         Assert.False(await CreateFeedAsync(old, FeedKind.Curated));
 
-        var settings = await HttpAssert.SuccessBodyAsync(await admin.GetAsync($"/admin/feeds/{renamed}"));
+        var settings = await HttpAssert.SuccessBodyAsync(await admin.GetAsync($"/admin/feeds/{renamed}/name"));
         Assert.Contains($"<code>{old}</code>", settings, StringComparison.Ordinal);
         Assert.DoesNotContain("not since it was added", settings, StringComparison.Ordinal);
 
@@ -107,23 +107,23 @@ public abstract partial class FeedRenameTests
         using var admin = await AdminAsync();
         using (var added = await PostAsync(admin, $"/admin/feeds/{first}", $"/admin/feeds/{first}/aliases/add", ("name", alternate)))
         {
-            Assert.EndsWith("?naming=alias-added#name", added.Headers.Location?.OriginalString, StringComparison.Ordinal);
+            Assert.EndsWith("/name?naming=alias-added", added.Headers.Location?.OriginalString, StringComparison.Ordinal);
         }
 
         foreach (var taken in (string[])[first, alternate.ToUpperInvariant()])
         {
             using var response = await PostAsync(admin, $"/admin/feeds/{second}", $"/admin/feeds/{second}/rename", ("name", taken), ("keepOldName", "true"));
-            Assert.Equal($"/admin/feeds/{second}?naming=taken#name", response.Headers.Location?.OriginalString);
+            Assert.Equal($"/admin/feeds/{second}/name?naming=taken", response.Headers.Location?.OriginalString);
         }
 
         using (var response = await PostAsync(admin, $"/admin/feeds/{second}", $"/admin/feeds/{second}/aliases/add", ("name", first)))
         {
-            Assert.EndsWith("?naming=taken#name", response.Headers.Location?.OriginalString, StringComparison.Ordinal);
+            Assert.EndsWith("/name?naming=taken", response.Headers.Location?.OriginalString, StringComparison.Ordinal);
         }
 
         using (var response = await PostAsync(admin, $"/admin/feeds/{second}", $"/admin/feeds/{second}/rename", ("name", "not a name")))
         {
-            Assert.EndsWith("?naming=invalid#name", response.Headers.Location?.OriginalString, StringComparison.Ordinal);
+            Assert.EndsWith("/name?naming=invalid", response.Headers.Location?.OriginalString, StringComparison.Ordinal);
         }
 
         Assert.Equal(first, (await FindAsync(alternate))!.Name);
@@ -169,7 +169,7 @@ public abstract partial class FeedRenameTests
         using var admin = await AdminAsync();
         using (var response = await PostAsync(admin, $"/admin/assets/{old}", $"/admin/feeds/{old}/rename", ("name", renamed), ("keepOldName", "true")))
         {
-            Assert.Equal($"/admin/assets/{renamed}?naming=renamed#name", response.Headers.Location?.OriginalString);
+            Assert.Equal($"/admin/assets/{renamed}/name?naming=renamed", response.Headers.Location?.OriginalString);
         }
 
         using var anonymous = server.CreateClient();
@@ -199,7 +199,7 @@ public abstract partial class FeedRenameTests
 
         using (var response = await PostAsync(admin, $"/admin/feeds/{renamed}", $"/admin/feeds/{renamed}/aliases/remove", ("key", aliasKey.ToString(System.Globalization.CultureInfo.InvariantCulture))))
         {
-            Assert.EndsWith("?naming=alias-removed#name", response.Headers.Location?.OriginalString, StringComparison.Ordinal);
+            Assert.EndsWith("/name?naming=alias-removed", response.Headers.Location?.OriginalString, StringComparison.Ordinal);
         }
 
         using var anonymous = server.CreateClient();

@@ -143,9 +143,12 @@ public abstract partial class FeedPermissionTests
         await GrantUserAsync(feed, manager, FeedAccessLevel.Manage);
         using var browser = await SignedInAsync(manager);
 
-        var settings = await HttpAssert.SuccessBodyAsync(await browser.GetAsync($"/admin/feeds/{feed}"));
+        var settings = await HttpAssert.SuccessBodyAsync(await browser.GetAsync($"/admin/feeds/{feed}/access"));
         Assert.Contains($"action=\"/admin/feeds/{feed}/access/set\"", settings, StringComparison.Ordinal);
-        Assert.DoesNotContain("Delete this feed", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("Name and deletion", settings, StringComparison.Ordinal);
+
+        // Renaming and deleting are not what a grant of Manage covers: the page is not there for this account.
+        HttpAssert.Status(HttpStatusCode.NotFound, await browser.GetAsync($"/admin/feeds/{feed}/name"));
         Assert.DoesNotContain("href=\"/admin/users\"", settings, StringComparison.Ordinal);
 
         var colleagueKey = (await FindUserAsync(colleague))!.Key;

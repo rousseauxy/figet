@@ -1,0 +1,112 @@
+@page "/admin/feeds/{Name}/access"
+@page "/admin/assets/{Name}/access"
+@attribute [Authorize]
+@layout AdminLayout
+@inherits FeedAdminPage
+@using FiGet.Application.Accounts
+@inject IFeedPermissionStore Permissions
+@inject IUserStore Users
+@inject IGroupStore Groups
+
+<PageTitle>Access · @Name · FiGet</PageTitle>
+
+<FeedAdminHeader Feed="Target" Name="@Name" Section="Access">
+    <Lede>
+        @(Target?.AnonymousRead == true ? $"Anyone can read this {Noun}; grants below add more than reading." : $"Only the accounts and groups below, and admins, can see this {Noun}.")
+        Read lists and downloads; Publish also pushes, uploads, pulls and removes; Manage also changes the settings and this
+        list. Admins and super admins manage everything without a grant.
+    </Lede>
+</FeedAdminHeader>
+
+@if (Target is { } feed)
+{
+    <section class="fg-panel">
+        @if (grants.Count == 0)
+        {
+            <p class="fg-empty">No grants yet.</p>
+        }
+        else
+        {
+            <div class="fg-table-wrap">
+                <table class="fg-table">
+                    <thead>
+                        <tr><th>Who</th><th>Level</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var grant in grants)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="fg-badge fg-badge-plain">@(grant.UserKey is null ? "Group" : "User")</span>
+                                    @grant.Name
+                                </td>
+                                <td><span class="fg-badge @(grant.Level == FeedAccessLevel.Manage ? "fg-badge-accent" : grant.Level == FeedAccessLevel.Publish ? "fg-badge-info" : "")">@grant.Level</span></td>
+                                <td class="fg-cell-actions">
+                                    <form method="post" action="/admin/feeds/@feed.Name/access/remove">
+                                        <AntiforgeryToken />
+                                        <input type="hidden" name="grant" value="@grant.Key" />
+                                        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                                        <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Remove</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @* Two choices and a button: one row, not an accordion that would save no space. *@
+        <form method="post" action="/admin/feeds/@feed.Name/access/set" class="fg-form fg-form-inline">
+            <AntiforgeryToken />
+            <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+            <div class="fg-field">
+                <label for="grant-who">Grant to</label>
+                <select id="grant-who" name="who" required>
+                    <option value="">Choose an account or a group</option>
+                    @if (groupChoices.Count > 0)
+                    {
+                        <optgroup label="Groups">
+                            @foreach (var group in groupChoices)
+                            {
+                                <option value="group:@group.Key">@group.Name</option>
+                            }
+                        </optgroup>
+                    }
+                    <optgroup label="Accounts">
+                        @foreach (var user in userChoices)
+                        {
+                            <option value="user:@user.Key">@user.UserName@(string.IsNullOrEmpty(user.DisplayName) ? "" : $" ({user.DisplayName})")</option>
+                        }
+                    </optgroup>
+                </select>
+            </div>
+            <div class="fg-field">
+                <label for="grant-level">Level</label>
+                <select id="grant-level" name="level">
+                    <option value="@FeedAccessLevel.Read">Read</option>
+                    <option value="@FeedAccessLevel.Publish">Publish</option>
+                    <option value="@FeedAccessLevel.Manage">Manage</option>
+                </select>
+            </div>
+            <button type="submit" class="fg-btn fg-btn-primary">Grant access</button>
+            <p class="fg-muted fg-small">Granting to someone who already has a grant replaces its level.</p>
+        </form>
+    </section>
+}
+
+@code {
+    private IReadOnlyList<FeedGrant> grants = [];
+    private IReadOnlyList<User> userChoices = [];
+    private IReadOnlyList<GroupSummary> groupChoices = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (await LoadFeedAsync())
+        {
+            grants = await Permissions.ListAsync(Target!.Key, HttpContext.RequestAborted);
+            userChoices = await Users.ListAsync(HttpContext.RequestAborted);
+            groupChoices = await Groups.ListAsync(HttpContext.RequestAborted);
+        }
+    }
+}

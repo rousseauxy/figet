@@ -2662,3 +2662,32 @@ accent while open, neighbours joined into one block, keyboard focus ring, no mot
 
 Test: `AdminUiTests` - the create accordion on the feeds page is closed with feeds listed, opened by `?open=create`,
 reopened by a refused create, and closed by a successful one with the confirmation shown.
+
+## A page per section of a feed's settings - 2026-09-14
+
+The owner's review: one settings page held settings, source URLs, upstreams, retention with its preview, instructions,
+access, name, alternate names and deletion. Accordions on that page were considered and not chosen - every save reloads
+a static page, which would fold everything shut again, and the page would still load the retention preview and every
+account and group on each visit. Each section now has its own page in the feed's menu, which the admin area already had
+for Settings and Unlisted versions:
+
+| Page | Feed | Directory |
+|---|---|---|
+| Settings - the checkboxes, kind, created, count, URLs | `/admin/feeds/{name}` | `/admin/assets/{name}` |
+| Upstreams - the list, the inline edit row, Add upstream in an accordion | `…/upstreams` | - |
+| Retention - rules, and the next run's preview in a panel of its own | `…/retention` | - |
+| Instructions | `…/instructions` | `…/instructions` |
+| Access - grants, and granting as one row | `…/access` | `…/access` |
+| Name and deletion - rename, alternate names, delete; admins only | `…/name` | `…/name` |
+
+- One base class, `FeedAdminPage`, looks the feed up (alternate names included) and answers 404 unless the account
+  manages it, the page applies to its kind, and - for Name and deletion - the account is an admin. A shared header
+  gives each page its breadcrumb and title.
+- The endpoints return to the page they belong to: upstream changes to `/upstreams`, a retention run to `/retention`,
+  grants to `/access`, a rename or alternate-name change to `/name` under the current name. The group page's
+  "Change" link goes to the feed's access page.
+- The menu lists Upstreams and Retention only for package feeds, and Name and deletion only for admins.
+
+Tests updated to the new addresses; `FeedPermissionTests` adds that an account with Manage gets 404 on Name and
+deletion and does not see it in the menu, `AssetDirectoryTests` that a directory's menu has its three pages and none of
+the package-only ones, and that a package-only page answers 404 for a directory.
