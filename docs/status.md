@@ -2437,3 +2437,26 @@ and an install template saved through the settings page appear on the package an
 an asset directory's download template). With the client address ignored, both integration tests fail.
 
 Suites: unit 124/0; integration 358/0 on SQLite and on SQL Server.
+
+## Fetch by URL through a proxy - 2026-09-13
+
+- **`RemoteFetch:Proxy`** fetches through an HTTP proxy (credentials from the URL), and **`RemoteFetch:AllowedHosts`**
+  (exact names or `*.example.com`) is required with it: through a proxy the connect-time address check sees only the
+  proxy, and the proxy resolves the name, so the host name is the check that holds. A proxy without an allow-list
+  refuses every fetch and says why. Without a proxy nothing changed: every connection's address is checked, and an
+  allow-list, when set, narrows further.
+- **Redirects are followed by FiGet**, hop by hop (at most five, http and https only), in both modes, so every hop's host
+  is checked against the allow-list instead of the handler following them unseen.
+- **Promotion between feeds** is dropped from the plan (owner): moved to "Decided against" in the backlog.
+
+Tests: `RemoteFetchAddressTests` gained host matching (exact, wildcard below a name, not the name itself, not a suffix
+of another label, trailing dot, case); `RemoteFetchProxyTests` runs a local proxy that answers proxy-form requests: a file
+and a redirect within the allowed hosts arrive through it, a host outside the list never reaches it, a redirect to one is
+refused, and a proxy without an allow-list sends nothing. With only the first hop checked, the test fails. The existing
+asset fetch tests pass with redirects now followed by hand.
+
+A trap met on the way, recorded because it cost a confusing run: a falsification restored within the same second as the
+build of the falsified file left the DLL's timestamp equal to the source's, so the next build did not recompile and the
+full suite ran the falsified code. Touching the file forced the rebuild.
+
+Suites: unit 132/0; integration 360/0 on SQLite and on SQL Server.

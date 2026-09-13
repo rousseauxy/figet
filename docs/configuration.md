@@ -138,7 +138,9 @@ not get around the limit: a request is counted as anonymous after its key has be
 |---|---|---|
 | `IncompleteUploadExpiry` | `24:00:00` | How long the parts of a multipart upload wait for completion before the hourly sweep removes them. |
 | `RemoteFetch:Timeout` | `00:30:00` | How long fetching one file by URL may take, download included. |
-| `RemoteFetch:AllowPrivateNetworks` | `false` | Whether a fetched URL may point at a private network, loopback or carrier-grade NAT address. Off, because an upload token could otherwise read internal addresses through the server. Link-local (cloud metadata) addresses stay refused either way. No HTTP proxy is used for fetching. |
+| `RemoteFetch:AllowPrivateNetworks` | `false` | Whether a fetched URL may point at a private network, loopback or carrier-grade NAT address. Off, because an upload token could otherwise read internal addresses through the server. Link-local (cloud metadata) addresses stay refused either way. Applies without a proxy. |
+| `RemoteFetch:Proxy` | empty | An HTTP proxy to fetch through (`http://proxy.example:8080`; credentials in the URL, from a secret, when it needs them). Requires `AllowedHosts`: through a proxy the server cannot see the address it reaches, so the host name is what is checked. |
+| `RemoteFetch:AllowedHosts` | empty | Hosts a fetch may go to, every redirect hop included: an exact name or `*.example.com` for names below it. Empty allows any host, which only works without a proxy. With it set and no proxy, both the host and the connected address are checked. |
 
 ## FiGet:Logging
 

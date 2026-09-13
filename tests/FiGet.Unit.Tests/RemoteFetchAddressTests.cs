@@ -50,4 +50,18 @@ public sealed class RemoteFetchAddressTests
     {
         Assert.False(HttpRemoteFileSource.IsAllowed(IPAddress.Parse(address), allowPrivateNetworks: true));
     }
+    [Theory]
+    [InlineData("download.example.com", true)]
+    [InlineData("DOWNLOAD.example.com.", true)]
+    [InlineData("cdn.vendor.example", true)]
+    [InlineData("a.b.vendor.example", true)]
+    [InlineData("vendor.example", false)]
+    [InlineData("evilvendor.example", false)]
+    [InlineData("example.com", false)]
+    public void Hosts_match_the_allow_list_exactly_or_below_a_wildcard(string host, bool allowed) =>
+        Assert.Equal(allowed, HttpRemoteFileSource.IsHostAllowed(host, ["download.example.com", "*.vendor.example"]));
+
+    [Fact]
+    public void An_empty_allow_list_allows_every_host() =>
+        Assert.True(HttpRemoteFileSource.IsHostAllowed("anything.example", []));
 }

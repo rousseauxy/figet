@@ -15,6 +15,18 @@ public sealed class RemoteFetchSettings
     /// <see cref="HttpRemoteFileSource"/> for why.
     /// </summary>
     public bool AllowPrivateNetworks { get; set; }
+
+    /// <summary>
+    /// An HTTP proxy to fetch through, for an instance whose only way out is one (<c>http://proxy:8080</c>, credentials in
+    /// the URL when it needs them). Requires <see cref="AllowedHosts"/>: see <see cref="HttpRemoteFileSource"/>.
+    /// </summary>
+    public Uri? Proxy { get; set; }
+
+    /// <summary>
+    /// Host names a fetch may go to, redirects included: <c>download.example.com</c>, or <c>*.example.com</c> for its
+    /// subdomains. Empty: any host, which is only possible without a proxy.
+    /// </summary>
+    public IReadOnlyList<string> AllowedHosts { get; set; } = [];
 }
 
 /// <summary>
@@ -29,10 +41,16 @@ public sealed class RemoteFetchSettings
 /// including each one a redirect opens, goes through <see cref="ConnectAsync"/>.
 ///
 /// Link-local addresses (where cloud metadata services live) are refused even when private networks are
-/// allowed. No proxy is used: through a proxy the check would see the proxy's address, not the target's.
+/// allowed.
+///
+/// Through a proxy that check cannot work: the connection is to the proxy, and the proxy resolves the name. What still
+/// holds there is the host name, checked against an allow-list before every request, redirects included - so a proxy is
+/// only used with an allow-list, and a fetch without one is refused. Redirects are followed here, one hop at a time, in
+/// both modes, so each hop's host is checked; without a proxy each connection's address is checked as well.
 /// </summary>
 public sealed class HttpRemoteFileSource : IRemoteFileSource, IDisposable
 {
+    private const int MaxRedirects = 5;
     private readonly RemoteFetchSettings settings;
     private readonly HttpClient client;
 
@@ -40,16 +58,32 @@ public sealed class HttpRemoteFileSource : IRemoteFileSource, IDisposable
     {
         ArgumentNullException.ThrowIfNull(settings);
         this.settings = settings;
-        client = new HttpClient(
-            new SocketsHttpHandler
+        var handler = new SocketsHttpHandler
+        {
+            AllowAutoRedirect = false,
+            AutomaticDecompression = DecompressionMethods.None,
+            ConnectTimeout = TimeSpan.FromSeconds(30),
+        };
+
+        if (settings.Proxy is { } proxy)
+        {
+            var webProxy = new WebProxy(new UriBuilder(proxy) { UserName = "", Password = "" }.Uri) { BypassProxyOnLocal = false };
+            if (!string.IsNullOrEmpty(proxy.UserInfo))
             {
-                UseProxy = false,
-                AllowAutoRedirect = true,
-                MaxAutomaticRedirections = 5,
-                AutomaticDecompression = DecompressionMethods.None,
-                ConnectTimeout = TimeSpan.FromSeconds(30),
-                ConnectCallback = ConnectAsync,
-            })
+                var parts = proxy.UserInfo.Split(':', 2);
+                webProxy.Credentials = new NetworkCredential(Uri.UnescapeDataString(parts[0]), parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : "");
+            }
+
+            handler.UseProxy = true;
+            handler.Proxy = webProxy;
+        }
+        else
+        {
+            handler.UseProxy = false;
+            handler.ConnectCallback = ConnectAsync;
+        }
+
+        client = new HttpClient(handler)
         {
             // The whole fetch is bounded below, body included; the client's own timeout would stop at the headers.
             Timeout = System.Threading.Timeout.InfiniteTimeSpan,
@@ -65,12 +99,43 @@ public sealed class HttpRemoteFileSource : IRemoteFileSource, IDisposable
             throw new RemoteFetchException("Only http and https URLs can be fetched.", refused: true);
         }
 
+        if (settings.Proxy is not null && settings.AllowedHosts.Count == 0)
+        {
+            throw new RemoteFetchException(
+                "Fetching through a proxy needs a list of allowed hosts (FiGet:Assets:RemoteFetch:AllowedHosts): through a proxy this server cannot see which address it reaches.",
+                refused: true);
+        }
+
         var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(settings.Timeout);
         HttpResponseMessage? response = null;
         try
         {
-            response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+            var current = url;
+            for (var hop = 0; ; hop++)
+            {
+                if (!IsHostAllowed(current.Host, settings.AllowedHosts))
+                {
+                    throw new RemoteFetchException($"'{current.Host}' is not in the hosts this server fetches from (FiGet:Assets:RemoteFetch:AllowedHosts).", refused: true);
+                }
+
+                response = await client.GetAsync(current, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+                if ((int)response.StatusCode is not (301 or 302 or 303 or 307 or 308) || response.Headers.Location is not { } location)
+                {
+                    break;
+                }
+
+                var next = location.IsAbsoluteUri ? location : new Uri(current, location);
+                response.Dispose();
+                response = null;
+                if (hop == MaxRedirects || next.Scheme is not ("http" or "https"))
+                {
+                    throw new RemoteFetchException(hop == MaxRedirects ? "The remote server redirected too many times." : "The remote server redirected to something other than http or https.", refused: true);
+                }
+
+                current = next;
+            }
+
             if (!response.IsSuccessStatusCode)
             {
                 throw new RemoteFetchException($"The remote server answered {(int)response.StatusCode} {response.ReasonPhrase}.", refused: false);
@@ -108,6 +173,29 @@ public sealed class HttpRemoteFileSource : IRemoteFileSource, IDisposable
     }
 
     public void Dispose() => client.Dispose();
+
+    /// <summary>Whether a host is in the allow-list: an exact name, or <c>*.example.com</c> for any name below it. An empty list allows every host.</summary>
+    public static bool IsHostAllowed(string host, IReadOnlyList<string> allowedHosts)
+    {
+        ArgumentNullException.ThrowIfNull(allowedHosts);
+        if (allowedHosts.Count == 0)
+        {
+            return true;
+        }
+
+        var name = (host ?? "").TrimEnd('.').ToLowerInvariant();
+        foreach (var pattern in allowedHosts.Select(p => p.Trim().TrimEnd('.').ToLowerInvariant()).Where(p => p.Length > 0))
+        {
+            if (pattern.StartsWith("*.", StringComparison.Ordinal)
+                ? name.EndsWith(pattern[1..], StringComparison.Ordinal) && name.Length > pattern.Length - 1
+                : name == pattern)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// Whether an address may be fetched from. Public addresses always; private ones only when allowed; the

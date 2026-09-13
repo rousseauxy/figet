@@ -111,7 +111,13 @@ public static class FiGetApp
         services.AddSingleton<IRemoteFileSource>(provider =>
         {
             var fetch = provider.GetRequiredService<IOptions<FiGetOptions>>().Value.Assets.RemoteFetch;
-            return new HttpRemoteFileSource(new RemoteFetchSettings { Timeout = fetch.Timeout, AllowPrivateNetworks = fetch.AllowPrivateNetworks });
+            return new HttpRemoteFileSource(new RemoteFetchSettings
+            {
+                Timeout = fetch.Timeout,
+                AllowPrivateNetworks = fetch.AllowPrivateNetworks,
+                Proxy = string.IsNullOrWhiteSpace(fetch.Proxy) ? null : new Uri(fetch.Proxy),
+                AllowedHosts = fetch.AllowedHosts,
+            });
         });
         services.AddHostedService<AssetUploadCleanupService>();
         services.AddScoped<AccessTokenService>();

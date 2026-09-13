@@ -42,9 +42,6 @@ PSResourceGet release carries the fix, re-run the 2.2.4 / 2.2.5 saves over v3 an
 
 ## Soon
 
-- **Fetch by URL through a proxy.** Fetching deliberately uses no proxy, because the address check would see
-  the proxy rather than the target. An instance whose only way out is a proxy needs the check done another
-  way - resolving and pinning the address before the request, or an allow-list of hosts - before it can fetch.
 - **Record the asset write side from the reference server.** Its uploads, deletes and metadata were taken
   from the client library and the documentation, because writing to the reference instance was not possible
   in the session that built them. Still unconfirmed: the status of a `PUT` onto an existing file (FiGet
@@ -55,8 +52,6 @@ PSResourceGet release carries the fix, re-run the 2.2.4 / 2.2.5 saves over v3 an
   are covered by tests and the page was checked visually, but the script's drag, progress,
   confirm-before-replace and import-result path has not been clicked through by a person yet.
 
-- **Promotion between feeds.** Referred to by the server being replaced; nothing in FiGet does it yet.
-  Needs a decision on whether a promoted package keeps its origin or becomes a push.
 
 ### When the repository goes public: split validation from publishing
 
@@ -108,6 +103,9 @@ set of CVEs in an assembly the app never ships itself.
   records with whether a version came from cache or upstream belong here, not in the audit log: heaviest by volume.
 
 ## Decided against
+
+- **Promotion between feeds** (dropped by the owner, 2026-09-13). The server being replaced has it; nothing in the
+  fleet uses it, and pushing the same package to the other feed does the job.
 
 - **Per-feed version filtering on proxy feeds.** A module whose newest release drops support for an older
   client is the module's compatibility problem; FiGet offers every upstream version and the client picks.

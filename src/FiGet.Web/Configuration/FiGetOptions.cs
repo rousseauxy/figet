@@ -217,4 +217,10 @@ public sealed class RemoteFetchOptions
     /// token can download it. Cloud metadata addresses stay refused either way.
     /// </summary>
     public bool AllowPrivateNetworks { get; set; }
+
+    /// <summary>An HTTP proxy to fetch through, for an instance whose only way out is one. Needs <see cref="AllowedHosts"/>.</summary>
+    public string? Proxy { get; set; }
+
+    /// <summary>Hosts a fetch may go to, redirects included (<c>download.example.com</c>, <c>*.example.com</c>). Empty: any, without a proxy.</summary>
+    public List<string> AllowedHosts { get; set; } = [];
 }
