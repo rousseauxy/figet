@@ -110,7 +110,7 @@ else
                             {
                                 @* Fetches this version from the upstream and keeps it, the way a client's
                                    first download would. Useful before a machine that has no internet needs it. *@
-                                <form method="post" action="/admin/feeds/@feed.Name/pull">
+                                <form method="post" action="/admin/feeds/@feed.Name/pull" data-busy="Pulling with its dependencies...">
                                     <AntiforgeryToken />
                                     <input type="hidden" name="id" value="@row.Id" />
                                     <input type="hidden" name="version" value="@row.Latest" />

@@ -62,7 +62,7 @@
     else if (IsAdmin)
     {
         @* Not here yet: fetch it from the upstream and keep it, so a machine without internet can have it. *@
-        <form method="post" action="/admin/feeds/@feed.Name/pull">
+        <form method="post" action="/admin/feeds/@feed.Name/pull" data-busy="Pulling with its dependencies...">
             <AntiforgeryToken />
             <input type="hidden" name="id" value="@displayId" />
             <input type="hidden" name="version" value="@row.NormalizedVersion" />

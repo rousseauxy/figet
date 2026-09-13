@@ -216,6 +216,51 @@
         flash(button, fallbackCopy(text));
     });
 
+    // ── Buttons that take a while ────────────────────────────────────────────────────────────────
+    // A pull fetches a package and everything it depends on before the page comes back, which is seconds for a
+    // module with dependencies. Without a sign the click looked like it did nothing, and a second click started the
+    // same pull again. The button that sent a form marked data-busy shows a spinner and is disabled until the next
+    // page arrives. Disabled after the submit event, not before it, so the form is still sent.
+
+    document.addEventListener("submit", function (event) {
+        var form = event.target;
+        if (!form.hasAttribute || !form.hasAttribute("data-busy")) {
+            return;
+        }
+
+        var button = event.submitter || form.querySelector("button[type=submit]");
+        if (!button) {
+            return;
+        }
+
+        if (button.classList.contains("is-busy")) {
+            event.preventDefault();
+            return;
+        }
+
+        button.classList.add("is-busy");
+        button.setAttribute("aria-busy", "true");
+        var label = form.getAttribute("data-busy");
+        if (label) {
+            button.setAttribute("title", label);
+        }
+
+        window.setTimeout(function () { button.disabled = true; }, 0);
+    });
+
+    // A page restored from the back-forward cache comes back with its buttons still spinning.
+    window.addEventListener("pageshow", function (event) {
+        if (!event.persisted) {
+            return;
+        }
+
+        document.querySelectorAll("button.is-busy").forEach(function (button) {
+            button.classList.remove("is-busy");
+            button.removeAttribute("aria-busy");
+            button.disabled = false;
+        });
+    });
+
     // ── Filters that submit themselves ───────────────────────────────────────────────────────────
     // A filter inside a GET form would otherwise need the Search button pressed after choosing, which
     // reads as broken. Without script the form still works; it just takes the extra press.

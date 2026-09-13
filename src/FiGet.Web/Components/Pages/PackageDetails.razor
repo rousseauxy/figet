@@ -282,7 +282,7 @@
                                 }
                                 else if (IsAdmin)
                                 {
-                                    <form method="post" action="/admin/feeds/@feed!.Name/pull">
+                                    <form method="post" action="/admin/feeds/@feed!.Name/pull" data-busy="Pulling with its dependencies...">
                                         <AntiforgeryToken />
                                         <input type="hidden" name="id" value="@displayId" />
                                         <input type="hidden" name="version" value="@row.NormalizedVersion" />
