@@ -105,6 +105,11 @@ public static class FeedAccess
                 http.Items[TokenNameItem] = best.LogName;
             }
 
+            if (!string.Equals(feed.NameLower, feedName, StringComparison.OrdinalIgnoreCase))
+            {
+                await NoteAlternateNameAsync(http, feeds, feed, feedName.ToLowerInvariant(), cancellationToken);
+            }
+
             return (new FeedRequest(feed, best), null);
         }
 
@@ -121,6 +126,27 @@ public static class FeedAccess
 
         http.Response.Headers.WWWAuthenticate = $"Basic realm=\"{Realm}\"";
         return (null, Results.Json(new { error = "Credentials are required." }, statusCode: StatusCodes.Status401Unauthorized));
+    }
+
+    /// <summary>
+    /// A client reached the feed by an old name. Recorded once an hour per name and calling address - with the token, when
+    /// one was used - so the audit log says who still has to update a URL, and the settings page when the name was last
+    /// needed. Only for requests that were let through: those are the clients the name is being kept for.
+    /// </summary>
+    private static async Task NoteAlternateNameAsync(HttpContext http, IFeedStore feeds, Feed feed, string alias, CancellationToken cancellationToken)
+    {
+        var recorded = http.RequestServices.GetRequiredService<AuditLog>().RecordThrottled(
+            http,
+            $"feed.alias.used|{alias}|{RequestActor.Caller(http)}",
+            TimeSpan.FromHours(1),
+            "feed.alias.used",
+            feed.Name,
+            $"alias={alias} path={http.Request.Path}");
+
+        if (recorded)
+        {
+            await feeds.TouchAliasAsync(alias, http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime, cancellationToken);
+        }
     }
 
     /// <summary>

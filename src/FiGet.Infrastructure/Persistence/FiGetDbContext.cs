@@ -14,6 +14,8 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
 {
     public DbSet<Feed> Feeds => Set<Feed>();
 
+    public DbSet<FeedAlias> FeedAliases => Set<FeedAlias>();
+
     public DbSet<Package> Packages => Set<Package>();
 
     public DbSet<PackageVersion> PackageVersions => Set<PackageVersion>();
@@ -75,6 +77,18 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.Property(x => x.PackageInstructions).HasMaxLength(4000);
             e.Property(x => x.FeedInstructions).HasMaxLength(4000);
             e.Property(x => x.FileInstructions).HasMaxLength(4000);
+        });
+
+        // Unique on its own, and checked against feed names by the store: one set of names across both tables.
+        modelBuilder.Entity<FeedAlias>(e =>
+        {
+            e.ToTable("FeedAliases");
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Name).HasMaxLength(64);
+            e.Property(x => x.NameLower).HasMaxLength(64);
+            e.HasIndex(x => x.NameLower).IsUnique();
+            e.HasIndex(x => x.FeedKey);
+            e.HasOne<Feed>().WithMany().HasForeignKey(x => x.FeedKey).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<FeedUpstream>(e =>

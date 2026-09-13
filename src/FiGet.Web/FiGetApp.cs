@@ -424,6 +424,15 @@ public static class FiGetApp
             {
                 logger.LogInformation("Created feed {Feed} from configuration.", seed.Name);
             }
+            else if (await feeds.FindAsync(seed.Name, CancellationToken.None) is { } renamed
+                && !string.Equals(renamed.NameLower, seed.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                // Renamed with its old name kept, which is also what stops a new empty feed of the old name appearing here.
+                logger.LogWarning(
+                    "Configured feed {Configured} has been renamed to {Feed} and answers to its old name as an alternate name. Rename it in FiGet:Feeds too.",
+                    seed.Name,
+                    renamed.Name);
+            }
         }
 
         if ((await feeds.ListAsync(CancellationToken.None)).Count == 0
@@ -1109,6 +1118,90 @@ public static class FiGetApp
                 $"/admin/feeds/{Uri.EscapeDataString(target.Name)}?retention={report.Unlisted}.{report.Deleted}.{report.Pruned}.{report.FreedBytes}{(report.StoppedAtLimit ? ".more" : "")}#retention");
         });
 
+        // Renaming changes the URL every client has registered, so it stays with admins, like deleting.
+        adminOnly.MapPost("/feeds/{feed}/rename", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            AuditLog audit,
+            TimeProvider time,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            if (target is null)
+            {
+                return Results.NotFound();
+            }
+
+            var name = form["name"].ToString().Trim();
+            var keepOldName = form["keepOldName"].ToString() == "true";
+            var outcome = FeedNames.IsValid(name)
+                ? await feeds.RenameAsync(target.Key, name, keepOldName, time.GetUtcNow().UtcDateTime, cancellationToken)
+                : FeedNameChange.Invalid;
+
+            if (outcome == FeedNameChange.Done)
+            {
+                audit.Record(http, "feed.rename", name, $"from={target.Name} keepOldName={keepOldName}");
+            }
+
+            return NamingResult(target, outcome == FeedNameChange.Done ? name : target.Name, outcome, "renamed");
+        });
+
+        adminOnly.MapPost("/feeds/{feed}/aliases/add", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            AuditLog audit,
+            TimeProvider time,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            if (target is null)
+            {
+                return Results.NotFound();
+            }
+
+            var name = form["name"].ToString().Trim();
+            var outcome = FeedNames.IsValid(name)
+                ? await feeds.AddAliasAsync(target.Key, name, time.GetUtcNow().UtcDateTime, cancellationToken)
+                : FeedNameChange.Invalid;
+
+            if (outcome == FeedNameChange.Done)
+            {
+                audit.Record(http, "feed.alias.add", target.Name, $"alias={name}");
+            }
+
+            return NamingResult(target, target.Name, outcome, "alias-added");
+        });
+
+        adminOnly.MapPost("/feeds/{feed}/aliases/remove", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            if (target is null)
+            {
+                return Results.NotFound();
+            }
+
+            var removed = int.TryParse(form["key"].ToString(), out var aliasKey)
+                ? await feeds.RemoveAliasAsync(target.Key, aliasKey, cancellationToken)
+                : null;
+
+            if (removed is not null)
+            {
+                audit.Record(http, "feed.alias.remove", target.Name, $"alias={removed}");
+            }
+
+            return NamingResult(target, target.Name, removed is null ? FeedNameChange.NotFound : FeedNameChange.Done, "alias-removed");
+        });
+
         manageFeed.MapPost("/feeds/{feed}/upstreams/move", async (
             string feed,
             HttpContext http,
@@ -1130,6 +1223,21 @@ public static class FiGetApp
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
         });
+    }
+
+    /// <summary>Back to the name panel of a feed's settings page - by its current name - with a code saying what happened.</summary>
+    private static IResult NamingResult(Feed feed, string name, FeedNameChange outcome, string done)
+    {
+        var code = outcome switch
+        {
+            FeedNameChange.Done => done,
+            FeedNameChange.NameTaken => "taken",
+            FeedNameChange.Invalid => "invalid",
+            FeedNameChange.Unchanged => "unchanged",
+            _ => "gone",
+        };
+
+        return Results.Redirect((feed.Kind == FeedKind.Assets ? "/admin/assets/" : "/admin/feeds/") + Uri.EscapeDataString(name) + "?naming=" + code + "#name");
     }
 
     /// <summary>An admin endpoint that changes one feed or asset directory, and the level it needs on it.</summary>

@@ -7,15 +7,17 @@ namespace FiGet.Infrastructure.Persistence.Stores;
 
 public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
 {
-    public Task<Feed?> FindAsync(string name, CancellationToken cancellationToken)
+    public async Task<Feed?> FindAsync(string name, CancellationToken cancellationToken)
     {
         // Upstreams come along: every protocol request resolves its feed here, and a proxy feed needs them
         // to answer at all. A curated feed has none, so this costs nothing there.
         var lower = name.ToLowerInvariant();
-        return db.Feeds
-            .AsNoTracking()
-            .Include(f => f.Upstreams.OrderBy(u => u.Ordinal))
-            .FirstOrDefaultAsync(f => f.NameLower == lower, cancellationToken);
+        var feeds = db.Feeds.AsNoTracking().Include(f => f.Upstreams.OrderBy(u => u.Ordinal));
+
+        // The alternate names only when the name itself found nothing: a second query for requests by an old name and for
+        // names that do not exist, none for the rest.
+        return await feeds.FirstOrDefaultAsync(f => f.NameLower == lower, cancellationToken)
+            ?? await feeds.FirstOrDefaultAsync(f => db.FeedAliases.Any(a => a.FeedKey == f.Key && a.NameLower == lower), cancellationToken);
     }
 
     public async Task<IReadOnlyList<Feed>> ListAsync(CancellationToken cancellationToken) =>
@@ -28,7 +30,7 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
     public async Task<bool> CreateAsync(Feed feed, CancellationToken cancellationToken)
     {
         feed.NameLower = feed.Name.ToLowerInvariant();
-        if (await db.Feeds.AnyAsync(f => f.NameLower == feed.NameLower, cancellationToken))
+        if (await NameTakenAsync(feed.NameLower, cancellationToken))
         {
             return false;
         }
@@ -108,6 +110,7 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
             .Where(v => db.Packages.Any(p => p.Key == v.PackageKey && p.FeedKey == key))
             .ExecuteDeleteAsync(cancellationToken);
         await db.Packages.Where(p => p.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
+        await db.FeedAliases.Where(a => a.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.AccessTokens.Where(t => t.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.FeedPermissions.Where(p => p.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.CachedUpstreamDescriptions
@@ -119,6 +122,119 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         await transaction.CommitAsync(cancellationToken);
         return true;
     }
+
+    public async Task<FeedNameChange> RenameAsync(int key, string name, bool keepOldName, DateTime nowUtc, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        var lower = name.ToLowerInvariant();
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        var feed = await db.Feeds.FirstOrDefaultAsync(f => f.Key == key, cancellationToken);
+        if (feed is null)
+        {
+            return FeedNameChange.NotFound;
+        }
+
+        if (string.Equals(feed.Name, name, StringComparison.Ordinal))
+        {
+            return FeedNameChange.Unchanged;
+        }
+
+        if (lower != feed.NameLower)
+        {
+            if (await db.Feeds.AnyAsync(f => f.NameLower == lower, cancellationToken))
+            {
+                return FeedNameChange.NameTaken;
+            }
+
+            // One of this feed's own alternate names is the name it goes back to, and stops being an alternate.
+            if (await db.FeedAliases.FirstOrDefaultAsync(a => a.NameLower == lower, cancellationToken) is { } alias)
+            {
+                if (alias.FeedKey != key)
+                {
+                    return FeedNameChange.NameTaken;
+                }
+
+                db.FeedAliases.Remove(alias);
+            }
+
+            if (keepOldName)
+            {
+                db.FeedAliases.Add(new FeedAlias { FeedKey = key, Name = feed.Name, NameLower = feed.NameLower, CreatedUtc = nowUtc });
+            }
+        }
+
+        feed.Name = name;
+        feed.NameLower = lower;
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // Taken by a request that got there between the check and the save.
+            db.ChangeTracker.Clear();
+            return FeedNameChange.NameTaken;
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return FeedNameChange.Done;
+    }
+
+    public async Task<IReadOnlyList<FeedAlias>> ListAliasesAsync(int key, CancellationToken cancellationToken) =>
+        await db.FeedAliases.AsNoTracking().Where(a => a.FeedKey == key).OrderBy(a => a.NameLower).ToListAsync(cancellationToken);
+
+    public async Task<FeedNameChange> AddAliasAsync(int key, string name, DateTime nowUtc, CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        var lower = name.ToLowerInvariant();
+        if (!await db.Feeds.AnyAsync(f => f.Key == key, cancellationToken))
+        {
+            return FeedNameChange.NotFound;
+        }
+
+        if (await NameTakenAsync(lower, cancellationToken))
+        {
+            return FeedNameChange.NameTaken;
+        }
+
+        var alias = new FeedAlias { FeedKey = key, Name = name, NameLower = lower, CreatedUtc = nowUtc };
+        db.FeedAliases.Add(alias);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return FeedNameChange.Done;
+        }
+        catch (DbUpdateException)
+        {
+            db.Entry(alias).State = EntityState.Detached;
+            return FeedNameChange.NameTaken;
+        }
+    }
+
+    public async Task<string?> RemoveAliasAsync(int key, int aliasKey, CancellationToken cancellationToken)
+    {
+        var alias = await db.FeedAliases.FirstOrDefaultAsync(a => a.Key == aliasKey && a.FeedKey == key, cancellationToken);
+        if (alias is null)
+        {
+            return null;
+        }
+
+        db.FeedAliases.Remove(alias);
+        await db.SaveChangesAsync(cancellationToken);
+        return alias.Name;
+    }
+
+    public Task TouchAliasAsync(string nameLower, DateTime nowUtc, CancellationToken cancellationToken) =>
+        db.FeedAliases.Where(a => a.NameLower == nameLower).ExecuteUpdateAsync(s => s.SetProperty(a => a.LastUsedUtc, nowUtc), cancellationToken);
+
+    /// <summary>
+    /// Whether a feed, a directory or an alternate name has the name. Two tables, so no index enforces this across both; an
+    /// admin renaming one feed while another admin creates a feed of the same name in the same instant is the gap left.
+    /// </summary>
+    private async Task<bool> NameTakenAsync(string lower, CancellationToken cancellationToken) =>
+        await db.Feeds.AnyAsync(f => f.NameLower == lower, cancellationToken)
+        || await db.FeedAliases.AnyAsync(a => a.NameLower == lower, cancellationToken);
 
     public Task<int> CountAssetsAsync(int key, CancellationToken cancellationToken) =>
         db.AssetItems.CountAsync(a => a.FeedKey == key && !a.IsDirectory, cancellationToken);

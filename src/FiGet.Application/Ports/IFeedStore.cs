@@ -3,13 +3,30 @@ using FiGet.Domain.Entities;
 
 namespace FiGet.Application.Ports;
 
+/// <summary>What became of a change to a feed's names.</summary>
+public enum FeedNameChange
+{
+    Done,
+    NotFound,
+
+    /// <summary>A feed, an asset directory or an alternate name of one already has the name.</summary>
+    NameTaken,
+
+    /// <summary>The name is not a valid feed name.</summary>
+    Invalid,
+
+    /// <summary>The feed already has exactly that name.</summary>
+    Unchanged,
+}
+
 public interface IFeedStore
 {
+    /// <summary>The feed with this name, or with this as one of its alternate names. Case-insensitive.</summary>
     Task<Feed?> FindAsync(string name, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<Feed>> ListAsync(CancellationToken cancellationToken);
 
-    /// <summary>Creates the feed. Returns false when a feed with that name already exists.</summary>
+    /// <summary>Creates the feed. Returns false when a feed, or an alternate name of one, already has the name.</summary>
     Task<bool> CreateAsync(Feed feed, CancellationToken cancellationToken);
 
     /// <summary>Changes the feed's settings. Returns false when the feed no longer exists.</summary>
@@ -28,6 +45,24 @@ public interface IFeedStore
     /// Returns false when the feed no longer exists.
     /// </summary>
     Task<bool> DeleteAsync(int key, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Renames the feed. With <paramref name="keepOldName"/> the old name becomes an alternate name, so clients using it keep
+    /// working. Renaming to one of the feed's own alternate names takes that name back from the list. A change of case only
+    /// renames and never adds an alternate name, because names are case-insensitive. Files are not touched: they are stored
+    /// by the feed's key.
+    /// </summary>
+    Task<FeedNameChange> RenameAsync(int key, string name, bool keepOldName, DateTime nowUtc, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<FeedAlias>> ListAliasesAsync(int key, CancellationToken cancellationToken);
+
+    Task<FeedNameChange> AddAliasAsync(int key, string name, DateTime nowUtc, CancellationToken cancellationToken);
+
+    /// <summary>Removes one alternate name of the feed. Returns the name removed, or null when there was no such name.</summary>
+    Task<string?> RemoveAliasAsync(int key, int aliasKey, CancellationToken cancellationToken);
+
+    /// <summary>Notes that a client reached a feed by this alternate name.</summary>
+    Task TouchAliasAsync(string nameLower, DateTime nowUtc, CancellationToken cancellationToken);
 
     /// <summary>How many files an asset directory holds, folders not counted.</summary>
     Task<int> CountAssetsAsync(int key, CancellationToken cancellationToken);

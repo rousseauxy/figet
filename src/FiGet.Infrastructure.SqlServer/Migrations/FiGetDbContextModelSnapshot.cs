@@ -494,6 +494,43 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.ToTable("Feeds", (string)null);
                 });
 
+            modelBuilder.Entity("FiGet.Domain.Entities.FeedAlias", b =>
+                {
+                    b.Property<int>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Key"));
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("FeedKey")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("LastUsedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("NameLower")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("FeedKey");
+
+                    b.HasIndex("NameLower")
+                        .IsUnique();
+
+                    b.ToTable("FeedAliases", (string)null);
+                });
+
             modelBuilder.Entity("FiGet.Domain.Entities.FeedPermission", b =>
                 {
                     b.Property<int>("Key")
@@ -1170,6 +1207,15 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.HasOne("FiGet.Domain.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserKey")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("FiGet.Domain.Entities.FeedAlias", b =>
+                {
+                    b.HasOne("FiGet.Domain.Entities.Feed", null)
+                        .WithMany()
+                        .HasForeignKey("FeedKey")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

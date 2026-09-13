@@ -35,6 +35,10 @@ secret files.
 A list of feeds created on start when they do not exist. Existing feeds are never changed from
 configuration. If no feed exists after seeding, a feed named `default` is created.
 
+A configured feed renamed on its settings page keeps existing as long as its old name is kept as an alternate name: the
+name is then taken, nothing is created, and the start logs a warning to rename it here too. Without the alternate name,
+the next start creates a new, empty feed of the configured name.
+
 | Key | Default | Meaning |
 |---|---|---|
 | `Feeds:N:Name` | required | Letters, digits, `.`, `-`, `_`; 1 to 64 characters; starts with a letter or digit. Case-insensitive in URLs. |

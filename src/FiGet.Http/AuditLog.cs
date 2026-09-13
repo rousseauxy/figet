@@ -87,12 +87,13 @@ public sealed partial class AuditLog(ILoggerFactory loggers, TimeProvider time)
     /// Records an event at most once per <paramref name="window"/> for the same <paramref name="key"/>. For what a client
     /// repeats on every request - a dead key sent by a scheduled job - where one line a window says it all.
     /// </summary>
-    public void RecordThrottled(HttpContext? http, string key, TimeSpan window, string action, string subject, string? detail = null)
+    /// <returns>Whether it was recorded this time.</returns>
+    public bool RecordThrottled(HttpContext? http, string key, TimeSpan window, string action, string subject, string? detail = null)
     {
         var now = time.GetUtcNow().UtcDateTime;
         if (throttled.TryGetValue(key, out var last) && now - last < window)
         {
-            return;
+            return false;
         }
 
         throttled[key] = now;
@@ -105,6 +106,7 @@ public sealed partial class AuditLog(ILoggerFactory loggers, TimeProvider time)
         }
 
         Record(http, action, subject, detail);
+        return true;
     }
 
     /// <summary>

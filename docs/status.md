@@ -2579,3 +2579,36 @@ One folder per feed is also what a storage admin asks for: what one feed uses, b
 Tests: `StorageLayoutTests` (every area moves; a second run moves nothing; a feed named like another feed's key keeps
 its own files; files already in the new place are kept; an unclaimed folder stays), `FileSystemPackageStorageTests`
 (paths under `feeds/{key}`, a key of 0 or below is refused, deleting a feed leaves other feeds and its asset files alone).
+
+## Renaming a feed, with alternate names - 2026-09-13
+
+Asked by the tester. An admin renames a feed or an asset directory in the new **Name** panel of its settings page, and
+chooses whether the old name stays as an **alternate name** (ticked by default). The reference server offers the same
+pair, and it is the right one: clients have the name in their URLs - PowerShell repositories, NuGet sources, Ansible
+tasks - so a rename without the old name breaks all of them at once, while with it they keep working and can be moved
+over one at a time.
+
+- **One set of names** across feeds, asset directories and alternate names, case-insensitive: creating, renaming or adding
+  an alternate name refuses a name any of them has. Renaming back to one of the feed's own alternate names takes it off
+  the list; a change of case only never adds one.
+- **An alternate name serves everything the name does** - v2, v3, the management API, asset URLs, the pages - because the
+  feed lookup falls back to it. Only when the name itself found nothing, so ordinary requests do not pay a second query.
+- **Who still uses it**: a request let through by an alternate name writes `feed.alias.used` to the audit log (the feed
+  as subject, `alias=` and the path), once an hour per name and calling address, with the token when there was one, and
+  sets the name's *last used* shown on the settings page. That is what says when a name can go.
+- **Files do not move**: they are stored by the feed's key since the previous change.
+- **Configured feeds**: `FiGet:Feeds` creates a missing feed on start, which would bring a renamed configured feed back
+  empty. A kept alternate name holds the name, so nothing is created and the start logs a warning to update the
+  configuration; the settings page says the same beside the name and beside such an alternate name.
+- Admins only, like deleting: a rename changes the URL of every client. Audited as `feed.rename` (`from=`,
+  `keepOldName=`), `feed.alias.add`, `feed.alias.remove`.
+- Left open: names are unique per table by index and across the two tables by the store's check, so two admins creating
+  the same name as a feed and as an alternate name in the same instant could both succeed.
+
+Tests: `FeedRenameTests` on SQLite and SQL Server - a renamed feed serves its pushed package and its service index by
+both names, its old name cannot be created again, the settings page shows the alternate name as used, and the audit
+entry arrives; without the old name kept, it answers 404 and can be created again; another feed's name and another
+feed's alternate name (in other case) are refused, and so is an invalid name; renaming back swaps name and alternate,
+and a change of case adds none; a renamed asset directory serves its file by both names and redirects to
+`/admin/assets/`; a removed alternate name answers 404. Falsified: with the alternate-name lookup broken, four of the
+six fail.

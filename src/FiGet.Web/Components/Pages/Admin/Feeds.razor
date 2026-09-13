@@ -181,7 +181,7 @@ else
         // without looking; it names both rather than send someone to the wrong tab.
         (message, messageIsError) = created
             ? ($"{(IsAssets ? "Asset directory" : "Feed")} '{NewFeed!.Name}' created.", false)
-            : ($"The name '{NewFeed!.Name}' is already taken by a feed or an asset directory.", true);
+            : ($"The name '{NewFeed!.Name}' is already taken by a feed or an asset directory, or is an alternate name of one.", true);
         await LoadAsync();
         if (created)
         {
