@@ -125,7 +125,7 @@ public static class PackageManagementEndpoints
         }
 
         if (await FindAsync(request!.Feed, name, version, store, cancellationToken) is not { } row
-            || await storage.OpenPackageAsync(new PackageStorageKey(request.Feed.NameLower, row.Package!.IdLower, row.NormalizedVersionLower), cancellationToken) is not { } stream)
+            || await storage.OpenPackageAsync(new PackageStorageKey(request.Feed.Key, row.Package!.IdLower, row.NormalizedVersionLower), cancellationToken) is not { } stream)
         {
             return NotFound(name, version);
         }

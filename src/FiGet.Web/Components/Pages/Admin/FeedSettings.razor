@@ -693,8 +693,8 @@ else
 
         // Files first: a row without files is visible and fixable, an orphaned file is neither.
         Audit.Record(HttpContext, "feed.delete", feed.Name);
-        await Storage.DeleteFeedAsync(feed.NameLower, HttpContext.RequestAborted);
-        await AssetStorage.DeleteFeedAsync(feed.NameLower, HttpContext.RequestAborted);
+        await Storage.DeleteFeedAsync(feed.Key, HttpContext.RequestAborted);
+        await AssetStorage.DeleteFeedAsync(feed.Key, HttpContext.RequestAborted);
         await Feeds.DeleteAsync(feed.Key, HttpContext.RequestAborted);
         Navigation.NavigateTo(IsAssets ? "/admin/assets" : "/admin/feeds", forceLoad: false);
     }

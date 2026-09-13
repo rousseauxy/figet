@@ -4,12 +4,12 @@ using FiGet.Application.Ports;
 namespace FiGet.Infrastructure.Storage;
 
 /// <summary>
-/// Stores asset files as <c>assets/{directory}/{first two characters}/{blob id}</c> under a root. The path a
+/// Stores asset files as <c>feeds/{directory key}/assets/{first two characters}/{blob id}</c> under a root. The path a
 /// user chose never reaches the file system - it lives in the database - so no name can escape the root,
 /// collide on a case-insensitive disk, or be a name Windows refuses. The two-character fan-out keeps any one
 /// folder small. Writes go to a temporary file beside the target and are moved into place.
 ///
-/// Unfinished multipart uploads live beside them, as <c>asset-uploads/{directory}/{upload id}/{index}.{offset}</c>
+/// Unfinished multipart uploads live beside them, as <c>feeds/{directory key}/asset-uploads/{upload id}/{index}.{offset}</c>
 /// plus a manifest, on the same shared volume: the parts of one upload may reach different replicas.
 /// </summary>
 public sealed class FileSystemAssetStorage : IAssetStorage
@@ -45,11 +45,11 @@ public sealed class FileSystemAssetStorage : IAssetStorage
         return Task.CompletedTask;
     }
 
-    public Task DeleteFeedAsync(string feedLower, CancellationToken cancellationToken)
+    public Task DeleteFeedAsync(int feedKey, CancellationToken cancellationToken)
     {
         foreach (var area in (string[])["assets", "asset-uploads"])
         {
-            var directory = SafePath(area, feedLower);
+            var directory = SafePath(StorageLayout.Feeds, StorageLayout.FeedFolder(feedKey), area);
             if (Directory.Exists(directory))
             {
                 Directory.Delete(directory, recursive: true);
@@ -142,14 +142,17 @@ public sealed class FileSystemAssetStorage : IAssetStorage
 
     public Task<int> PruneUploadsAsync(DateTime olderThanUtc, CancellationToken cancellationToken)
     {
-        var area = Path.Combine(root, "asset-uploads");
+        var feeds = Path.Combine(root, StorageLayout.Feeds);
         var removed = 0;
-        if (!Directory.Exists(area))
+        if (!Directory.Exists(feeds))
         {
             return Task.FromResult(0);
         }
 
-        foreach (var upload in new DirectoryInfo(area).EnumerateDirectories().SelectMany(feed => feed.EnumerateDirectories()))
+        foreach (var upload in new DirectoryInfo(feeds).EnumerateDirectories()
+            .Select(feed => new DirectoryInfo(Path.Combine(feed.FullName, "asset-uploads")))
+            .Where(uploads => uploads.Exists)
+            .SelectMany(uploads => uploads.EnumerateDirectories()))
         {
             // The newest file decides, not the folder's own time: adding a part does not touch the folder on
             // every file system, and an upload still receiving parts must never be swept away.
@@ -179,13 +182,13 @@ public sealed class FileSystemAssetStorage : IAssetStorage
     private string BlobPath(AssetBlobKey key)
     {
         RequireHexId(key.BlobId);
-        return SafePath("assets", key.Feed, key.BlobId[..2], key.BlobId);
+        return SafePath(StorageLayout.Feeds, StorageLayout.FeedFolder(key.Feed), "assets", key.BlobId[..2], key.BlobId);
     }
 
     private string UploadPath(AssetUploadKey key)
     {
         RequireHexId(key.UploadId);
-        return SafePath("asset-uploads", key.Feed, key.UploadId);
+        return SafePath(StorageLayout.Feeds, StorageLayout.FeedFolder(key.Feed), "asset-uploads", key.UploadId);
     }
 
     /// <summary>Ids are generated or derived here as 32 lower-case hex characters; anything else did not come from us.</summary>

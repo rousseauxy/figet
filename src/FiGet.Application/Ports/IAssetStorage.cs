@@ -1,13 +1,13 @@
 namespace FiGet.Application.Ports;
 
-/// <summary>Addresses the bytes of one asset file. Both parts are lower-case.</summary>
-public readonly record struct AssetBlobKey(string Feed, string BlobId);
+/// <summary>Addresses the bytes of one asset file: the directory by its key, so a rename moves nothing.</summary>
+public readonly record struct AssetBlobKey(int Feed, string BlobId);
 
 /// <summary>
 /// Addresses one unfinished multipart upload. The id is derived from the one the client chose, so it is
 /// always 32 lower-case hex characters whatever the client sent.
 /// </summary>
-public readonly record struct AssetUploadKey(string Feed, string UploadId);
+public readonly record struct AssetUploadKey(int Feed, string UploadId);
 
 /// <summary>One stored part of a multipart upload.</summary>
 public sealed record AssetUploadPart(int Index, long Offset, long Size);
@@ -24,8 +24,8 @@ public interface IAssetStorage
     /// <summary>Removes the file. Not an error when it is already gone.</summary>
     Task DeleteAsync(AssetBlobKey key, CancellationToken cancellationToken);
 
-    /// <summary>Removes every asset file of one directory, finished or not. The name must be lower-cased.</summary>
-    Task DeleteFeedAsync(string feedLower, CancellationToken cancellationToken);
+    /// <summary>Removes every asset file of one directory, finished or not.</summary>
+    Task DeleteFeedAsync(int feedKey, CancellationToken cancellationToken);
 
     /// <summary>
     /// Stores one part of a multipart upload, replacing a part already stored at that index. On shared

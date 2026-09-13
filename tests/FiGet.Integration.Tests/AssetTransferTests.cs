@@ -294,7 +294,9 @@ public abstract partial class AssetTransferTests
 
     private int UnfinishedUploadCount()
     {
-        var root = Path.Combine(server.Services.GetRequiredService<StoragePaths>().Root, "files", "asset-uploads", "files");
+        using var scope = server.Services.CreateScope();
+        var directory = scope.ServiceProvider.GetRequiredService<IFeedStore>().FindAsync("files", CancellationToken.None).GetAwaiter().GetResult()!;
+        var root = Path.Combine(server.Services.GetRequiredService<StoragePaths>().Root, "files", "feeds", directory.Key.ToString(System.Globalization.CultureInfo.InvariantCulture), "asset-uploads");
         return Directory.Exists(root) ? Directory.EnumerateDirectories(root).Count() : 0;
     }
 

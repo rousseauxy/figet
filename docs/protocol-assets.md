@@ -135,7 +135,7 @@ their write-side statuses were not recorded from the reference server either.
 
 ### Multipart uploads
 
-- **Parts are kept on shared storage** (`files/asset-uploads/{directory}/{id}/`), not in local temp: behind a
+- **Parts are kept on shared storage** (`files/feeds/{directory key}/asset-uploads/{id}/`), not in local temp: behind a
   load balancer the parts of one upload reach different replicas.
 - **The client's id is hashed** into the storage name, because the API promises nothing about its shape.
 - **Completion checks the parts line up**: every index from 0 once, each starting where the last ended, adding

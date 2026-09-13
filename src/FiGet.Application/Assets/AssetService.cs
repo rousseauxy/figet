@@ -73,7 +73,7 @@ public sealed class AssetService(IAssetStore store, IAssetStorage storage, TimeP
     public Task<Stream?> OpenAsync(Feed feed, AssetItem file, CancellationToken cancellationToken) =>
         file.BlobId is null
             ? Task.FromResult<Stream?>(null)
-            : storage.OpenAsync(new AssetBlobKey(feed.NameLower, file.BlobId), cancellationToken);
+            : storage.OpenAsync(new AssetBlobKey(feed.Key, file.BlobId), cancellationToken);
 
     /// <summary>
     /// Stores <paramref name="content"/> at <paramref name="path"/>, creating the folders above it. The body
@@ -116,7 +116,7 @@ public sealed class AssetService(IAssetStore store, IAssetStorage storage, TimeP
             return AssetOutcome.ParentIsFile;
         }
 
-        var blob = new AssetBlobKey(feed.NameLower, Guid.NewGuid().ToString("N"));
+        var blob = new AssetBlobKey(feed.Key, Guid.NewGuid().ToString("N"));
         AssetHashes hashes;
         try
         {
@@ -165,7 +165,7 @@ public sealed class AssetService(IAssetStore store, IAssetStorage storage, TimeP
         await store.UpdateAsync(existing, cancellationToken);
         if (previous is not null)
         {
-            await storage.DeleteAsync(new AssetBlobKey(feed.NameLower, previous), cancellationToken);
+            await storage.DeleteAsync(new AssetBlobKey(feed.Key, previous), cancellationToken);
         }
 
         return AssetOutcome.Replaced;
@@ -297,7 +297,7 @@ public sealed class AssetService(IAssetStore store, IAssetStorage storage, TimeP
     /// so it is hashed into a fixed storage-safe form rather than validated.
     /// </summary>
     private static AssetUploadKey UploadKey(Feed feed, string uploadId) =>
-        new(feed.NameLower, Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(uploadId)))[..32]);
+        new(feed.Key, Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(uploadId)))[..32]);
 
     /// <summary>Creates a folder and the folders above it. Creating one that exists is not an error.</summary>
     public async Task<AssetOutcome> CreateFolderAsync(Feed feed, AssetPath path, CancellationToken cancellationToken)
@@ -353,7 +353,7 @@ public sealed class AssetService(IAssetStore store, IAssetStorage storage, TimeP
         {
             try
             {
-                await storage.DeleteAsync(new AssetBlobKey(feed.NameLower, blob), cancellationToken);
+                await storage.DeleteAsync(new AssetBlobKey(feed.Key, blob), cancellationToken);
             }
             catch (IOException ex)
             {

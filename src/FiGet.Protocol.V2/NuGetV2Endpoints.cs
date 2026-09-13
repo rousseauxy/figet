@@ -306,7 +306,7 @@ public static class NuGetV2Endpoints
             return Results.NotFound();
         }
 
-        var stream = await storage.OpenPackageAsync(new PackageStorageKey(request.Feed.NameLower, idLower, versionLower), cancellationToken);
+        var stream = await storage.OpenPackageAsync(new PackageStorageKey(request.Feed.Key, idLower, versionLower), cancellationToken);
         if (stream is null)
         {
             return Results.NotFound();

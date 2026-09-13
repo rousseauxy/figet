@@ -405,6 +405,14 @@ public static class FiGetApp
 
         var feeds = services.GetRequiredService<IFeedStore>();
         var time = services.GetRequiredService<TimeProvider>();
+
+        // Before any feed is created or any file served: a feed created from configuration below could otherwise receive
+        // files in the new layout while its old folder still waits to move.
+        StorageLayout.MoveNameFoldersToKeyFolders(
+            Path.Combine(services.GetRequiredService<StoragePaths>().Root, "files"),
+            (await feeds.ListAsync(CancellationToken.None)).Select(f => (f.Key, f.NameLower)),
+            logger);
+
         foreach (var seed in options.Feeds)
         {
             if (!FeedNames.IsValid(seed.Name))

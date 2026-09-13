@@ -214,7 +214,7 @@
         dependencies = [.. row.Dependencies.OrderBy(dependency => dependency.Ordinal)];
         if (IsLocal && CurrentTab == "files")
         {
-            var key = new PackageStorageKey(feed.NameLower, displayId.ToLowerInvariant(), row.NormalizedVersionLower);
+            var key = new PackageStorageKey(feed.Key, displayId.ToLowerInvariant(), row.NormalizedVersionLower);
             files = await PackageFileReader.ReadAsync(Storage, key, HttpContext.RequestAborted);
         }
     }

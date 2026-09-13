@@ -292,7 +292,7 @@ public static class NuGetV3Endpoints
             return Results.NotFound();
         }
 
-        var key = new PackageStorageKey(request.Feed.NameLower, idLower, versionLower);
+        var key = new PackageStorageKey(request.Feed.Key, idLower, versionLower);
         var stream = isNupkg
             ? await storage.OpenPackageAsync(key, cancellationToken)
             : await storage.OpenNuspecAsync(key, cancellationToken);
@@ -545,7 +545,7 @@ public static class NuGetV3Endpoints
             return Results.NotFound();
         }
 
-        var stream = await storage.OpenSymbolAsync(new SymbolStorageKey(request.Feed.NameLower, row.FileNameLower, row.SymbolKeyLower), cancellationToken);
+        var stream = await storage.OpenSymbolAsync(new SymbolStorageKey(request.Feed.Key, row.FileNameLower, row.SymbolKeyLower), cancellationToken);
         return stream is null ? Results.NotFound() : Results.Stream(stream, "application/octet-stream", enableRangeProcessing: true);
     }
 

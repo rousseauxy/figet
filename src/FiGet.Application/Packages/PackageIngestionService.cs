@@ -78,7 +78,7 @@ public sealed class PackageIngestionService(
             return new PushResult(PushOutcome.Conflict, $"{indexed.Id} {normalized} already exists in feed '{feed.Name}'.", indexed.Id, normalized);
         }
 
-        var key = new PackageStorageKey(feed.NameLower, idLower, versionLower);
+        var key = new PackageStorageKey(feed.Key, idLower, versionLower);
         try
         {
             nupkg.Position = 0;
@@ -167,7 +167,7 @@ public sealed class PackageIngestionService(
         foreach (var (row, content) in pdbs)
         {
             using var stream = new MemoryStream(content, writable: false);
-            await storage.SaveSymbolAsync(new SymbolStorageKey(feed.NameLower, row.FileNameLower, row.SymbolKeyLower), stream, cancellationToken);
+            await storage.SaveSymbolAsync(new SymbolStorageKey(feed.Key, row.FileNameLower, row.SymbolKeyLower), stream, cancellationToken);
         }
 
         await store.ReplaceSymbolFilesAsync(version.Key, pdbs.Select(p => p.Row).ToList(), cancellationToken);
@@ -266,10 +266,10 @@ public sealed class PackageIngestionService(
             return false;
         }
 
-        await storage.DeletePackageAsync(new PackageStorageKey(feed.NameLower, idLower, versionLower), cancellationToken);
+        await storage.DeletePackageAsync(new PackageStorageKey(feed.Key, idLower, versionLower), cancellationToken);
         foreach (var symbol in symbols)
         {
-            await storage.DeleteSymbolAsync(new SymbolStorageKey(feed.NameLower, symbol.FileNameLower, symbol.SymbolKeyLower), cancellationToken);
+            await storage.DeleteSymbolAsync(new SymbolStorageKey(feed.Key, symbol.FileNameLower, symbol.SymbolKeyLower), cancellationToken);
         }
 
         return true;

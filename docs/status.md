@@ -148,7 +148,7 @@ HTTPS.
 - **Data protection keys are stored unencrypted in the database** (the app logs a warning on start).
   Protecting them with a certificate belongs to phase 5 hardening.
 - **Storage paths include the feed name**: `packages/{feed}/{id}/{version}/…`. Renaming a feed is not
-  supported.
+  supported. (Since 2026-09-13 paths use the feed's key, see "Files stored per feed key".)
 - **Autocomplete `totalHits`** is `skip + returned count`, not the full count. No known client relies on
   it.
 - **Embedded icons, readmes and licence files** inside packages are not served; `iconUrl` and
@@ -2552,3 +2552,30 @@ minimum). The minimum would have made phones scroll sideways, and a background i
 Tests: `ThemeServiceTests` (only the named logo is served, not another file or a path out; a logo is a file or a data
 URL, a link to another site is refused) and `ThemePackTests` (each shipped pack's logo is served as SVG with a
 sandboxing policy, its YAML is not, and its CSS sets the page width).
+
+## Files stored per feed key - 2026-09-13
+
+The first step towards renaming a feed (asked by the tester: a feed created as "Test" and taken into production had to
+be recreated). Every file path held the feed's name - `packages/{name}/…`, `symbols/{name}/…`, `assets/{name}/…`,
+`asset-uploads/{name}/…` - so a rename would have been a file move. Now each feed has one folder named by its key, with
+the areas inside:
+
+```
+files/feeds/{key}/packages/{id}/{version}/{id}.{version}.nupkg
+files/feeds/{key}/symbols/{file}/{symbol key}/{file}
+files/feeds/{key}/assets/{xx}/{blob id}
+files/feeds/{key}/asset-uploads/{upload id}/…
+```
+
+One folder per feed is also what a storage admin asks for: what one feed uses, backs up or removes is one folder.
+
+- **The storage keys take the feed's key** (`int`), not a string, so a name cannot be passed by mistake.
+- **Existing folders move on the first start** (`StorageLayout.MoveNameFoldersToKeyFolders`, before configured feeds
+  are created). One directory rename per feed and area, so it is quick on any size; a second start finds nothing to
+  move; an interrupted start is finished by the next. A folder already present in the new place is merged entry by
+  entry and nothing is overwritten - a file in both places stays in the old one. A folder no feed is called any more is
+  left and named in a warning.
+
+Tests: `StorageLayoutTests` (every area moves; a second run moves nothing; a feed named like another feed's key keeps
+its own files; files already in the new place are kept; an unclaimed folder stays), `FileSystemPackageStorageTests`
+(paths under `feeds/{key}`, a key of 0 or below is refused, deleting a feed leaves other feeds and its asset files alone).

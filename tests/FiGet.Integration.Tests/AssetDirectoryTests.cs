@@ -518,8 +518,14 @@ public abstract partial class AssetDirectoryTests
 
     private int StoredBlobCount()
     {
-        var root = Path.Combine(server.Services.GetRequiredService<StoragePaths>().Root, "files", "assets");
-        return Directory.Exists(root) ? Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).Count(f => !f.EndsWith(".tmp", StringComparison.Ordinal)) : 0;
+        var root = Path.Combine(server.Services.GetRequiredService<StoragePaths>().Root, "files", "feeds");
+        return Directory.Exists(root)
+            ? Directory.EnumerateDirectories(root)
+                .Select(feed => Path.Combine(feed, "assets"))
+                .Where(Directory.Exists)
+                .SelectMany(assets => Directory.EnumerateFiles(assets, "*", SearchOption.AllDirectories))
+                .Count(f => !f.EndsWith(".tmp", StringComparison.Ordinal))
+            : 0;
     }
 
     private async Task<string> CreateTokenAsync(FiGet.Domain.Entities.TokenScopes scopes)

@@ -434,7 +434,7 @@
 
         if (LatestIsLocal && CurrentTab == "files")
         {
-            var key = new PackageStorageKey(feed.NameLower, displayId.ToLowerInvariant(), shown.NormalizedVersionLower);
+            var key = new PackageStorageKey(feed.Key, displayId.ToLowerInvariant(), shown.NormalizedVersionLower);
             files = await PackageFileReader.ReadAsync(Storage, key, HttpContext.RequestAborted);
         }
     }

@@ -3,10 +3,11 @@ using FiGet.Application.Ports;
 namespace FiGet.Infrastructure.Storage;
 
 /// <summary>
-/// Stores files under a root directory:
-/// <c>packages/{feed}/{id}/{version}/{id}.{version}.nupkg</c> (+ <c>.nuspec</c>) and
-/// <c>symbols/{feed}/{file}/{key}/{file}</c>. Writes go to a temporary file in the target directory and are
-/// moved into place, so a reader never sees a partial file, including on a shared volume.
+/// Stores files under a root directory, one folder per feed named by its key:
+/// <c>feeds/{key}/packages/{id}/{version}/{id}.{version}.nupkg</c> (+ <c>.nuspec</c>) and
+/// <c>feeds/{key}/symbols/{file}/{key}/{file}</c>. By key rather than name, so renaming a feed moves nothing, and
+/// everything one feed holds is one folder to measure, back up or remove. Writes go to a temporary file in the target
+/// directory and are moved into place, so a reader never sees a partial file, including on a shared volume.
 /// </summary>
 public sealed class FileSystemPackageStorage : IPackageStorage
 {
@@ -68,13 +69,12 @@ public sealed class FileSystemPackageStorage : IPackageStorage
         return Task.CompletedTask;
     }
 
-    public Task DeleteFeedAsync(string feedLower, CancellationToken cancellationToken)
+    public Task DeleteFeedAsync(int feedKey, CancellationToken cancellationToken)
     {
+        // The areas only: an asset directory's files share the feed's folder, and are the asset storage's to remove.
         foreach (var area in (string[])["packages", "symbols"])
         {
-            // SafePath refuses anything that could escape the root, uppercase included, so a feed name
-            // that never reached storage cannot delete something else here.
-            var directory = SafePath(area, feedLower);
+            var directory = SafePath(StorageLayout.Feeds, Folder(feedKey), area);
             if (Directory.Exists(directory))
             {
                 Directory.Delete(directory, recursive: true);
@@ -85,10 +85,12 @@ public sealed class FileSystemPackageStorage : IPackageStorage
     }
 
     private string PackagePath(PackageStorageKey key, string extension) =>
-        SafePath("packages", key.Feed, key.Id, key.Version, $"{key.Id}.{key.Version}.{extension}");
+        SafePath(StorageLayout.Feeds, Folder(key.Feed), "packages", key.Id, key.Version, $"{key.Id}.{key.Version}.{extension}");
 
     private string SymbolPath(SymbolStorageKey key) =>
-        SafePath("symbols", key.Feed, key.FileName, key.SymbolKey, key.FileName);
+        SafePath(StorageLayout.Feeds, Folder(key.Feed), "symbols", key.FileName, key.SymbolKey, key.FileName);
+
+    private static string Folder(int feedKey) => StorageLayout.FeedFolder(feedKey);
 
     /// <summary>Joins segments under the root and refuses anything that could escape it.</summary>
     private string SafePath(params string[] segments)
