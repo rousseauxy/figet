@@ -1032,6 +1032,12 @@ legend {
 }
 .fg-check.fg-inline { display: inline-flex; margin-left: 0.6rem; }
 
+/* An upstream's place in the priority order, with the two buttons that change it kept on the number's line. */
+.fg-priority { flex-wrap: nowrap; gap: 0.3rem; }
+.fg-priority span { min-width: 1.2rem; }
+.fg-priority form { display: contents; }
+.fg-priority .fg-btn[disabled] { opacity: 0.35; cursor: default; }
+
 /* ── Error pages ────────────────────────────────────────────────── */
 /* The code as a large, faint watermark the title sits on, as in CustomsHive: recognisable at a glance, and
    out of the way of the words that say what happened. */

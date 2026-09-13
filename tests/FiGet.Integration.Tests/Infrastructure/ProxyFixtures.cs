@@ -228,12 +228,36 @@ public sealed class StubUpstreamClient : IUpstreamClient
 }
 
 /// <summary>
-/// A server with two proxy feeds and a stub upstream: <c>proxy</c> accepts every id, <c>guarded</c> denies
-/// ids ending in <c>.secret</c> and allows only ids starting with <c>allowed</c>.
+/// Sends each upstream's calls to its own stub by upstream name, so a feed with two upstreams can hold two
+/// different packages under one id. Any name without a stub of its own goes to the default stub.
+/// </summary>
+public sealed class RoutingUpstreamClient(StubUpstreamClient fallback, IReadOnlyDictionary<string, StubUpstreamClient> byName) : IUpstreamClient
+{
+    private StubUpstreamClient For(FeedUpstream upstream) =>
+        byName.TryGetValue(upstream.Name, out var stub) ? stub : fallback;
+
+    public Task<UpstreamCatalog> GetCatalogAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken) =>
+        For(upstream).GetCatalogAsync(upstream, idLower, cancellationToken);
+
+    public Task<IReadOnlyList<UpstreamSearchHit>> SearchAsync(FeedUpstream upstream, string query, bool includePrerelease, int skip, int take, CancellationToken cancellationToken) =>
+        For(upstream).SearchAsync(upstream, query, includePrerelease, skip, take, cancellationToken);
+
+    public Task<Stream?> OpenPackageAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken) =>
+        For(upstream).OpenPackageAsync(upstream, idLower, version, cancellationToken);
+}
+
+/// <summary>
+/// A server with proxy feeds over stub upstreams: <c>proxy</c> accepts every id, <c>guarded</c> denies
+/// ids ending in <c>.secret</c> and allows only ids starting with <c>allowed</c>, <c>merging</c> opts into
+/// merging pushed ids with its upstream, and <c>layered</c> has two upstreams - <c>primary</c> first, answered by
+/// <see cref="Upstream"/>, and <c>secondary</c>, answered by <see cref="SecondUpstream"/>.
 /// </summary>
 public sealed class ProxyServerFixture() : FiGetServerFixture(TestDatabase.Sqlite)
 {
     public StubUpstreamClient Upstream { get; } = new();
+
+    /// <summary>The <c>secondary</c> upstream of the <c>layered</c> feed.</summary>
+    public StubUpstreamClient SecondUpstream { get; } = new();
 
     protected override void Configure(IWebHostBuilder builder)
     {
@@ -251,10 +275,25 @@ public sealed class ProxyServerFixture() : FiGetServerFixture(TestDatabase.Sqlit
         builder.UseSetting("FiGet:Feeds:4:Upstreams:0:Allow:0", "^allowed");
         builder.UseSetting("FiGet:Feeds:4:Upstreams:0:Deny:0", "secret$");
 
+        builder.UseSetting("FiGet:Feeds:5:Name", "merging");
+        builder.UseSetting("FiGet:Feeds:5:AnonymousRead", "true");
+        builder.UseSetting("FiGet:Feeds:5:MergePushedIdsWithUpstreams", "true");
+        builder.UseSetting("FiGet:Feeds:5:Upstreams:0:Name", "stub");
+        builder.UseSetting("FiGet:Feeds:5:Upstreams:0:Url", "https://stub.invalid/v3/index.json");
+
+        builder.UseSetting("FiGet:Feeds:6:Name", "layered");
+        builder.UseSetting("FiGet:Feeds:6:AnonymousRead", "true");
+        builder.UseSetting("FiGet:Feeds:6:Upstreams:0:Name", "primary");
+        builder.UseSetting("FiGet:Feeds:6:Upstreams:0:Url", "https://primary.invalid/v3/index.json");
+        builder.UseSetting("FiGet:Feeds:6:Upstreams:1:Name", "secondary");
+        builder.UseSetting("FiGet:Feeds:6:Upstreams:1:Url", "https://secondary.invalid/v3/index.json");
+
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<IUpstreamClient>();
-            services.AddSingleton<IUpstreamClient>(Upstream);
+            services.AddSingleton<IUpstreamClient>(new RoutingUpstreamClient(
+                Upstream,
+                new Dictionary<string, StubUpstreamClient>(StringComparer.OrdinalIgnoreCase) { ["secondary"] = SecondUpstream }));
         });
     }
 }

@@ -52,6 +52,16 @@ else
                         <option value="@PackageDeletionBehavior.HardDelete">Hard delete</option>
                     </InputSelect>
                 </div>
+
+                @if (feed.Upstreams.Count > 0)
+                {
+                    <label class="fg-check"><InputCheckbox id="merge-pushed-ids" @bind-Value="Settings!.MergePushedIdsWithUpstreams" /> Merge pushed packages with upstream packages of the same id</label>
+                    <p class="fg-muted fg-small">
+                        Off, an id pushed here is served only from this feed, and an upstream package with the same
+                        name is no longer offered. On, both are merged into one version list and the higher version of
+                        either becomes the latest - only right when the upstream package really is the same one.
+                    </p>
+                }
             }
 
             <button type="submit" class="fg-btn fg-btn-primary">Save settings</button>
@@ -123,12 +133,34 @@ else
             <div class="fg-table-wrap">
                 <table class="fg-table">
                     <thead>
-                        <tr><th>Name</th><th>Protocol</th><th>URL</th><th></th></tr>
+                        <tr><th>Priority</th><th>Name</th><th>Protocol</th><th>URL</th><th></th></tr>
                     </thead>
                     <tbody>
-                        @foreach (var upstream in feed.Upstreams)
+                        @foreach (var (upstream, index) in feed.Upstreams.OrderBy(u => u.Ordinal).Select((u, i) => (u, i)))
                         {
                             <tr>
+                                <td class="fg-num">
+                                    <div class="fg-row fg-priority">
+                                        <span>@(index + 1)</span>
+                                        @if (feed.Upstreams.Count > 1)
+                                        {
+                                            <form method="post" action="/admin/feeds/@feed.Name/upstreams/move">
+                                                <AntiforgeryToken />
+                                                <input type="hidden" name="key" value="@upstream.Key" />
+                                                <input type="hidden" name="direction" value="up" />
+                                                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                                                <button type="submit" class="fg-btn fg-btn-sm" disabled="@(index == 0)" title="Ask this upstream earlier" aria-label="Move @upstream.Name up">↑</button>
+                                            </form>
+                                            <form method="post" action="/admin/feeds/@feed.Name/upstreams/move">
+                                                <AntiforgeryToken />
+                                                <input type="hidden" name="key" value="@upstream.Key" />
+                                                <input type="hidden" name="direction" value="down" />
+                                                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                                                <button type="submit" class="fg-btn fg-btn-sm" disabled="@(index == feed.Upstreams.Count - 1)" title="Ask this upstream later" aria-label="Move @upstream.Name down">↓</button>
+                                            </form>
+                                        }
+                                    </div>
+                                </td>
                                 <td>@upstream.Name</td>
                                 <td><span class="fg-badge">@upstream.Kind</span></td>
                                 <td><code>@upstream.Url</code></td>
@@ -146,8 +178,9 @@ else
                 </table>
             </div>
             <p class="fg-muted fg-small">
-                Removing an upstream keeps the packages already cached from it: they were downloaded,
-                and something out there depends on them.
+                The first upstream that holds a package id serves it; upstreams further down are not asked about
+                that id, so two different packages that share a name are never mixed. Removing an upstream keeps the
+                packages already cached from it: they were downloaded, and something out there depends on them.
             </p>
         }
 
@@ -255,7 +288,7 @@ else
         // Only seed the settings form on a GET; on a post it already carries what was submitted.
         Settings ??= feed is null
             ? new SettingsForm()
-            : new SettingsForm { AnonymousRead = feed.AnonymousRead, AllowOverwrite = feed.AllowOverwrite, DeletionBehavior = feed.DeletionBehavior };
+            : new SettingsForm { AnonymousRead = feed.AnonymousRead, AllowOverwrite = feed.AllowOverwrite, DeletionBehavior = feed.DeletionBehavior, MergePushedIdsWithUpstreams = feed.MergePushedIdsWithUpstreams };
     }
 
     private async Task LoadAsync()
@@ -274,7 +307,7 @@ else
         }
 
         var saved = await Feeds.UpdateSettingsAsync(
-            feed.Key, Settings!.AnonymousRead, Settings!.AllowOverwrite, Settings!.DeletionBehavior, HttpContext.RequestAborted);
+            feed.Key, Settings!.AnonymousRead, Settings!.AllowOverwrite, Settings!.DeletionBehavior, Settings!.MergePushedIdsWithUpstreams, HttpContext.RequestAborted);
 
         if (saved)
         {
@@ -284,7 +317,7 @@ else
                 HttpContext,
                 "feed.settings",
                 feed.Name,
-                $"anonymousRead={Settings!.AnonymousRead} allowOverwrite={Settings!.AllowOverwrite} onDelete={Settings!.DeletionBehavior}");
+                $"anonymousRead={Settings!.AnonymousRead} allowOverwrite={Settings!.AllowOverwrite} onDelete={Settings!.DeletionBehavior} mergePushedIds={Settings!.MergePushedIdsWithUpstreams}");
         }
 
         (message, messageIsError) = saved ? ("Settings saved.", false) : ("This feed no longer exists.", true);
@@ -319,6 +352,8 @@ else
         public bool AllowOverwrite { get; set; }
 
         public PackageDeletionBehavior DeletionBehavior { get; set; } = PackageDeletionBehavior.Unlist;
+
+        public bool MergePushedIdsWithUpstreams { get; set; }
     }
 
     private sealed class ConfirmForm

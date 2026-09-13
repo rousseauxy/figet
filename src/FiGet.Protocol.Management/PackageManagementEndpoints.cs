@@ -1,6 +1,7 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using FiGet.Application.Connectors;
 using FiGet.Application.Packages;
 using FiGet.Application.Ports;
 using FiGet.Domain.Entities;
@@ -206,7 +207,7 @@ public static class PackageManagementEndpoints
     }
 
     /// <summary>Pushes a package: the body is the nupkg, as the reference client sends it. The file name in the URL is not needed.</summary>
-    private static async Task<IResult> UploadAsync(HttpContext http, string feed, PackageIngestionService ingestion, IOptions<UploadOptions> upload, AuditLog audit, CancellationToken cancellationToken)
+    private static async Task<IResult> UploadAsync(HttpContext http, string feed, PackageIngestionService ingestion, ConnectorService connector, IOptions<UploadOptions> upload, AuditLog audit, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, TokenScopes.Push, cancellationToken);
         if (error is not null)
@@ -235,6 +236,7 @@ public static class PackageManagementEndpoints
             if (result.Outcome is PushOutcome.Created or PushOutcome.Replaced)
             {
                 audit.Record(http, "package.push", result.Id ?? "", $"feed={request.Feed.Name} version={result.Version} outcome={result.Outcome} api=management");
+                await PushWarning.AddAsync(http, connector, request.Feed, result.Id, cancellationToken);
             }
 
             return result.Outcome switch

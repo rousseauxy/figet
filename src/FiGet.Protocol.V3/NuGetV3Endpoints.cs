@@ -440,7 +440,7 @@ public static class NuGetV3Endpoints
         return Results.Json(new AutocompleteResponse(context, skip + ids.Count, ids), Json);
     }
 
-    private static async Task<IResult> PushAsync(HttpContext http, string feed, PackageIngestionService ingestion, IOptions<UploadOptions> upload, AuditLog audit, CancellationToken cancellationToken)
+    private static async Task<IResult> PushAsync(HttpContext http, string feed, PackageIngestionService ingestion, ConnectorService connector, IOptions<UploadOptions> upload, AuditLog audit, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Push, cancellationToken);
         if (error is not null)
@@ -457,6 +457,7 @@ public static class NuGetV3Endpoints
                 if (result.Outcome is PushOutcome.Created or PushOutcome.Replaced)
                 {
                     audit.Record(http, "package.push", result.Id ?? "", $"feed={feed} version={result.Version} outcome={result.Outcome}");
+                    await PushWarning.AddAsync(http, connector, request.Feed, result.Id, cancellationToken);
                 }
 
                 return result;

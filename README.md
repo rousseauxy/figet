@@ -34,7 +34,9 @@ that gap and nothing else.
 - NuGet v2 OData: the subset the real clients emit, recorded from live traffic. Unparsed
   filters fail loudly.
 - Proxy feeds: any number of upstreams per feed, look-through on miss, cached afterwards. One
-  merged version list per package; a cached copy never shadows a newer upstream release.
+  merged version list per package; a cached copy never shadows a newer upstream release. The first
+  upstream in priority order that holds an id serves it, and an id pushed to the feed is served only
+  from the feed, so two different packages that share a name are never mixed.
 - Curated feeds with retention rules.
 - Asset directories: path-addressed files, plain `GET` by path.
 - OIDC against any provider, several at once; API keys and personal access tokens for clients.

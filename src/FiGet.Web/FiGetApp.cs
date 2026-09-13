@@ -686,6 +686,27 @@ public static class FiGetApp
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
         });
+
+        admin.MapPost("/feeds/{feed}/upstreams/move", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            var direction = form["direction"].ToString();
+            if (target is not null
+                && int.TryParse(form["key"].ToString(), out var upstreamKey)
+                && direction is "up" or "down"
+                && await feeds.MoveUpstreamAsync(target.Key, upstreamKey, direction == "up", cancellationToken))
+            {
+                audit.Record(http, "upstream.move", upstreamKey.ToString(CultureInfo.InvariantCulture), $"feed={feed} direction={direction}");
+            }
+
+            return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
+        });
     }
 
     /// <summary>A return address with the outcome of a fetch added, replacing one left by an earlier fetch.</summary>
@@ -766,6 +787,7 @@ public static class FiGetApp
             AnonymousRead = seed.AnonymousRead,
             AllowOverwrite = seed.AllowOverwrite,
             DeletionBehavior = seed.DeletionBehavior,
+            MergePushedIdsWithUpstreams = seed.MergePushedIdsWithUpstreams,
             CreatedUtc = time.GetUtcNow().UtcDateTime,
             Upstreams = upstreams,
         };

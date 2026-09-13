@@ -35,6 +35,11 @@ public sealed class ConnectorService(
     public async Task<UpstreamCandidates> UpstreamCandidatesAsync(Feed feed, string idLower, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(feed);
+        if (await ServedLocallyAsync(feed, idLower, cancellationToken))
+        {
+            return new UpstreamCandidates([], "");
+        }
+
         var candidates = new List<VersionCandidate<PackageVersion>>();
         var offered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -121,6 +126,16 @@ public sealed class ConnectorService(
                     version.IsSemVer2,
                     VersionSource.Upstream,
                     row));
+            }
+
+            // The first upstream that holds the id owns it; the ones after it are not asked. Merging them put two
+            // different packages that happen to share a name into one version list, where the higher version won.
+            // An upstream that could not be asked and has nothing remembered stops the walk too: whether it holds
+            // the id is unknown, and serving a lower upstream's package in the meantime would cache that package
+            // here for good.
+            if (catalog.Versions.Count > 0 || (!answered && cached is null))
+            {
+                break;
             }
         }
 
@@ -224,7 +239,26 @@ public sealed class ConnectorService(
             return existing;
         }
 
-        foreach (var upstream in feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal))
+        // A version of a pushed id that is not here does not exist, whatever an upstream holds under that name.
+        if (await ServedLocallyAsync(feed, idLower, cancellationToken))
+        {
+            return null;
+        }
+
+        var ownership = await OwnerAsync(feed, idLower, cancellationToken);
+        if (ownership.Undecided)
+        {
+            logger.LogWarning("Not fetching {Id} {Version}: a higher-priority upstream could not be asked whether it holds the id.", id, version.ToNormalizedString());
+            return null;
+        }
+
+        // Only the owner, when there is one. No owner means no upstream lists the id - a listing may simply be out of
+        // date - so every upstream that allows it is tried in priority order, as before.
+        IEnumerable<FeedUpstream> sources = ownership.Owner is { } owner
+            ? [owner]
+            : feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal);
+
+        foreach (var upstream in sources)
         {
             if (!Allows(upstream, idLower))
             {
@@ -401,6 +435,112 @@ public sealed class ConnectorService(
     }
 
     /// <summary>
+    /// Whether this feed serves the id only from what it holds: a version of it was pushed here, and the feed has
+    /// not opted into merging pushed ids with its upstreams.
+    ///
+    /// Copies of the id that were cached from an upstream before anything was pushed are a different package that
+    /// happens to share the name. They are unlisted here rather than deleted, so a deployment pinned to one of them
+    /// can still fetch it by exact version while it moves to the pushed package. Done on read, not on push, so that
+    /// feeds holding both before this rule existed are put right the first time the id is asked for.
+    /// </summary>
+    private async Task<bool> ServedLocallyAsync(Feed feed, string idLower, CancellationToken cancellationToken)
+    {
+        if (feed.MergePushedIdsWithUpstreams)
+        {
+            return false;
+        }
+
+        var package = await packages.GetPackageAsync(feed.Key, idLower, includeDependencies: false, cancellationToken);
+        if (package is null || !package.Versions.Any(v => v.Origin == PackageOrigin.Pushed))
+        {
+            return false;
+        }
+
+        foreach (var shadowed in package.Versions.Where(v => v.Origin == PackageOrigin.Cached && v.Listed))
+        {
+            await packages.SetListedAsync(feed.Key, idLower, shadowed.NormalizedVersionLower, listed: false, cancellationToken);
+            logger.LogWarning(
+                "{Id} {Version} was cached from an upstream, but {Id} is pushed to feed {Feed}; the cached copy is now unlisted.",
+                package.Id,
+                shadowed.NormalizedVersion,
+                package.Id,
+                feed.Name);
+        }
+
+        return true;
+    }
+
+    /// <summary>How long a push waits to learn whether an upstream holds the id it pushed. A warning is not worth a slow CI job.</summary>
+    private static readonly TimeSpan PushWarningBudget = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// A warning for the client that just pushed an id an upstream of this feed also holds, or null. Sent back as
+    /// <c>X-NuGet-Warning</c>, which nuget, dotnet and PowerShell print, so the person publishing learns about the
+    /// name clash when it happens rather than when an install picks the wrong package.
+    ///
+    /// Best effort within a few seconds: an upstream that is slow or down yields no warning, never a failed push.
+    /// </summary>
+    public async Task<string?> PushWarningAsync(Feed feed, string id, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(feed);
+        if (!feed.Upstreams.Any(u => u.Enabled))
+        {
+            return null;
+        }
+
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(PushWarningBudget);
+        UpstreamOwnership ownership;
+        try
+        {
+            ownership = await OwnerAsync(feed, id.ToLowerInvariant(), budget.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+
+        if (ownership.Owner is not { } owner)
+        {
+            return null;
+        }
+
+        return feed.MergePushedIdsWithUpstreams
+            ? $"{id} also exists on upstream '{owner.Name}'. Feed '{feed.Name}' merges both into one version list, so the higher version of either package is served as the latest."
+            : $"{id} also exists on upstream '{owner.Name}'. Feed '{feed.Name}' now serves {id} only from what is pushed to it; the upstream package of that name is no longer offered.";
+    }
+
+    /// <summary>
+    /// The upstream that owns an id for this feed: the first enabled upstream, in priority order, that allows the id
+    /// and lists at least one version of it. Undecided when an upstream ahead of any owner could not be asked and
+    /// has nothing remembered, because then nobody can say it does not hold the id.
+    /// </summary>
+    public async Task<UpstreamOwnership> OwnerAsync(Feed feed, string idLower, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(feed);
+        foreach (var upstream in feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal))
+        {
+            if (!Allows(upstream, idLower))
+            {
+                continue;
+            }
+
+            var (catalog, answered, cached) = await CatalogAsync(upstream, idLower, cancellationToken);
+            if (catalog.Versions.Count > 0)
+            {
+                return new UpstreamOwnership(upstream, Undecided: false);
+            }
+
+            if (!answered && cached is null)
+            {
+                return new UpstreamOwnership(null, Undecided: true);
+            }
+        }
+
+        return new UpstreamOwnership(null, Undecided: false);
+    }
+
+    /// <summary>
     /// When the upstream published this version, if the connector has heard. Only what is already in memory: a
     /// client lists versions before it downloads one, so the description is nearly always there, and a cache fill
     /// that misses it is corrected the next time the upstream describes the package.
@@ -535,6 +675,9 @@ public sealed class ConnectorService(
     }
 
 }
+
+/// <summary>Which upstream owns an id for a feed, if any, and whether that could be decided at all.</summary>
+public sealed record UpstreamOwnership(FeedUpstream? Owner, bool Undecided);
 
 /// <summary>
 /// What the upstreams hold for one id, and the id as they spell it. The spelling travels with the

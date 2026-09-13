@@ -232,6 +232,9 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("MergePushedIdsWithUpstreams")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(64)

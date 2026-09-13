@@ -45,7 +45,7 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         }
     }
 
-    public async Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, CancellationToken cancellationToken)
+    public async Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, bool mergePushedIdsWithUpstreams, CancellationToken cancellationToken)
     {
         var feed = await db.Feeds.FirstOrDefaultAsync(f => f.Key == key, cancellationToken);
         if (feed is null)
@@ -56,6 +56,7 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         feed.AnonymousRead = anonymousRead;
         feed.AllowOverwrite = allowOverwrite;
         feed.DeletionBehavior = deletionBehavior;
+        feed.MergePushedIdsWithUpstreams = mergePushedIdsWithUpstreams;
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }
@@ -143,6 +144,34 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
             }
         }
 
+        return true;
+    }
+
+    public async Task<bool> MoveUpstreamAsync(int feedKey, int upstreamKey, bool up, CancellationToken cancellationToken)
+    {
+        var upstreams = await db.FeedUpstreams
+            .Where(u => u.FeedKey == feedKey)
+            .OrderBy(u => u.Ordinal)
+            .ThenBy(u => u.Key)
+            .ToListAsync(cancellationToken);
+
+        var index = upstreams.FindIndex(u => u.Key == upstreamKey);
+        var other = up ? index - 1 : index + 1;
+        if (index < 0 || other < 0 || other >= upstreams.Count)
+        {
+            return false;
+        }
+
+        (upstreams[index], upstreams[other]) = (upstreams[other], upstreams[index]);
+
+        // Renumbered from zero rather than two ordinals swapped: rows seeded or added over time can share an
+        // ordinal or leave gaps, and a swap of equal numbers would change nothing.
+        for (var i = 0; i < upstreams.Count; i++)
+        {
+            upstreams[i].Ordinal = i;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
         return true;
     }
 }

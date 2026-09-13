@@ -19,6 +19,17 @@ public sealed class Feed
 
     public PackageDeletionBehavior DeletionBehavior { get; set; } = PackageDeletionBehavior.Unlist;
 
+    /// <summary>
+    /// False, the default: once a version of an id has been pushed to this feed, the feed serves that id only from
+    /// what is held here and stops asking its upstreams about it. Without that, a module published here and an
+    /// unrelated module of the same name on a gallery are merged into one version list, and whichever has the
+    /// higher version becomes "latest" - so an install could quietly pull somebody else's package.
+    ///
+    /// Stored as the opt-out so the safe behaviour is also the column's default: a boolean whose default is true
+    /// cannot be saved as false through EF, which treats the CLR default as "not set".
+    /// </summary>
+    public bool MergePushedIdsWithUpstreams { get; set; }
+
     public DateTime CreatedUtc { get; set; }
 
     /// <summary>Upstreams of a proxy feed, in the order they are queried. Empty on a curated feed.</summary>

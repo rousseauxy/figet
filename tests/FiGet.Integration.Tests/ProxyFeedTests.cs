@@ -41,22 +41,25 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
     }
 
     /// <summary>
-    /// The failure that drove this project: a version cached locally and the same package upstream must
-    /// not produce two entries, and the newer upstream version must win the latest flag.
+    /// The failure that drove this project: a version held locally and the same package upstream must
+    /// not produce two entries, and the newer upstream version must win the latest flag. Pushed rather than
+    /// cached here, so it runs on the feed that opts into merging pushed ids with its upstream.
     /// </summary>
     [Fact]
     public async Task A_local_version_and_a_newer_upstream_version_make_one_list()
     {
         var id = FiGetServerFixture.UniqueId("Proxy.Merge");
-        using (var local = TestPackages.Create(id, "1.0.0"))
-        {
-            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("proxy", local));
-        }
 
+        // The upstream holds the package before the push, as it would: a push asks the upstreams about the id
+        // for its warning, and what they answer is remembered like any other listing.
         AddUpstream(id, "1.0.0");
         AddUpstream(id, "1.1.0");
+        using (var local = TestPackages.Create(id, "1.0.0"))
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("merging", local));
+        }
 
-        var entries = await FindAsync("proxy", id);
+        var entries = await FindAsync("merging", id);
 
         Assert.Equal(["1.0.0", "1.1.0"], entries.Select(e => Property(e, "Version")).ToArray());
         Assert.Single(entries, e => Property(e, "IsLatestVersion") == "true");
@@ -305,8 +308,9 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
     }
 
     /// <summary>
-    /// A download that arrives before anything described the package - and every copy cached before this was
-    /// fixed - is stored with its fetch date, and takes the upstream's date the next time the upstream describes it.
+    /// Every copy cached before the upstream's date was carried holds its fetch date, and takes the upstream's
+    /// date the next time the upstream describes the package. Such a copy is made here by writing a wrong date
+    /// over a fresh one: a download now asks which upstream owns the id first, which describes it on the way.
     /// </summary>
     [Fact]
     public async Task A_copy_cached_with_its_fetch_date_is_corrected_by_the_next_listing()
@@ -317,10 +321,201 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
 
         using var client = server.CreateClient();
         await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/flatcontainer/{idLower}/1.0.0/{idLower}.1.0.0.nupkg"));
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FiGetDbContext>();
+            await db.PackageVersions
+                .Where(v => v.Package!.IdLower == idLower)
+                .ExecuteUpdateAsync(u => u.SetProperty(v => v.PublishedUtc, new DateTime(2026, 9, 13, 10, 50, 0, DateTimeKind.Utc)), TestContext.Current.CancellationToken);
+        }
+
         Assert.NotEqual(StubUpstreamPublished, await StoredPublishedAsync(idLower, "1.0.0"));
 
         await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/registration/{idLower}/index.json"));
         Assert.Equal(StubUpstreamPublished, await StoredPublishedAsync(idLower, "1.0.0"));
+    }
+
+    /// <summary>
+    /// The clash a tester asked about: a module published here whose name also exists on the gallery. The feed
+    /// serves the pushed id only from what was pushed, so the gallery's higher version of an unrelated package
+    /// never becomes its latest, and none of the gallery's versions can be installed through it.
+    /// </summary>
+    [Fact]
+    public async Task A_pushed_id_is_served_only_from_this_feed()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Clash");
+        AddUpstream(id, "5.0.0");
+
+        HttpResponseMessage pushed;
+        using (var mine = TestPackages.Create(id, "1.0.0"))
+        {
+            pushed = await PushAsync("proxy", mine);
+        }
+
+        HttpAssert.Status(HttpStatusCode.Created, pushed);
+        var warning = Assert.Single(pushed.Headers.GetValues("X-NuGet-Warning"));
+        Assert.Contains("also exists on upstream 'stub'", warning, StringComparison.Ordinal);
+        Assert.Contains("only from what is pushed", warning, StringComparison.Ordinal);
+
+        var entries = await FindAsync("proxy", id);
+        Assert.Equal(["1.0.0"], entries.Select(e => Property(e, "Version")).ToArray());
+        Assert.Equal("true", Property(entries.Single(), "IsLatestVersion"));
+
+        using var client = server.CreateClient();
+        var idLower = id.ToLowerInvariant();
+        HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/proxy/package/{id}/5.0.0"));
+        HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/proxy/v3/flatcontainer/{idLower}/5.0.0/{idLower}.5.0.0.nupkg"));
+
+        var versions = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/flatcontainer/{idLower}/index.json")))!["versions"]!.AsArray();
+        Assert.Equal(["1.0.0"], versions.Select(v => (string?)v));
+    }
+
+    /// <summary>
+    /// A copy of the gallery's package cached before anything was pushed under its name is the other package.
+    /// Once the id is pushed it stops being offered - unlisted rather than deleted, so a deployment pinned to it
+    /// can still fetch it by exact version.
+    /// </summary>
+    [Fact]
+    public async Task A_copy_cached_before_the_id_was_pushed_is_unlisted()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.ClashCached");
+        AddUpstream(id, "5.0.0");
+        using var client = server.CreateClient();
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/5.0.0"));
+
+        using (var mine = TestPackages.Create(id, "1.0.0"))
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("proxy", mine));
+        }
+
+        var entries = await FindAsync("proxy", id);
+        var latest = Assert.Single(entries, e => Property(e, "IsLatestVersion") == "true");
+        Assert.Equal("1.0.0", Property(latest, "Version"));
+
+        var search = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/Search()?searchTerm='{id}'&includePrerelease=true"));
+        Assert.DoesNotContain(">5.0.0<", search, StringComparison.Ordinal);
+
+        // Still there for whoever pinned it.
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/5.0.0"));
+    }
+
+    [Fact]
+    public async Task A_feed_that_opts_in_merges_a_pushed_id_and_warns_about_it()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.OptIn");
+        AddUpstream(id, "5.0.0");
+
+        HttpResponseMessage pushed;
+        using (var mine = TestPackages.Create(id, "1.0.0"))
+        {
+            pushed = await PushAsync("merging", mine);
+        }
+
+        Assert.Contains("merges both", Assert.Single(pushed.Headers.GetValues("X-NuGet-Warning")), StringComparison.Ordinal);
+        var entries = await FindAsync("merging", id);
+        Assert.Equal(["1.0.0", "5.0.0"], entries.Select(e => Property(e, "Version")).ToArray());
+    }
+
+    [Fact]
+    public async Task A_push_of_an_id_no_upstream_holds_carries_no_warning()
+    {
+        using var mine = TestPackages.Create(FiGetServerFixture.UniqueId("Proxy.NoClash"), "1.0.0");
+        var pushed = await PushAsync("proxy", mine);
+
+        HttpAssert.Status(HttpStatusCode.Created, pushed);
+        Assert.False(pushed.Headers.Contains("X-NuGet-Warning"));
+    }
+
+    /// <summary>
+    /// Two upstreams holding different packages under one id: the first in priority order owns the id, and the
+    /// second is neither listed nor fetched from for it - not even a version only the second one has.
+    /// </summary>
+    [Fact]
+    public async Task The_first_upstream_that_holds_an_id_owns_it()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Owner");
+        AddUpstream(id, "1.0.0");
+        AddSecondUpstream(id, "9.0.0");
+
+        var entries = await FindAsync("layered", id);
+        Assert.Equal(["1.0.0"], entries.Select(e => Property(e, "Version")).ToArray());
+
+        using var client = server.CreateClient();
+        HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/layered/package/{id}/9.0.0"));
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/layered/package/{id}/1.0.0"));
+    }
+
+    [Fact]
+    public async Task An_id_only_a_lower_upstream_holds_is_served_from_it()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Lower");
+        AddSecondUpstream(id, "3.0.0");
+
+        var entries = await FindAsync("layered", id);
+        Assert.Equal(["3.0.0"], entries.Select(e => Property(e, "Version")).ToArray());
+
+        using var client = server.CreateClient();
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/layered/package/{id}/3.0.0"));
+    }
+
+    /// <summary>
+    /// While the upstream ahead cannot be asked and nothing about the id is remembered, whether it owns the id is
+    /// unknown, so a lower upstream's package of that name is not served in the meantime - once cached here it
+    /// would stay, whichever package the id really belongs to.
+    /// </summary>
+    [Fact]
+    public async Task A_lower_upstream_is_not_used_while_a_higher_one_cannot_be_asked()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Undecided");
+        AddSecondUpstream(id, "3.0.0");
+
+        server.Upstream.Fails = true;
+        try
+        {
+            Assert.Empty(await FindAsync("layered", id));
+            using var client = server.CreateClient();
+            HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/layered/package/{id}/3.0.0"));
+        }
+        finally
+        {
+            server.Upstream.Fails = false;
+        }
+
+        Assert.Equal(["3.0.0"], (await FindAsync("layered", id)).Select(e => Property(e, "Version")).ToArray());
+    }
+
+    /// <summary>Moving an upstream up the priority order hands it the ids both hold.</summary>
+    [Fact]
+    public async Task Changing_the_priority_order_changes_the_owner()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Reorder");
+        AddUpstream(id, "1.0.0");
+        AddSecondUpstream(id, "9.0.0");
+        Assert.Equal(["1.0.0"], (await FindAsync("layered", id)).Select(e => Property(e, "Version")).ToArray());
+
+        await using var scope = server.Services.CreateAsyncScope();
+        var feeds = scope.ServiceProvider.GetRequiredService<IFeedStore>();
+        var feed = (await feeds.FindAsync("layered", TestContext.Current.CancellationToken))!;
+        var secondary = feed.Upstreams.Single(u => u.Name == "secondary");
+        var primary = feed.Upstreams.Single(u => u.Name == "primary");
+
+        Assert.False(await feeds.MoveUpstreamAsync(feed.Key, primary.Key, up: true, TestContext.Current.CancellationToken));
+        Assert.True(await feeds.MoveUpstreamAsync(feed.Key, secondary.Key, up: true, TestContext.Current.CancellationToken));
+        try
+        {
+            Assert.Equal(["9.0.0"], (await FindAsync("layered", id)).Select(e => Property(e, "Version")).ToArray());
+        }
+        finally
+        {
+            // The fixture is shared by this class's tests, which expect primary first.
+            Assert.True(await feeds.MoveUpstreamAsync(feed.Key, secondary.Key, up: false, TestContext.Current.CancellationToken));
+        }
+    }
+
+    private void AddSecondUpstream(string id, string version)
+    {
+        using var package = TestPackages.Create(id, version);
+        server.SecondUpstream.Add(id, version, package.ToArray());
     }
 
     /// <summary>What <see cref="StubUpstreamClient"/> reports as every version's publish date.</summary>
@@ -524,15 +719,16 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         using var client = server.CreateClient();
         using (var mine = TestPackages.Create(id, "9.0.0"))
         {
-            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("proxy", mine));
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("merging", mine));
         }
 
-        // Downloading from a proxy feed is what caches a version, so this is the state being undone.
-        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.0.0"));
-        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.1.0"));
+        // Downloading from a proxy feed is what caches a version, so this is the state being undone. On the feed
+        // that merges pushed ids with its upstream: elsewhere a pushed id is not fetched from an upstream at all.
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/merging/package/{id}/1.0.0"));
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/merging/package/{id}/1.1.0"));
         Assert.Equal(2, await CountAsync(id, PackageOrigin.Cached));
 
-        var removed = await UncacheAsync(id);
+        var removed = await UncacheAsync(id, "merging");
         Assert.Equal(2, removed);
 
         // The held copies are gone; what was pushed here is untouched.
@@ -540,9 +736,9 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         Assert.Equal(1, await CountAsync(id, PackageOrigin.Pushed));
 
         // And the package still resolves - from the upstream now - which is the whole point of the action.
-        var entries = await FindAsync("proxy", id);
+        var entries = await FindAsync("merging", id);
         Assert.Contains(entries, e => Property(e, "Version") == "1.1.0");
-        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.0.0"));
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/merging/package/{id}/1.0.0"));
     }
 
     /// <summary>
@@ -558,24 +754,24 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         AddUpstream(id, "2.0.0");
         using (var mine = TestPackages.Create(id, "0.9.0"))
         {
-            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("proxy", mine));
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("merging", mine));
         }
 
         using var client = server.CreateClient();
-        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.0.0"));
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/merging/package/{id}/1.0.0"));
 
-        var versions = System.Text.Json.Nodes.JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"api/packages/proxy/versions?name={id}")))!.AsArray();
+        var versions = System.Text.Json.Nodes.JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"api/packages/merging/versions?name={id}")))!.AsArray();
         Assert.Equal(["1.0.0", "0.9.0"], versions.Select(v => (string?)v!["version"]));
         Assert.Equal("SYSTEM", (string?)versions[0]!["publishedBy"]);
         Assert.Null(versions[1]!["publishedBy"]);
     }
 
-    private async Task<int> UncacheAsync(string id)
+    private async Task<int> UncacheAsync(string id, string feedName = "proxy")
     {
         await using var scope = server.Services.CreateAsyncScope();
         var feeds = scope.ServiceProvider.GetRequiredService<IFeedStore>();
         var ingestion = scope.ServiceProvider.GetRequiredService<FiGet.Application.Packages.PackageIngestionService>();
-        var feed = await feeds.FindAsync("proxy", TestContext.Current.CancellationToken);
+        var feed = await feeds.FindAsync(feedName, TestContext.Current.CancellationToken);
         return await ingestion.UncacheAsync(feed!, id, TestContext.Current.CancellationToken);
     }
 

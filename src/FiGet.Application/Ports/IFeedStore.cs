@@ -12,7 +12,7 @@ public interface IFeedStore
     Task<bool> CreateAsync(Feed feed, CancellationToken cancellationToken);
 
     /// <summary>Changes the feed's settings. Returns false when the feed no longer exists.</summary>
-    Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, CancellationToken cancellationToken);
+    Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, bool mergePushedIdsWithUpstreams, CancellationToken cancellationToken);
 
     /// <summary>
     /// Deletes the feed with every package, version, dependency, symbol row, asset row and feed-scoped token it owns.
@@ -40,4 +40,10 @@ public interface IFeedStore
     /// curated feed again. Returns false when the upstream no longer exists.
     /// </summary>
     Task<bool> RemoveUpstreamAsync(int feedKey, int upstreamKey, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Moves one upstream a place up (towards first) or down in the feed's priority order. The first upstream in
+    /// that order that holds an id owns it. Returns false when the upstream does not exist or is already at that end.
+    /// </summary>
+    Task<bool> MoveUpstreamAsync(int feedKey, int upstreamKey, bool up, CancellationToken cancellationToken);
 }

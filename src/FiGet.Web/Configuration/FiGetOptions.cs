@@ -92,6 +92,12 @@ public sealed class FeedSeedOptions
 
     public PackageDeletionBehavior DeletionBehavior { get; set; } = PackageDeletionBehavior.Unlist;
 
+    /// <summary>
+    /// When true, an id pushed to this feed is still merged with the same id on its upstreams. Off by default: a
+    /// pushed id is served only from this feed, so a same-named package elsewhere cannot become its latest version.
+    /// </summary>
+    public bool MergePushedIdsWithUpstreams { get; set; }
+
     /// <summary>Upstreams to create with the feed. Only used when the feed itself is created.</summary>
     public List<UpstreamSeedOptions> Upstreams { get; set; } = [];
 }

@@ -461,7 +461,11 @@ Rules, implemented once in `IVersionListService` and used by **every** listing e
 container, search, autocomplete; the management API):
 
 1. For a package id, the version list is the **union** of local versions and the versions
-   reported by each upstream of the feed, de-duplicated by `NuGetVersion` normalised form.
+   reported by the upstream that **owns** the id, de-duplicated by `NuGetVersion` normalised form.
+   The owner is the first enabled upstream, in the feed's priority order, that allows the id and lists
+   a version of it; upstreams after it are not asked about that id. An id with a version **pushed** to
+   the feed has no upstream owner at all: it is served only from the feed, unless the feed sets
+   `MergePushedIdsWithUpstreams` (see rule 10). (Amended 2026-09-13, from testing.)
 2. `IsLatestVersion` (highest stable) and `IsAbsoluteLatestVersion` (highest incl. prerelease)
    are computed **after** the merge and are true on exactly one entry each.
 3. Upstream version lists are cached per (upstream, id) with a short TTL (default 5 minutes,
@@ -487,8 +491,18 @@ container, search, autocomplete; the management API):
    findable. Free-text search fans out to upstreams only if the feed opts in.
 8. Allow and deny lists per upstream (regex on id) are applied before anything upstream is
    listed or fetched.
-9. If a feed has several upstreams and both hold the same (id, version), the first upstream in
-   feed order wins for the download; metadata is identical by definition.
+9. ~~If a feed has several upstreams and both hold the same (id, version), the first upstream in
+   feed order wins for the download; metadata is identical by definition.~~ Superseded 2026-09-13:
+   "identical by definition" does not hold. Two galleries can hold **different** packages under one
+   name, and merging them per version let the higher version of either become latest. The owner from
+   rule 1 serves the whole id, versions and downloads alike. While an upstream ahead of the owner
+   cannot be asked and nothing about the id is remembered, nothing is served from the upstreams below
+   it: once cached, a wrong package would stay. The priority order is editable in the admin UI.
+10. **A pushed id owns its name.** Pushing a version of an id makes the feed serve that id only from
+   what it holds. Copies of the id cached from an upstream before the push are unlisted, not deleted,
+   so a pinned deployment can still fetch them. The push answers with `X-NuGet-Warning` when an
+   upstream also holds the id; nuget, dotnet and PSResourceGet print it. A feed that wants the old
+   merge sets `MergePushedIdsWithUpstreams`, and the warning then says the two are merged.
 
 Two named acceptance tests (§7.2): the cached-v1/upstream-v2 scenario and the
 `Microsoft.Graph` install and update with a partially warm cache.

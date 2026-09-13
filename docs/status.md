@@ -2113,3 +2113,48 @@ Open, for a decision: a package id pushed locally that also exists upstream is m
 upstream one, so the upstream's higher versions win "latest" (the local and upstream packages "fight"). The same
 holds across two upstreams: versions are merged, a version both hold comes from the first upstream in the list,
 and there is no per-id priority.
+
+## Name clashes: pushed ids and upstream priority - 2026-09-13
+
+Asked by the tester: what happens when a module published here has the same name as one on the gallery, and
+which upstream wins when two upstreams hold the same name. The answer was "they are merged version by version",
+so the higher version of either package became latest - an install could pull somebody else's package.
+
+- **A pushed id owns its name** (`Feed.MergePushedIdsWithUpstreams`, false by default, stored as the opt-out
+  so the safe value is the column default). Once a version is pushed, the feed serves the id only from what it
+  holds; copies cached from an upstream before the push are unlisted on the next read, not deleted.
+- **The first upstream that holds an id owns it.** Listings and downloads use only that upstream for the id.
+  While an upstream ahead of it cannot be asked and has nothing remembered, the ones below are not used.
+- **Priority order in the admin UI**: a column with move up and move down buttons (`upstreams/move`, audited).
+- **A push warns** with `X-NuGet-Warning` when an upstream holds the id, within a five-second budget so a slow
+  upstream never slows a CI push. Side effect found by a test: that lookup is remembered like any listing, so
+  an upstream that publishes the name just after the push is seen after the usual refresh.
+
+Evidence: eight tests in `ProxyFeedTests` over a new two-upstream fixture (a routing stub per upstream name);
+with the pushed-id rule and the owner rule disabled, five of them fail. Three existing tests pushed an id and
+expected the upstream merged in; they moved to a feed that opts into merging.
+
+Verified against the real galleries (a local instance with the PowerShell Gallery first and PoshTestGallery
+second, as suggested by the tester):
+
+    TestModule         gallery 4 versions, test gallery 5 (3 only there)   FiGet 4 = gallery
+    PackageManagement  gallery 26, test gallery 34 (9 only there)          FiGet 26 = gallery
+    TestModule 1.1     only on the test gallery                            404
+    ContosoServer      only on the test gallery                            4 versions, from it
+    after moving the test gallery up with the admin button                 TestModule 5 = test gallery,
+                                                                           PackageManagement 34 = test gallery
+    push TestModule 0.0.7 with dotnet nuget push                           "warn : TestModule also exists on
+                                                                           upstream 'psgallery'. ..."
+    Find-Module TestModule -AllVersions (Windows PowerShell 5.1)           0.0.7 only
+    Search() for TestModule                                                72 hits, one exact: 0.0.7, local-team
+    gallery TestModule 1.5.0 through FiGet                                 404
+
+The in-box PowerShellGet 1.0.0.1 on the test machine fails `Find-Module -AllVersions` on any package with a
+prerelease version ("1.2.0-preview" is not a System.Version); that is the client, not FiGet, and the fleet
+baseline uses 2.2.5.
+
+Also from the tester: every copy button is now an icon (Bootstrap Icons "copy", "check2" when copied, MIT),
+drawn as a CSS mask so themes colour it; inside a command box it sits top right. When copying fails the button
+shows "Press Ctrl+C" as text.
+
+Suites: unit 107/0; integration 261/0 on SQLite and on SQL Server.
