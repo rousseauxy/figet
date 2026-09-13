@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using FiGet.Application.Ports;
 using FiGet.Domain.Entities;
+using FiGet.Http;
 using FiGet.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -179,6 +180,19 @@ public sealed class OidcOptionsMonitor(
         options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
         options.NonceCookie.SameSite = SameSiteMode.Lax;
         options.NonceCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        // Behind a proxy the request's own scheme and host are only as right as its forwarded headers. With a public base
+        // URL configured, the redirect URI is built from it - the same URI the provider page tells people to register. The
+        // handler keeps this value for redeeming the code, so both legs of the flow send the same one.
+        options.Events.OnRedirectToIdentityProvider = context =>
+        {
+            var configured = context.HttpContext.RequestServices.GetService<IOptions<PublicUrlOptions>>()?.Value.PublicBaseUrl;
+            if (!string.IsNullOrWhiteSpace(configured))
+            {
+                context.ProtocolMessage.RedirectUri = configured.TrimEnd('/') + OidcSchemes.CallbackPath(provider.Slug);
+            }
+
+            return Task.CompletedTask;
+        };
         options.Events.OnRemoteFailure = context =>
         {
             context.HttpContext.RequestServices.GetRequiredService<FiGet.Http.AuditLog>().Record(context.HttpContext, "signin.external.failed", provider.Slug, context.Failure?.Message);
