@@ -60,7 +60,6 @@
             "IsLatestVersion",
             "IsLocalPackage",
             "IsPrerelease",
-            "IsPrivateHosted",
             "LicenseExpression",
             "LicenseUrl",
             "Listed",

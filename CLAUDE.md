@@ -15,6 +15,9 @@ is private and the forge mirror is read-only.
 - **Nothing organisation-specific in this repo.** No customer hostnames, feed names, API keys,
   recorded traffic with real package names, or paths from a work machine. Fixtures are
   synthetic or scrubbed. The repo will be public; treat every commit as already public.
+- **No vendor or product names of the server FiGet replaces**, nor of its company or its tools. Say
+  "the reference server", "the reference client" or "the commercial server being replaced". URL
+  compatibility is described by the URLs themselves, never by naming whose they are.
 - **Commit messages** in the imperative, one change per commit, no trailers, no
   `Co-Authored-By`.
 - **Stage explicit paths.** Never `git add -A` or `git add .`.
