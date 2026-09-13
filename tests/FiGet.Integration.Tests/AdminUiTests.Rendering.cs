@@ -4,13 +4,11 @@ using FiGet.Integration.Tests.Infrastructure;
 namespace FiGet.Integration.Tests;
 
 /// <summary>
-/// Guards the rendering split: the public read-only view is statically rendered and ships no framework,
-/// and only a signed-in reader gets an interactive component.
+/// Guards static rendering: no page ships the framework script or an interactive component, signed in or not.
 ///
-/// This is asserted rather than assumed because nothing else would notice it changing. A circuit is
-/// server state held for as long as somebody keeps the page open, and the public surface is reachable
-/// without credentials — so "anonymous pages download no framework" is a property worth failing a build
-/// over, not a detail of how a component happens to be declared today.
+/// This is asserted rather than assumed because nothing else would notice it changing. A circuit is server state
+/// held for as long as somebody keeps the page open and pinned to one replica, so a single interactive component
+/// would quietly bring back the need for session affinity behind a load balancer.
 /// </summary>
 public sealed partial class AdminUiTests
 {
@@ -25,34 +23,27 @@ public sealed partial class AdminUiTests
     /// </summary>
     private const string Framework = "_framework/blazor.web";
 
-    [Fact]
-    public async Task The_anonymous_view_ships_no_framework()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task No_page_ships_the_framework_signed_in_or_not(bool signedIn)
     {
         using var client = CreateBrowser();
+        if (signedIn)
+        {
+            HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        }
 
-        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/public"));
+        foreach (var path in signedIn ? new[] { "/", "/feeds/public", "/admin/feeds" } : ["/", "/feeds/public"])
+        {
+            var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync(path));
+            Assert.DoesNotContain(Framework, page, StringComparison.Ordinal);
+            Assert.DoesNotContain(InteractiveMarker, page, StringComparison.Ordinal);
+            Assert.DoesNotContain("components-reconnect-modal", page, StringComparison.Ordinal);
+        }
 
-        Assert.DoesNotContain(Framework, page, StringComparison.Ordinal);
-        Assert.DoesNotContain(InteractiveMarker, page, StringComparison.Ordinal);
-
-        // Still a usable page. Asserted on the plain GET form's field name rather than on the table,
-        // because whether this feed holds any packages depends on what the other tests in the shared
-        // fixture have pushed by now — and the grid uses the same placeholder text, so that would not
-        // have told the two views apart anyway.
-        Assert.Contains("name=\"q\"", page, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task Signing_in_brings_the_interactive_grid()
-    {
-        using var client = CreateBrowser();
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
-
-        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/public"));
-
-        Assert.Contains(Framework, page, StringComparison.Ordinal);
-        // The component prerendered rather than failing quietly and leaving the page bare.
-        Assert.Contains(InteractiveMarker, page, StringComparison.Ordinal);
+        // Still a usable page: the plain GET search form, for an admin as much as for anyone.
+        Assert.Contains("name=\"q\"", await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/public")), StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -106,25 +97,5 @@ public sealed partial class AdminUiTests
         Assert.Contains("fg-admin-nav", page, StringComparison.Ordinal);
         Assert.Contains("data-theme-toggle", page, StringComparison.Ordinal);
         Assert.Contains("fg-nav-dropdown", page, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// The reconnect dialog exists only where a circuit does. It is not merely cosmetic: without it a
-    /// dropped circuit leaves a page that looks alive and ignores every click.
-    /// </summary>
-    [Fact]
-    public async Task The_reconnect_dialog_is_only_rendered_for_a_signed_in_reader()
-    {
-        using var client = CreateBrowser();
-        Assert.DoesNotContain(
-            "components-reconnect-modal",
-            await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/public")),
-            StringComparison.Ordinal);
-
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
-        Assert.Contains(
-            "components-reconnect-modal",
-            await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/public")),
-            StringComparison.Ordinal);
     }
 }

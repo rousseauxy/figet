@@ -144,10 +144,11 @@ public static class FiGetApp
         services.AddAntiforgery();
 
         services.AddSingleton<IThemeService, ThemeService>();
-        // Interactive rendering exists for the signed-in views only; every public page stays statically
-        // rendered and ships no framework. A circuit is server state held per connected reader, and the
-        // public surface is reachable without credentials, so it is not somewhere to allocate it.
-        services.AddRazorComponents().AddInteractiveServerComponents();
+        // Every page is statically rendered: forms post, links navigate, and no framework script or server-held
+        // circuit exists. That is what lets replicas sit behind a load balancer with no session affinity. There was
+        // one interactive view - the signed-in package grid - and it was removed on 2026-09-13: it duplicated the
+        // static table, and its circuit was the only reason a replica had to stay pinned to a reader.
+        services.AddRazorComponents();
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
         services.AddResponseCompression(compression =>
         {
@@ -260,7 +261,7 @@ public static class FiGetApp
         app.MapAccountEndpoints();
         app.MapAdminEndpoints();
         app.MapStaticAssets();
-        app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
+        app.MapRazorComponents<App>();
 
         await InitializeAsync(app);
         return app;

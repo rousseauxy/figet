@@ -391,12 +391,6 @@ pre code { padding: 0; background: none; }
 /* An unlisted or revoked row is still readable, just plainly secondary. */
 .fg-table tr.is-inactive td { color: var(--text-3); }
 
-/* Deliberately no rule here for the grid's stray empty rows. Two attempts were wrong: keying off
-   aria-hidden (copied from an application on a different QuickGrid version, and matching nothing), and
-   then hiding any row whose cells are all empty — which treats the symptom and would hide a genuine row
-   whose columns happen to render nothing. The rows are not QuickGrid placeholders: those only exist
-   under Virtualize and carry `grid-cell-placeholder`. Fix the cause in PackageGrid instead. */
-
 /* Versions, sizes and counts line up when they are tabular. */
 .fg-num, .fg-table td.fg-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
@@ -974,13 +968,6 @@ legend {
   .fg-admin-menu-panel .fg-admin-nav-link { padding: 0.6rem 0.6rem; font-size: 0.92rem; }
 }
 
-/* The grid's cells, matched to every other table's. QuickGrid styles its own cells with scoped
-   selectors — `td.col-justify-start[b-vznuo5fmpv]`, `.quickgrid[theme=default] > thead > tr > th` —
-   which outrank a plain `.fg-table td`, and its bundle is imported after this file so it wins ties as
-   well. The class is repeated to raise specificity above theirs without reaching for !important. */
-.fg-table.fg-table.quickgrid > thead > tr > th { padding: 0.5rem 0.7rem; }
-.fg-table.fg-table.quickgrid > tbody > tr > td { padding: 0.45rem 0.7rem; font-size: 0.82rem; }
-
 /* The first column is always a name or an id, and some are very long — a fully qualified module id, or
    a version with a prerelease label. Every other cell stays on one line, but forcing this one to as well
    pushed the table past its container, which turned into a horizontal scrollbar and clipped the buttons
@@ -1124,24 +1111,6 @@ legend {
 .fg-sort-asc::after { content: "\25B2"; }
 .fg-sort-desc::after { content: "\25BC"; }
 
-/* The grid's sortable headers are its own buttons. Its arrow is a black SVG background, invisible on a dark theme,
-   so it is replaced by the same accent arrow the static table's header links use; the grid flips the element for
-   ascending, so one downward glyph serves both. The doubled class outranks the grid's scoped rules. */
-.fg-table.fg-table.quickgrid button.col-title {
-  color: inherit;
-  font: inherit;
-  font-weight: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  border-radius: var(--r-1);
-  padding: 0.1rem 0.3rem;
-  margin-left: -0.3rem;
-}
-.fg-table.fg-table.quickgrid button.col-title:hover { background-color: var(--hover); color: var(--text); }
-.fg-table.fg-table.quickgrid th .sort-indicator { background-image: none; opacity: 1; color: var(--accent); font-size: 0.7em; }
-.fg-table.fg-table.quickgrid th.col-sort-asc .sort-indicator::before,
-.fg-table.fg-table.quickgrid th.col-sort-desc .sort-indicator::before { content: "\25BC"; }
-
 /* ── Icons on buttons ───────────────────────────────────────────── */
 /* Bootstrap Icons "download" and "cloud-download" (MIT), drawn as masks in the button's own colour, the same way
    the copy icon is. A button in a table row is the icon alone - its title and aria-label say what it does - and a
@@ -1158,5 +1127,7 @@ legend {
   -webkit-mask: var(--fg-icon) center / contain no-repeat;
   mask: var(--fg-icon) center / contain no-repeat;
 }
-.fg-btn.fg-btn-icon { padding: 0; width: 1.9rem; height: 1.9rem; justify-content: center; font-size: 0.95rem; }
+/* A rounded square like the copy button, not the pill a worded button is: an icon in a circle beside one in a
+   square read as two different kinds of control. */
+.fg-btn.fg-btn-icon { padding: 0; width: 1.9rem; height: 1.9rem; justify-content: center; font-size: 0.95rem; border-radius: var(--r-1); }
 .fg-btn.fg-btn-icon.fg-btn-sm { width: 1.75rem; height: 1.75rem; font-size: 0.9rem; }

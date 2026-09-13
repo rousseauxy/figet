@@ -39,17 +39,8 @@
     <button type="button" class="fg-copy" data-copy="@SourceUrl" title="Copy this URL" aria-label="Copy the v3 source URL">Copy</button>
 </p>
 
-@* Above both views: a pull posts back here, and it is a signed-in admin who pulls, so the result must not be
-   inside the anonymous branch below. *@
+@* A pull posts back here with what it did. *@
 <PullOutcome />
-
-@if (IsAdmin)
-{
-    @* Signed in: the grid searches and pages without reloading. It is interactive, so it is rendered
-       only here — an anonymous reader gets the static table below and no framework at all. *@
-    <PackageGrid FeedName="@feed.Name" IsProxy="IsProxy" />
-    return;
-}
 
 <div class="fg-search-row">
     <form method="get" class="fg-search-bar">
