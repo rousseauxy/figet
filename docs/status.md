@@ -2086,3 +2086,30 @@ Blazor render fails with "RemoteNavigationManager already initialized".
 Evidence: `ErrorPageTests` (unknown page, per-code wording and status, the three not-found pages, protocol paths
 unchanged including the empty api/v2 probe, a page failure, a protocol failure). A local Release publish answered the
 same. Suites: unit 107/0; integration 247/0 on SQLite and on SQL Server.
+
+## Feedback from the first tester - 2026-09-13
+
+Three fixes from a colleague testing against the live instance, one change of layout asked for by the owner.
+
+- **Cached copies showed the day they were cached as their publish date.** A cache fill runs through the same
+  ingestion as a push, and that stamped the current time; the upstream publish date was only on the metadata-only
+  rows. A cache fill now stores the date the upstream reported when the connector already holds it (a client lists
+  before it downloads, so it nearly always does), and any cached copy with a different date is corrected the next
+  time the upstream describes the package - which also repairs copies cached before this change. The gallery
+  marker date 1900-01-01 for unlisted versions is never stored. `A_cached_copy_keeps_the_upstream_publish_date`
+  and `A_copy_cached_with_its_fetch_date_is_corrected_by_the_next_listing` both fail with the fix removed.
+- **Install commands had no copy button**, and on a dark theme a text selection was nearly invisible. Each command
+  on the package and version pages now has one (`CommandSnippet`), and the selection colour is mixed from the
+  accent instead of its soft tint.
+- **Admin area**: asset directories have their own tab (`/admin/assets`, settings at `/admin/assets/{name}`); the
+  feeds tab lists and creates package feeds only. `/admin/feeds/{name}` still answers for a directory, no
+  redirect. Stacked panels have a gap, and the facts under a settings form are separated from its Save button.
+  Below 900 px the side navigation becomes a menu bar that opens (a `details` element, so it works before the
+  interactive runtime starts); URL facts stack under their label below 600 px.
+
+Suites: unit 107/0; integration 253/0 on SQLite and on SQL Server.
+
+Open, for a decision: a package id pushed locally that also exists upstream is merged per version with the
+upstream one, so the upstream's higher versions win "latest" (the local and upstream packages "fight"). The same
+holds across two upstreams: versions are merged, a version both hold comes from the first upstream in the list,
+and there is no per-id priority.
