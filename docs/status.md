@@ -2051,3 +2051,17 @@ Second run with `-IncludeLargePackages`, the two failures the team reported on t
     Save-Module Microsoft.Graph, partial   40 modules, all 2.39.0 (reference: "multiple modules matched")
 
 Suites: unit 107/0; integration 231/0 on SQL Server and on SQLite.
+
+**Correction, same day: the probe fix was not live when first deployed.** Checked over HTTPS after deploying
+`b6f526d`, `GET /nuget/{feed}/api/v2/` answered **405** with `Allow: DELETE, PUT`, not 404. Leaving the GET route out
+was not enough: the path still matches the alias's `PUT` and the plain root's `DELETE /{id}/{version}` (id `api`,
+version `v2`), and a **Release** build answers such a request 405. A **Debug** build answers 404, so the integration
+tests, the fixture replay and both Windows PowerShell 5.1 runs - all Debug - saw the right status while the image did
+not. Proved locally with the same runtime (10.0.12): the Debug build 404, a Release publish 405. Whether a 405 would
+also keep PowerShellGet from adopting the alias was not tested; the reference server answers 404, so FiGet does too.
+
+Fix: an explicit GET on the alias root returning 404. A Release publish run locally then answered 404 for `/api/v2`
+and `/api/v2/`, 200 for `/api/v2/FindPackagesById()` and for the plain root. Because the tests run as Debug, the
+status assertion cannot catch this regression, so `The_api_v2_root_has_an_explicit_get_route_so_every_build_answers_404`
+checks the route table instead; with the route removed it fails. Lesson: for the status of a request that matches
+no route for its method, a Debug build is not evidence.

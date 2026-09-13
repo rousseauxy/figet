@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Xml.Linq;
 using FiGet.Integration.Tests.Infrastructure;
 using FiGet.Testing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace FiGet.Integration.Tests;
 
@@ -59,6 +60,22 @@ public abstract class NuGetV2Tests
         }
 
         await HttpAssert.SuccessBodyAsync(await client.GetAsync("nuget/public/api/v2/FindPackagesById()?id='FoooBarr'"));
+    }
+
+    /// <summary>
+    /// The 404 above is only trustworthy with an explicit GET route behind it. Without one the path still matches
+    /// a PUT and a DELETE, and a Release build - the deployed image - answers 405, while the Debug build these tests
+    /// run on answers 404 either way. So the status check alone passed while production was wrong; this looks at
+    /// the route table, which does not depend on how the server was built.
+    /// </summary>
+    [Fact]
+    public void The_api_v2_root_has_an_explicit_get_route_so_every_build_answers_404()
+    {
+        var endpoints = server.Services.GetRequiredService<Microsoft.AspNetCore.Routing.EndpointDataSource>().Endpoints
+            .OfType<Microsoft.AspNetCore.Routing.RouteEndpoint>()
+            .Where(e => e.RoutePattern.RawText?.TrimEnd('/') == "/nuget/{feed}/api/v2");
+
+        Assert.Contains(endpoints, e => e.Metadata.GetMetadata<Microsoft.AspNetCore.Routing.HttpMethodMetadata>()?.HttpMethods.Contains("GET") == true);
     }
 
     /// <summary>

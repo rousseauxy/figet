@@ -64,6 +64,14 @@ public static class NuGetV2Endpoints
         {
             group.MapGet("", ServiceDocumentAsync);
         }
+        else
+        {
+            // Mapped, not merely left out. Without a GET here the path still matches this group's PUT and the
+            // plain root's DELETE /{id}/{version} (id "api", version "v2"), and a Release build answers such a
+            // request 405 - which is not the 404 the probe needs. A Debug build answers 404 instead, so the
+            // tests and every local client run saw the right status while the deployed image did not.
+            group.MapGet("", () => Results.NotFound());
+        }
 
         group.MapGet("/$metadata", MetadataAsync);
 
