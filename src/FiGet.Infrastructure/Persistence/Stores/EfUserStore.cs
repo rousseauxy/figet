@@ -15,6 +15,17 @@ public sealed class EfUserStore(FiGetDbContext db) : IUserStore
         return db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserNameLower == lower, cancellationToken);
     }
 
+    public Task<bool> EmailInUseAsync(string email, CancellationToken cancellationToken)
+    {
+        var lower = email.Trim().ToLowerInvariant();
+
+        // Runs as SQL LOWER() in the database, not as .NET string code: the culture rules below do not apply to it, and the
+        // StringComparison overloads they suggest have no translation.
+#pragma warning disable CA1304, CA1311, CA1862
+        return db.Users.AnyAsync(u => u.Email != "" && u.Email.ToLower() == lower, cancellationToken);
+#pragma warning restore CA1304, CA1311, CA1862
+    }
+
     public async Task<IReadOnlyList<User>> ListAsync(CancellationToken cancellationToken) =>
         await db.Users.AsNoTracking().OrderBy(u => u.UserNameLower).ToListAsync(cancellationToken);
 

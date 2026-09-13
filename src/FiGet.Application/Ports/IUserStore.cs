@@ -8,6 +8,9 @@ public interface IUserStore
 
     Task<User?> FindByUserNameAsync(string userName, CancellationToken cancellationToken);
 
+    /// <summary>Whether any account has this email address, compared without regard to case.</summary>
+    Task<bool> EmailInUseAsync(string email, CancellationToken cancellationToken);
+
     /// <summary>Every account, ordered by user name.</summary>
     Task<IReadOnlyList<User>> ListAsync(CancellationToken cancellationToken);
 

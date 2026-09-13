@@ -121,6 +121,12 @@ public static class SignInEndpoints
         }
 
         var outcome = await external.SignInAsync(provider, identity, http.RequestAborted);
+        if (outcome.Status == ExternalSignInStatus.MatchesExistingAccount)
+        {
+            audit.Record(http, "signin.external.refused", identity.UserName ?? identity.Email ?? identity.Subject, $"provider={provider.Slug} reason=matches-existing-account");
+            return Results.Redirect("/account/login?external=exists");
+        }
+
         if (outcome.Status == ExternalSignInStatus.Disabled)
         {
             audit.Record(http, "signin.disabled", outcome.User!.UserName, $"provider={provider.Slug}");

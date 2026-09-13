@@ -2341,3 +2341,16 @@ answers, the registered redirect URI is accepted and a different one refused, an
 The FiGet side of the provider is entered by the owner (super admin), then a real sign-in.
 
 Suites: unit 107/0; integration 340/0 on SQLite and on SQL Server.
+
+## Accounts, phase 4 follow-ups - 2026-09-13
+
+- **Authentik provider made through the shell had no grant types**, so every sign-in came back `invalid_request`
+  ("otherwise malformed"; Authentik's log: "Invalid grant_type for provider"). Set to `authorization_code` only, access
+  tokens five minutes like the other apps. FiGet's request was right; the earlier probe had the same answer and was
+  wrongly put down to its own parameters.
+- **A first provider sign-in that would duplicate an account is refused** (owner): when the identity has no link and
+  its user name or email address (any case) is an existing account's, nothing is created and nothing is joined; the
+  sign-in page says to sign in to that account and connect the provider from the profile. Test: a matching user name and
+  a matching email in different case are both refused, no account or link appears; with the check disabled it fails.
+
+Suites: unit 107/0; integration 340/0 on SQLite and on SQL Server.

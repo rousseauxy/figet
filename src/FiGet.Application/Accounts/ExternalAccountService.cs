@@ -18,6 +18,12 @@ public enum ExternalSignInStatus
     Created,
 
     Disabled,
+
+    /// <summary>
+    /// No account had this identity, and the user name or email it brings belongs to an existing account. Nothing is made
+    /// and nothing is joined: that person signs in to the existing account and connects the provider from its profile.
+    /// </summary>
+    MatchesExistingAccount,
 }
 
 public sealed record ExternalSignInResult(ExternalSignInStatus Status, User? User = null);
@@ -41,11 +47,15 @@ public enum UnlinkStatus
 /// <summary>
 /// Signing in through OpenID Connect providers (docs/auth-plan.md, phase 4). An identity is never matched to an existing
 /// account by name or email: an unknown one makes a new account, and joining it to an existing one is done by that
-/// account, signed in, from its profile page.
+/// account, signed in, from its profile page. An unknown identity whose user name or email an existing account already
+/// has makes nothing: a second account for the same person is what that would be, which is worse than a refusal.
 /// </summary>
 public sealed class ExternalAccountService(IUserStore users, IExternalLoginStore logins, IGroupStore groups, TimeProvider time)
 {
     private const int MaxUserNameLength = 64;
+
+    /// <summary>The name when the provider sent nothing usable; it says nothing about who this is, so it matches nobody.</summary>
+    private const string FallbackUserName = "user";
 
     public async Task<ExternalSignInResult> SignInAsync(OidcProvider provider, ExternalIdentity identity, CancellationToken cancellationToken)
     {
@@ -65,6 +75,11 @@ public sealed class ExternalAccountService(IUserStore users, IExternalLoginStore
             await users.UpdateAsync(existing, cancellationToken);
             await SyncGroupsAsync(existing.Key, provider, identity, cancellationToken);
             return new ExternalSignInResult(ExternalSignInStatus.SignedIn, existing);
+        }
+
+        if (await MatchesExistingAccountAsync(identity, cancellationToken))
+        {
+            return new ExternalSignInResult(ExternalSignInStatus.MatchesExistingAccount);
         }
 
         var user = await CreateAccountAsync(identity, now, cancellationToken);
@@ -115,6 +130,18 @@ public sealed class ExternalAccountService(IUserStore users, IExternalLoginStore
         return await logins.RemoveAsync(userKey, loginKey, cancellationToken) ? UnlinkStatus.Removed : UnlinkStatus.NotFound;
     }
 
+    /// <summary>Whether the user name the identity would get, or its email address, is an existing account's.</summary>
+    private async Task<bool> MatchesExistingAccountAsync(ExternalIdentity identity, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(identity.Email) && await users.EmailInUseAsync(identity.Email, cancellationToken))
+        {
+            return true;
+        }
+
+        var name = UserNameFrom(identity);
+        return name != FallbackUserName && await users.FindByUserNameAsync(name, cancellationToken) is not null;
+    }
+
     /// <summary>
     /// A user name from what the provider sent - the configured claim, else the email's local part - reduced to the
     /// characters account names allow. Never empty.
@@ -131,7 +158,7 @@ public sealed class ExternalAccountService(IUserStore users, IExternalLoginStore
             }
         }
 
-        return "user";
+        return FallbackUserName;
     }
 
     private async Task<User> CreateAccountAsync(ExternalIdentity identity, DateTime now, CancellationToken cancellationToken)

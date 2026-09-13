@@ -70,18 +70,31 @@ public abstract partial class ExternalSignInTests : IAsyncLifetime
         Assert.Equal(1, await CountUsersAsync(name));
     }
 
-    /// <summary>The same name and email as a local account still make a new account: nothing is matched automatically.</summary>
+    /// <summary>
+    /// An unknown identity bringing an existing account's user name, or its email in any case, is refused: no second account
+    /// for the same person, and no automatic joining to the existing one either.
+    /// </summary>
     [Fact]
-    public async Task An_identity_is_never_matched_to_an_existing_account()
+    public async Task An_identity_matching_an_existing_account_is_refused_not_joined_or_duplicated()
     {
         var slug = await AddProviderAsync();
-        var local = await CreateLocalUserAsync();
-        idp.Next = new FakeIdentity(Guid.NewGuid().ToString("N"), local, $"{local}@example.org");
+        var local = await CreateLocalUserAsync(email: "Same.Person@Example.org");
 
-        using var browser = CreateBrowser();
-        await ProviderSignInAsync(browser, slug);
+        foreach (var identity in new[]
+        {
+            new FakeIdentity(Guid.NewGuid().ToString("N"), local.ToUpperInvariant()),
+            new FakeIdentity(Guid.NewGuid().ToString("N"), "other" + local, "same.person@example.org"),
+        })
+        {
+            idp.Next = identity;
+            using var browser = CreateBrowser();
+            var refused = await ProviderSignInAsync(browser, slug);
+            Assert.Equal("/account/login?external=exists", refused.Headers.Location!.OriginalString);
+            HttpAssert.Status(HttpStatusCode.Redirect, await browser.GetAsync("/account/profile"));
+        }
 
-        Assert.Contains($"<h1>{local}-2</h1>", await HttpAssert.SuccessBodyAsync(await browser.GetAsync("/account/profile")), StringComparison.Ordinal);
+        Assert.Equal(1, await CountUsersAsync(local));
+        Assert.Null(await FindUserAsync("other" + local));
         Assert.Empty(await LoginsOfAsync(local));
     }
 
@@ -418,13 +431,13 @@ public abstract partial class ExternalSignInTests : IAsyncLifetime
         Assert.True(await store.UpdateAsync(provider, CancellationToken.None));
     }
 
-    private async Task<string> CreateLocalUserAsync(UserRole role = UserRole.User)
+    private async Task<string> CreateLocalUserAsync(UserRole role = UserRole.User, string email = "")
     {
         var name = "l" + Guid.NewGuid().ToString("N")[..10];
         await using var scope = server.Services.CreateAsyncScope();
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
         Assert.True(await scope.ServiceProvider.GetRequiredService<IUserStore>().AddAsync(
-            new User { UserName = name, UserNameLower = name, Role = role, PasswordHash = hasher.Hash(Password), SecurityStamp = AccountService.NewStamp(), CreatedUtc = DateTime.UtcNow },
+            new User { UserName = name, UserNameLower = name, Email = email, Role = role, PasswordHash = hasher.Hash(Password), SecurityStamp = AccountService.NewStamp(), CreatedUtc = DateTime.UtcNow },
             CancellationToken.None));
         return name;
     }

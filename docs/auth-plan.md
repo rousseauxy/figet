@@ -15,7 +15,7 @@ owner on 2026-09-13; the questions and answers are recorded under "Decisions". B
 | Anonymous read | Unchanged: a per-feed switch. It grants Read to everyone, signed in or not. |
 | First administrator | `admin` / `admin`, role super admin, created when no user exists. The first sign-in must set a new password before anything else works. |
 | OIDC providers | **Configured by a super admin in the admin UI.** Any number, enabled side by side (Google, Entra ID, Authentik, Keycloak...). The client secret is stored encrypted with the instance's data-protection keys, never shown again after saving. Changes apply without a restart. |
-| First OIDC sign-in | **Never matched automatically.** A provider identity with no link creates a new user with role *user*. Joining it to an existing account is done from that account's profile page. |
+| First OIDC sign-in | **Never matched automatically.** A provider identity with no link creates a new user with role *user*. Joining it to an existing account is done from that account's profile page. **Refused, creating nothing, when its user name or email address is already an existing account's** (owner, 2026-09-13): that would be a second account for the same person. |
 | Provider groups | **Optional mapping per provider.** A provider names its groups claim; a FiGet group can be linked to a group of a provider. Membership from a linked group is refreshed at every sign-in with that provider. Provider groups never grant a role. |
 | Sign-in page with SSO enabled | **A super admin setting**: either provider buttons with a "sign in with a local account" link, or provider buttons only. `/account/login/local` always works either way. |
 | Personal API keys | **Act as their owner, optionally narrower**: never more than the user's current permissions (which follow group and role changes immediately), can be limited to one feed (as service tokens are; one key per feed for more) and to read-only, and stop working when the user is disabled or deleted. |
@@ -82,8 +82,10 @@ Evaluated per request, so a change applies at once. Browsing pages use the same 
   options cache for a changed provider is cleared, so saving a provider needs no restart.
 - The public base URL (`FiGet:PublicBaseUrl` or forwarded headers) must be right for callbacks behind a proxy; the
   provider page shows the exact redirect URI to register.
-- Sign-in: provider identity found in `ExternalLogins` → that user (refused if disabled). Not found → a new user with
-  role *user*, user name from the configured claim, made unique. Linked groups refreshed from the groups claim.
+- Sign-in: provider identity found in `ExternalLogins` → that user (refused if disabled). Not found, and its user name
+  or email (case-insensitive) belongs to an existing account → refused, with a message to sign in to that account and
+  connect the provider. Otherwise → a new user with role *user*, user name from the configured claim. Linked groups
+  refreshed from the groups claim.
 - Connect from the profile page: a challenge marked as a link request for the signed-in user; refused when that
   identity already belongs to another user.
 - Signing out ends the FiGet session; ending the provider's session is not attempted.
