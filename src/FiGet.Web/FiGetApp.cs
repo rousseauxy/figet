@@ -68,6 +68,13 @@ public static class FiGetApp
         // Everything below resolves options lazily, so settings added after this call (test hosts, later
         // configuration sources) are honoured.
         services.AddOptions<PublicUrlOptions>().Configure<IOptions<FiGetOptions>>((urls, figet) => urls.PublicBaseUrl = figet.Value.PublicBaseUrl);
+        services.AddOptions<RateLimitOptions>().Configure<IOptions<FiGetOptions>>((limits, figet) =>
+        {
+            limits.AnonymousRequestsPerMinute = figet.Value.RateLimits.AnonymousRequestsPerMinute;
+            limits.AnonymousBurst = figet.Value.RateLimits.AnonymousBurst;
+            limits.SignInAttemptsPerMinute = figet.Value.RateLimits.SignInAttemptsPerMinute;
+        });
+        services.AddSingleton<RequestRateLimits>();
         services.AddOptions<UploadOptions>().Configure<IOptions<FiGetOptions>>((upload, figet) =>
         {
             upload.MaxPackageSizeBytes = figet.Value.Limits.MaxPackageSizeMB * 1024L * 1024L;
@@ -265,6 +272,37 @@ public static class FiGetApp
             }
 
             await next(context);
+        });
+
+        // Sign-in attempts per address, and pages for visitors who are not signed in. Protocol requests are counted in
+        // FeedAccess instead, once their key has been checked (RequestRateLimits explains why).
+        app.Use(async (context, next) =>
+        {
+            var limits = context.RequestServices.GetRequiredService<RequestRateLimits>();
+            var path = context.Request.Path;
+            var isSignIn = HttpMethods.IsPost(context.Request.Method)
+                && (path.StartsWithSegments("/account/login", StringComparison.OrdinalIgnoreCase)
+                    || path.StartsWithSegments("/account/external", StringComparison.OrdinalIgnoreCase));
+            if (isSignIn && !limits.TryAcquire(context, RequestRateLimits.SignIn))
+            {
+                // Back to the sign-in page with a message, not a bare 429: the error page would be re-run for this POST and
+                // refuse it for want of an antiforgery token, and a person trying to sign in should see why it stopped.
+                context.Response.Redirect(path.StartsWithSegments("/account/login/local", StringComparison.OrdinalIgnoreCase)
+                    ? "/account/login/local?external=limited"
+                    : "/account/login?external=limited");
+                return;
+            }
+
+            var limited = !isSignIn
+                && context.User.Identity?.IsAuthenticated != true
+                    && !IsProtocolPath(path)
+                    && !Path.HasExtension(path.Value)
+                    && !path.StartsWithSegments("/error", StringComparison.OrdinalIgnoreCase)
+                    && !limits.TryAcquire(context, RequestRateLimits.Anonymous);
+            if (!limited)
+            {
+                await next(context);
+            }
         });
 
         app.UseAuthorization();

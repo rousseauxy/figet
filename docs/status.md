@@ -2400,3 +2400,23 @@ download keeps a cached copy from being pruned). With the download no longer ref
 version no longer protected, the matching test fails.
 
 Suites: unit 120/0; integration 353/0 on SQLite and on SQL Server.
+
+## Rate limits without credentials - 2026-09-13
+
+- **`RequestRateLimits`**: token buckets per client address (the connection's, after the forwarded-headers middleware,
+  never a raw `X-Forwarded-For`). `FiGet:RateLimits` sets anonymous requests a minute (1,200), their burst (600) and
+  sign-in attempts a minute (20); `0` turns one off.
+- **Where it is counted**: protocol and asset requests in `FeedAccess`, after the key is checked, when there is no valid
+  key and no sign-in; a middleware counts pages for visitors who are not signed in (not static files, not protocol paths,
+  not the error page) and every sign-in post. A refused protocol request gets `429` with `Retry-After` and a plain-text
+  reason; a refused page gets the 429 error page; a refused sign-in post goes back to the sign-in page with a message,
+  because the re-executed error page would refuse a POST without an antiforgery token (found by the test: a 400).
+- **A bug the test found**: refilling at least one token a second made every limit below 60 a minute into 60 a minute,
+  so the 20 sign-in attempts were really 60. Low rates now refill one token every 60/rate seconds.
+
+Test: `RateLimitTests` on its own fixture (burst 5, 3 sign-ins): the sixth anonymous read is refused with Retry-After, a
+garbage key is still refused, twenty requests with a real key pass, a page is refused with the error page, the fourth
+sign-in goes back to the page. With a garbage key treated as credentials, it fails. The shared fixtures turn limits off:
+every test request comes from one address.
+
+Suites: unit 120/0; integration 354/0 on SQLite and on SQL Server.

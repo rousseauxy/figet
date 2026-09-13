@@ -80,6 +80,15 @@ public static class FeedAccess
             await RecordRefusedAsync(http, tokens, refused, feed, cancellationToken);
         }
 
+        // Counted only now that the key is checked: a request without a valid key and without a sign-in is anonymous, whatever
+        // headers it sent. A garbage key does not buy a way around the limit.
+        if (!tokenAllows && http.User.Identity?.IsAuthenticated != true
+            && http.RequestServices.GetService<RequestRateLimits>() is { } limits
+            && !limits.TryAcquire(http, RequestRateLimits.Anonymous))
+        {
+            return (null, Results.Text("Too many requests from this address without credentials. Try again shortly, or use an API key.", "text/plain", statusCode: StatusCodes.Status429TooManyRequests));
+        }
+
         var allowed = tokenAllows || (required == TokenScopes.Read && feed.AnonymousRead);
 
         // A signed-in browser - a download link on a package page - reads with its account's level. Reading only: a

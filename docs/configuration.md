@@ -107,6 +107,23 @@ Authentik and Keycloak) and link provider groups on each FiGet group's page.
 
 `/account/login/local` always shows the user name and password form, whatever the sign-in page shows.
 
+## FiGet:RateLimits
+
+Per client address, for what can be done without proving who you are. Requests with a valid API key, and signed-in
+browsers, are not limited (sign-in attempts are, signed in or not).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `AnonymousRequestsPerMinute` | `1200` | Protocol reads on anonymous-read feeds, asset downloads and pages, without a valid key or sign-in. `0` turns it off. |
+| `AnonymousBurst` | `600` | How many of those may arrive at once before the rate applies. An install of a meta-module is a burst. |
+| `SignInAttemptsPerMinute` | `20` | Sign-in posts, local and provider buttons. The next one goes back to the sign-in page with a message. `0` turns it off. |
+
+A refused protocol request gets `429` with `Retry-After`. The address is the connection's, as the forwarded-headers
+middleware resolves it behind a trusted proxy (`ASPNETCORE_FORWARDEDHEADERS_ENABLED=true`, or known proxies configured);
+the `X-Forwarded-For` header is never read directly. **Behind a CDN or a shared egress** many clients arrive from few
+addresses: raise the limits, or configure the forwarded headers so the real client address is used. A garbage key does
+not get around the limit: a request is counted as anonymous after its key has been checked.
+
 ## FiGet:Limits
 
 | Key | Default | Meaning |

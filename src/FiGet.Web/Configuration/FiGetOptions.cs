@@ -30,6 +30,9 @@ public sealed class FiGetOptions
 
     public AuditOptions Audit { get; set; } = new();
 
+    /// <summary>Per-address limits on what can be done without a key or a sign-in.</summary>
+    public FiGet.Http.RateLimitOptions RateLimits { get; set; } = new();
+
     /// <summary>
     /// Compress protocol answers (<c>/nuget</c> and <c>/api/packages</c>) when the client accepts it. On by default:
     /// one <c>Find-Module</c> of a package with thousands of versions is about 80 MB of Atom, and a server on a slow

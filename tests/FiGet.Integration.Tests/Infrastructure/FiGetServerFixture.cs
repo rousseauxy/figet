@@ -95,6 +95,10 @@ public abstract class FiGetServerFixture : IAsyncLifetime
                 ["FiGet:Feeds:2:AnonymousRead"] = "true",
                 ["FiGet:Feeds:2:AllowOverwrite"] = "true",
                 ["FiGet:Feeds:2:DeletionBehavior"] = "HardDelete",
+                // Every test request comes from one address and signs in far more often than a person; the limits have their
+                // own fixture (RateLimitTests).
+                ["FiGet:RateLimits:AnonymousRequestsPerMinute"] = "0",
+                ["FiGet:RateLimits:SignInAttemptsPerMinute"] = "0",
                 ["Logging:LogLevel:Default"] = "Warning",
             };
             foreach (var (key, value) in settings)
