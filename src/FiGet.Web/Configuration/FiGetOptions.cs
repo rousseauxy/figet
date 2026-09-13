@@ -29,6 +29,13 @@ public sealed class FiGetOptions
     public AssetOptions Assets { get; set; } = new();
 
     /// <summary>
+    /// Compress protocol answers (<c>/nuget</c> and <c>/api/packages</c>) when the client accepts it. On by default:
+    /// one <c>Find-Module</c> of a package with thousands of versions is about 80 MB of Atom, and a server on a slow
+    /// line waits for every byte. Turn it off when a reverse proxy in front already compresses.
+    /// </summary>
+    public bool CompressProtocolResponses { get; set; } = true;
+
+    /// <summary>
     /// What to show as the running version, for example the image tag a deployment built. Empty: the
     /// assembly's informational version, which is what a local run has.
     /// </summary>

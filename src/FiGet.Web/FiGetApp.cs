@@ -32,6 +32,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -147,6 +148,23 @@ public static class FiGetApp
         // public surface is reachable without credentials, so it is not somewhere to allocate it.
         services.AddRazorComponents().AddInteractiveServerComponents();
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
+        services.AddResponseCompression(compression =>
+        {
+            // Over HTTPS too, which the framework leaves off because of BREACH: that attack needs a secret and
+            // attacker-chosen text in the same compressed body. A protocol answer carries neither - no token is
+            // ever echoed - and these are the only paths compressed.
+            compression.EnableForHttps = true;
+            compression.Providers.Add<BrotliCompressionProvider>();
+            compression.Providers.Add<GzipCompressionProvider>();
+
+            // Text only. A nupkg or a symbol file is already a zip, and compressing it again costs CPU for nothing.
+            compression.MimeTypes = ["application/atom+xml", "application/xml", "application/json", "text/plain"];
+        });
+
+        // Fastest, not smallest: the measured cost of a big listing is time, and the fastest level already removes
+        // most of the size - repeated tags are exactly what any level compresses well.
+        services.Configure<BrotliCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
+        services.Configure<GzipCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
         services.AddSingleton<AuditLog>();
 
         if (builder.Configuration.GetValue<bool>("FiGet:Logging:Json") || builder.Configuration.GetValue<bool>("DOTNET_RUNNING_IN_CONTAINER"))
@@ -167,6 +185,16 @@ public static class FiGetApp
     public static async Task<WebApplication> BuildAsync(WebApplicationBuilder builder)
     {
         var app = builder.Build();
+
+        // First, so it wraps everything written for these paths. Browser pages are not compressed here: they are
+        // small, and the interactive runtime's own traffic is not HTTP bodies.
+        if (app.Services.GetRequiredService<IOptions<FiGetOptions>>().Value.CompressProtocolResponses)
+        {
+            app.UseWhen(
+                context => context.Request.Path.StartsWithSegments("/nuget", StringComparison.OrdinalIgnoreCase)
+                    || context.Request.Path.StartsWithSegments("/api/packages", StringComparison.OrdinalIgnoreCase),
+                protocol => protocol.UseResponseCompression());
+        }
 
         // Errors a person meets in a browser get a page with the code on it, as in CustomsHive: an unhandled
         // exception renders /error, and a response that ends with an error status and no body is re-executed to

@@ -20,8 +20,8 @@ the entries. Options, for a decision:
 
 1. **Profile the writer first** (no behaviour change). Find out whether the time is the Atom writer, the row
    building or the string handling, and make that part cheaper. Safe; the size of the win is unknown.
-2. **Enable response compression** for `/nuget` regardless. Does not fix the time measured on a fast link,
-   but 80 MB to 10 MB matters to servers on a slow line. Low risk.
+2. ~~**Enable response compression** for `/nuget` regardless.~~ Done 2026-09-13
+   (`FiGet:CompressProtocolResponses`, on by default). Does not fix the time measured on a fast link.
 3. **Trim tags on older versions only** (keep them on the latest few). Cuts the payload most, but
    `Find-Module -AllVersions` would show no `Includes` for old versions. User-visible.
 4. **Accept it.** The client asks for every version by design; PSResourceGet over v3 is already fast.
@@ -157,16 +157,19 @@ upstream. It is the one thing the commercial server cannot answer - its guidance
 heaviest by volume and belongs with usage statistics and cache pruning, not with an audit trail. Worth
 doing; not yet decided when.
 
-### Add our reproduction to the PSResourceGet fix
+### Watch the PSResourceGet fix (comment posted 2026-09-13)
 
 Not a change to this server. PSResourceGet chooses a download URL by substring match on the version, so a
 requested version that is a text prefix of a longer one installs the wrong package (docs/status.md, "An
-install that fetched the wrong version"). It is already open as PowerShell/PSResourceGet #1657, with an
-unmerged fix in PR #2019.
+install that fetched the wrong version"). It is open as PowerShell/PSResourceGet #1657, with an unmerged
+fix in PR #2019.
 
-That fix rests on a single private-feed report. A comment adding a reproduction against public gallery
-packages - PowerShellGet 2.2.4 against 2.2.4.1, both listed, on PSResourceGet 1.2.0 - would give it a
-public case and a current version. It is outward-facing, so it waits for a person to post it.
+Our reproduction was posted on the PR on 2026-09-13
+(https://github.com/PowerShell/PSResourceGet/pull/2019#issuecomment-5653133353; text in
+docs/upstream/psresourceget-1657-comment.md). It also reports a collision the PR still lets through: its
+file-name check is a suffix match, so requesting 2.5.1 selects 3.2.5.1. Checked by compiling the PR's
+matcher, along with the suggested full-name comparison. Nothing left to do here but watch the PR; when a
+PSResourceGet release carries the fix, re-run the 2.2.4 / 2.2.5 saves over v3 and close this entry.
 
 ## Soon
 
@@ -185,8 +188,6 @@ public case and a current version. It is outward-facing, so it waits for a perso
 
 - **Promotion between feeds.** Referred to by the server being replaced; nothing in FiGet does it yet.
   Needs a decision on whether a promoted package keeps its origin or becomes a push.
-- **Per-version registration leaves for upstream-only versions.** A v3 client can list them but cannot
-  read a leaf for one that has never been downloaded.
 
 ### When the repository goes public: split validation from publishing
 

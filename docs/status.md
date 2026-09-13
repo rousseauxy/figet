@@ -2158,3 +2158,18 @@ drawn as a CSS mask so themes colour it; inside a command box it sits top right.
 shows "Press Ctrl+C" as text.
 
 Suites: unit 107/0; integration 261/0 on SQLite and on SQL Server.
+
+## Protocol answers are compressed - 2026-09-13
+
+`/nuget` and `/api/packages` answers in XML, JSON or text are sent with Brotli or gzip, at the fastest level, when
+the client asks for it (`FiGet:CompressProtocolResponses`, on by default). Package and symbol downloads are
+already zips and are left alone, and so are browser pages. HTTPS included: BREACH needs a secret and
+attacker-chosen text in one compressed body, and a protocol answer carries neither.
+This does not change the time a big `Find-Module` takes on a fast link (docs/backlog.md has why); it takes the
+80 MB such a listing sends down to about a tenth, which is what a server on a slow line waits for.
+`CompressionTests` covers both encodings, v3 and the management API, a client that does not ask, and the two
+things never compressed.
+
+The backlog entry "per-version registration leaves for upstream-only versions" was stale: that was fixed on
+2026-09-12 ("A proxied package with many versions could not be found"). Checked on the live instance: the leaf
+and catalog entry of an upstream-only Pester 6.2.0-alpha2 both answer 200. Removed from the backlog.

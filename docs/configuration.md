@@ -10,6 +10,7 @@ secret files.
 | Key | Default | Meaning |
 |---|---|---|
 | `FiGet:PublicBaseUrl` | empty | Absolute base URL used in every URL the protocols emit, for example `https://packages.example.org`. Empty: derived from the request. Behind a reverse proxy either set this, or set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` so `X-Forwarded-Proto` and `X-Forwarded-Host` are honoured. |
+| `FiGet:CompressProtocolResponses` | `true` | Brotli or gzip, at the fastest level, for XML, JSON and text answers under `/nuget` and `/api/packages` when the client sends `Accept-Encoding`. Package and symbol downloads (already zips) and browser pages are never compressed. Turn off when a reverse proxy in front already compresses. |
 | `FiGet:Version` | empty | What the signed-in menu shows as the running version, for example the image tag a deployment built (`docker-1.2.3`). Empty: the assembly's informational version, or `version not set` when the build stamped none — the SDK's default `1.0.0` counts as none, so an unstamped build does not announce itself as a release. |
 
 ## FiGet:Database
