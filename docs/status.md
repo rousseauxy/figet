@@ -2354,3 +2354,26 @@ Suites: unit 107/0; integration 340/0 on SQLite and on SQL Server.
   a matching email in different case are both refused, no account or link appears; with the check disabled it fails.
 
 Suites: unit 107/0; integration 340/0 on SQLite and on SQL Server.
+
+## Accounts, phase 5: the audit log in the database - 2026-09-13
+
+- **`AuditEntries`**: when, action, subject, actor (`user:`, `token:`, `anonymous`, `system`), feed, detail, caller
+  address, with lower-cased actor and feed for filtering. Written from the same `AuditLog.Record` call as the console
+  line, which it does not replace: the call queues the entry (bounded, 10,000) and `AuditWriterService` stores batches
+  of 200 with three attempts, draining on shutdown and logging an error for anything it gives up. The feed comes from
+  the `feed=` or `directory=` the call sites already put in the detail, or the subject of a `feed.*` change.
+- **Admin > Manage > Audit log** (admins): filters by event or event group (`signin.`), account or token, feed, and UTC
+  date range, as a GET form so a filtered view is a link; newest first, 100 at a time, continued by key. Cells link to
+  their own filter.
+- **Refused keys** (`token.refused`): a revoked, expired or owner-disabled key is recorded by name and reason; an
+  unknown value in an API key header as "unknown key"; an unknown Basic password not at all, since it may be a person's
+  password. Once per ten minutes per key, address and feed.
+- **Retention**: `FiGet:Audit:RetentionDays`, default 365, pruned every six hours.
+
+Tests: `AuditTrailTests` on both providers (an admin page change stored with its actor and found through the page's
+filters; a push stored under its feed and token; a revoked key tried three times stored once with its reason, an unknown
+API key stored without its value, an unknown Basic password not stored; the page refuses non-admins) and
+`AuditRetentionTests` (an entry past a 30-day retention pruned, a recent one kept). With the throttle, the Basic-password
+guard and pruning each disabled in turn, the matching test fails.
+
+Suites: unit 107/0; integration 349/0 on SQLite and on SQL Server.

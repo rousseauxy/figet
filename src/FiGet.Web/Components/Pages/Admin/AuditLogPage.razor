@@ -1,0 +1,172 @@
+@page "/admin/audit"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@layout AdminLayout
+@inject IAuditStore Audit
+@inject IOptions<FiGet.Web.Configuration.FiGetOptions> Options
+@using Microsoft.Extensions.Options
+
+@*
+    The audit log: who changed what, when, from where. Filters are a GET form, so a filtered view is a link that can be
+    sent to someone. Newest first, a page at a time; "Older" continues from the last entry shown rather than an offset,
+    so entries written meanwhile do not shift the next page.
+*@
+
+<PageTitle>Audit log · admin · FiGet</PageTitle>
+
+<h1>Audit log</h1>
+<p class="fg-lede">
+    Every change, sign-in and refused key, with who did it and from where.
+    @(RetentionDays > 0 ? $"Entries are kept for {RetentionDays} days." : "Entries are kept forever.")
+</p>
+
+<form method="get" action="/admin/audit" class="fg-form fg-audit-filters">
+    <div class="fg-field">
+        <label for="audit-action">Event</label>
+        <select id="audit-action" name="action">
+            <option value="">Any</option>
+            @foreach (var group in actionGroups)
+            {
+                <option value="@(group).">@group.* </option>
+            }
+            @foreach (var name in actions)
+            {
+                <option value="@name" selected="@(Action == name)">@name</option>
+            }
+        </select>
+    </div>
+    <div class="fg-field">
+        <label for="audit-actor">Who</label>
+        <input id="audit-actor" name="actor" value="@Actor" placeholder="user name, token name or user:name" />
+    </div>
+    <div class="fg-field">
+        <label for="audit-feed">Feed or directory</label>
+        <input id="audit-feed" name="feed" value="@Feed" />
+    </div>
+    <div class="fg-field">
+        <label for="audit-from">From (UTC)</label>
+        <input id="audit-from" name="from" type="date" value="@From" />
+    </div>
+    <div class="fg-field">
+        <label for="audit-to">To (UTC, inclusive)</label>
+        <input id="audit-to" name="to" type="date" value="@To" />
+    </div>
+    <div class="fg-audit-filter-actions">
+        <button type="submit" class="fg-btn fg-btn-primary">Filter</button>
+        <a class="fg-btn" href="/admin/audit">Clear</a>
+    </div>
+</form>
+
+@if (entries.Count == 0)
+{
+    <p class="fg-empty">Nothing recorded@(Filtered ? " that matches" : " yet").</p>
+}
+else
+{
+    <div class="fg-table-wrap">
+        <table class="fg-table fg-audit">
+            <thead>
+                <tr><th>When (UTC)</th><th>Event</th><th>Subject</th><th>Who</th><th>Feed</th><th>Detail</th><th>From</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var entry in entries)
+                {
+                    <tr>
+                        <td class="fg-num fg-nowrap">@entry.WhenUtc.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)</td>
+                        <td><a class="fg-badge @BadgeFor(entry.Action)" href="@Link(action: entry.Action)">@entry.Action</a></td>
+                        <td>@entry.Subject</td>
+                        <td>@if (entry.Actor.Contains(':')) { <a href="@Link(actor: entry.Actor)">@entry.Actor</a> } else { @entry.Actor }</td>
+                        <td>@if (entry.Feed is not null) { <a href="@Link(feed: entry.Feed)">@entry.Feed</a> }</td>
+                        <td class="fg-small fg-muted fg-audit-detail">@entry.Detail</td>
+                        <td class="fg-small fg-muted fg-nowrap">@entry.Caller</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (entries.Count == PageSize)
+    {
+        <p><a class="fg-btn" href="@Link(before: entries[^1].Key)">Older entries</a></p>
+    }
+}
+
+@code {
+    private const int PageSize = 100;
+    private IReadOnlyList<AuditEntry> entries = [];
+    private IReadOnlyList<string> actions = [];
+    private IReadOnlyList<string> actionGroups = [];
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery(Name = "action")]
+    private string? Action { get; set; }
+
+    [SupplyParameterFromQuery(Name = "actor")]
+    private string? Actor { get; set; }
+
+    [SupplyParameterFromQuery(Name = "feed")]
+    private string? Feed { get; set; }
+
+    [SupplyParameterFromQuery(Name = "from")]
+    private string? From { get; set; }
+
+    [SupplyParameterFromQuery(Name = "to")]
+    private string? To { get; set; }
+
+    [SupplyParameterFromQuery(Name = "before")]
+    private string? Before { get; set; }
+
+    private int RetentionDays => Options.Value.Audit.RetentionDays;
+
+    private bool Filtered => !string.IsNullOrEmpty(Action) || !string.IsNullOrEmpty(Actor) || !string.IsNullOrEmpty(Feed) || !string.IsNullOrEmpty(From) || !string.IsNullOrEmpty(To);
+
+    protected override async Task OnInitializedAsync()
+    {
+        actions = await Audit.ActionsAsync(HttpContext.RequestAborted);
+        actionGroups = actions.Select(a => a.Split('.')[0]).Distinct().ToList();
+        entries = await Audit.QueryAsync(
+            new AuditQuery(
+                Action,
+                Actor,
+                Feed,
+                Date(From),
+                Date(To)?.AddDays(1),
+                long.TryParse(Before, NumberStyles.None, CultureInfo.InvariantCulture, out var before) ? before : null,
+                PageSize),
+            HttpContext.RequestAborted);
+    }
+
+    private static DateTime? Date(string? value) =>
+        DateTime.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var date)
+            ? DateTime.SpecifyKind(date, DateTimeKind.Utc)
+            : null;
+
+    /// <summary>The current filters with one changed; a link from a cell narrows the view to that value.</summary>
+    private string Link(string? action = null, string? actor = null, string? feed = null, long? before = null)
+    {
+        var query = new List<string>();
+        void Add(string name, string? value)
+        {
+            if (!string.IsNullOrEmpty(value))
+            {
+                query.Add(name + "=" + Uri.EscapeDataString(value));
+            }
+        }
+
+        Add("action", action ?? Action);
+        Add("actor", actor ?? Actor);
+        Add("feed", feed ?? Feed);
+        Add("from", From);
+        Add("to", To);
+        Add("before", before?.ToString(CultureInfo.InvariantCulture));
+        return "/admin/audit" + (query.Count == 0 ? "" : "?" + string.Join('&', query));
+    }
+
+    private static string BadgeFor(string action) =>
+        action.EndsWith(".refused", StringComparison.Ordinal) || action.EndsWith(".failed", StringComparison.Ordinal) || action.EndsWith(".locked", StringComparison.Ordinal) || action.EndsWith(".disabled", StringComparison.Ordinal)
+            ? "fg-badge-warn"
+            : action.EndsWith(".delete", StringComparison.Ordinal) || action.EndsWith(".remove", StringComparison.Ordinal) || action.EndsWith(".revoke", StringComparison.Ordinal)
+                ? "fg-badge-danger"
+                : "fg-badge-plain";
+}

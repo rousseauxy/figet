@@ -1161,3 +1161,10 @@ h2 + .fg-panel { margin-top: 0.5rem; }
 
 /* A form that adds to the table above it - a grant, a member - starts below it, not against its border. */
 .fg-table-wrap + .fg-form { margin-top: 1rem; }
+
+/* The audit page: filters in a row that wraps, and long details that wrap rather than widen the table. */
+.fg-audit-filters { display: flex; flex-wrap: wrap; gap: 0 1rem; align-items: flex-end; margin-bottom: 1rem; }
+.fg-audit-filters .fg-field { flex: 1 1 11rem; }
+.fg-audit-filter-actions { display: flex; gap: 0.5rem; padding-bottom: 0.9rem; }
+.fg-audit-detail { min-width: 14rem; overflow-wrap: anywhere; }
+.fg-nowrap { white-space: nowrap; }

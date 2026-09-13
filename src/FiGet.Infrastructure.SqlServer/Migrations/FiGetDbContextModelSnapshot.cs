@@ -166,6 +166,68 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.ToTable("AssetItems", (string)null);
                 });
 
+            modelBuilder.Entity("FiGet.Domain.Entities.AuditEntry", b =>
+                {
+                    b.Property<long>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Key"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Actor")
+                        .IsRequired()
+                        .HasMaxLength(192)
+                        .HasColumnType("nvarchar(192)");
+
+                    b.Property<string>("ActorLower")
+                        .IsRequired()
+                        .HasMaxLength(192)
+                        .HasColumnType("nvarchar(192)");
+
+                    b.Property<string>("Caller")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("Detail")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Feed")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("FeedLower")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime>("WhenUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("WhenUtc");
+
+                    b.HasIndex("Action", "Key");
+
+                    b.HasIndex("ActorLower", "Key");
+
+                    b.HasIndex("FeedLower", "Key");
+
+                    b.ToTable("AuditEntries", (string)null);
+                });
+
             modelBuilder.Entity("FiGet.Domain.Entities.CachedUpstreamDescription", b =>
                 {
                     b.Property<long>("Key")

@@ -48,6 +48,8 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
 
     public DbSet<Setting> Settings => Set<Setting>();
 
+    public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
+
     public DbSet<AssetItem> AssetItems => Set<AssetItem>();
 
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -142,6 +144,24 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
 
             // Deleted by EfOidcProviderStore with the provider; a third cascade into this table is one SQL Server may refuse.
             e.HasOne<OidcProvider>().WithMany().HasForeignKey(x => x.ProviderKey).OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<AuditEntry>(e =>
+        {
+            e.ToTable("AuditEntries");
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Action).HasMaxLength(64);
+            e.Property(x => x.Subject).HasMaxLength(256);
+            e.Property(x => x.Actor).HasMaxLength(192);
+            e.Property(x => x.ActorLower).HasMaxLength(192);
+            e.Property(x => x.Feed).HasMaxLength(64);
+            e.Property(x => x.FeedLower).HasMaxLength(64);
+            e.Property(x => x.Detail).HasMaxLength(2000);
+            e.Property(x => x.Caller).HasMaxLength(128);
+            e.HasIndex(x => x.WhenUtc);
+            e.HasIndex(x => new { x.FeedLower, x.Key });
+            e.HasIndex(x => new { x.ActorLower, x.Key });
+            e.HasIndex(x => new { x.Action, x.Key });
         });
 
         modelBuilder.Entity<OidcProvider>(e =>

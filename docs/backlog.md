@@ -26,44 +26,6 @@ the entries. Options, for a decision:
    `Find-Module -AllVersions` would show no `Includes` for old versions. User-visible.
 4. **Accept it.** The client asks for every version by design; PSResourceGet over v3 is already fast.
 
-### An audit log: who changed what, and when
-
-**Phase 5 of docs/auth-plan.md**, the one phase of that plan not built. Phases 1-4 (accounts, roles, groups, per-feed
-permissions, personal keys with the minting ceiling, OpenID Connect) are done; see docs/status.md.
-
-**The console half shipped on 2026-09-13** (docs/status.md, "The flapping is fixed at the cause, and there is an audit log"): every change below is written as a line under the `FiGet.Audit` category. What remains is the database table and the admin page.
-
-Decided 2026-09-12, to be built after the current round of testing settles. Distinct from the request log
-that now exists: that one answers "did a client reach us and what did it ask for", at Information level on
-the console, opt-in via `FiGet:Logging:Requests`. This answers "who changed this", which is a different
-shape, a different audience and a different retention question - so it is not a wider middleware.
-
-**What it records.** Three kinds of event:
-
-- **Admin changes** - feed created, deleted or edited, upstream added or removed, token issued or revoked,
-  theme changed, a package un-cached. Who, when, and what changed.
-- **Package lifecycle** - push, delete, unlist, relist, admin Pull, with the token or user behind it. This
-  overlaps the request log on purpose: the request log has the HTTP call, this has the intent.
-- **Authentication events** - sign-ins, and rejected or revoked token attempts. A client still presenting a
-  dead key is invisible today; `claude-push` was revoked on 2026-09-12 and nothing would show an attempt
-  to keep using it.
-
-**Where it lives.** A database table with an admin page beside Feeds and Tokens, filterable by feed, user
-and date. Not the console: the container keeps a single 50 MB `json-file` with no rotation history, so
-console-only records are lost silently, and "what happened last Tuesday" is exactly what an audit log is
-asked. `FeedAccess.ResolveAsync` already resolves feed and token for every protocol request and is where
-attribution should come from, the same as the request log's `who=`.
-
-**Retention: configurable days, pruned by a background task**, designed in rather than added later. The
-server being replaced keeps these forever and its own documentation warns the table reaches gigabytes,
-recommends purging annually, and supplies manual `DELETE` scripts because pruning "is not built-in".
-
-**Not in this entry:** per-download records carrying whether a version was served from cache or fetched
-upstream. It is the one thing the commercial server cannot answer - its guidance is to infer it from
-`time-taken` - and it is cheap here because `ConnectorService` already knows. Left out because it is the
-heaviest by volume and belongs with usage statistics and cache pruning, not with an audit trail. Worth
-doing; not yet decided when.
-
 ### Watch the PSResourceGet fix (comment posted 2026-09-13)
 
 Not a change to this server. PSResourceGet chooses a download URL by substring match on the version, so a
@@ -143,8 +105,9 @@ set of CVEs in an assembly the app never ships itself.
 
 - **Per-feed instruction templates** for install and file usage, so wording and the client-facing
   hostname can differ per feed.
-- **History tab** on a version, which needs the audit log of phase 5.
-- **Usage and statistics**, which needs per-version download tracking — the same data cache pruning wants.
+- **History tab** on a version: the audit log exists now (filter by feed on its page); a per-version view of it is not built.
+- **Usage and statistics**, which needs per-version download tracking — the same data cache pruning wants. Per-download
+  records with whether a version came from cache or upstream belong here, not in the audit log: heaviest by volume.
 - **Cache pruning and retention** by age and use.
 
 ## Decided against

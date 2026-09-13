@@ -132,9 +132,12 @@ Authentik and Keycloak) and link provider groups on each FiGet group's page.
 
 ### The audit log
 
-Who changed what, and when: feeds created, edited and deleted, upstreams added and removed, tokens issued
-and revoked, the theme changed, packages pushed, deleted, relisted, pulled and un-cached, asset files uploaded
-(multipart included), fetched by URL and deleted, archives imported, asset folders created, asset metadata changed, and sign-ins including refused ones.
+Who changed what, and when: feeds created, edited and deleted, upstreams added and removed, tokens and personal
+keys issued and revoked, the theme changed, packages pushed, deleted, relisted, pulled and un-cached, asset files
+uploaded (multipart included), fetched by URL and deleted, archives imported, asset folders created, asset metadata
+changed; accounts, groups, permissions and sign-in providers changed; sign-ins, local and through a provider,
+including refused and locked ones; and keys that no longer work but are still being sent (`token.refused`, at most
+once per ten minutes per key, address and feed, never with anything of the secret).
 
 It has no on/off key of its own. Every line is written at Information under the category `FiGet.Audit`, so
 the standard log-level configuration governs it:
@@ -148,8 +151,15 @@ On by default is deliberate. An audit trail that has to be switched on in advanc
 somebody asks what happened, and the volume is a few lines a day rather than a few per request — unlike
 `Requests` above, which is off by default for exactly that reason.
 
-Console only for now. A container log rotates and is lost; the database table and admin page this wants
-eventually are described in `docs/backlog.md`.
+The same entries are stored in the database and shown on **Admin > Manage > Audit log**, filterable by event,
+account or token, feed and date. A request never waits for that: entries are queued and written in batches by a
+background writer, so the console line is the one that is certain, and the writer logs an error if it ever has to
+give entries up (queue full, database down for three attempts). Silencing the category silences the console line only;
+the row is still stored.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `FiGet:Audit:RetentionDays` | `365` | Entries older than this are deleted, checked every six hours by every replica. `0` keeps them forever. |
 
 ## What survives a restart
 
@@ -161,10 +171,10 @@ are now stored beside it, because both change what a client is told:
 | Which versions the upstream does not advertise | Without it every hidden version looks listed until the first refresh lands, and can win "latest" again. |
 | What each version depends on | A client reads this to decide what else to install. While it was missing, a first install of an uncached module brought none of its dependencies. |
 
-Descriptions, summaries and tags are deliberately **not** stored. They are two orders of magnitude larger —
-a hundred megabytes against tens of kilobytes for the facts above — and persisting them is what caused the
-out-of-memory incident recorded in `docs/status.md`. They live in memory, and a restart simply leaves
-listings undescribed until the first refresh fills them in.
+Descriptions, summaries and tags are stored too, since 2026-09-13, per version with each distinct tag list kept
+once, and written in batches with their own database context. The first attempt kept them on tracked entities and
+caused the out-of-memory incident recorded in `docs/status.md`; the current shape does not. A restart reads them
+back, so listings stay described.
 
 ## Standard ASP.NET Core and OpenTelemetry settings that matter
 

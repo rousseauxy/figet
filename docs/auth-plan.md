@@ -102,4 +102,4 @@ Each phase ships on its own: migrations for both providers, tests on both databa
 3. **API keys.** Done 2026-09-13. Personal keys on the profile page, service tokens restricted to admins, the ceiling rule.
 4. **OpenID Connect.** Built 2026-09-13; Authentik registered, sign-in by the owner pending. Providers page, runtime schemes, sign-in page modes and the local fallback, account creation,
    connect and disconnect on the profile page, group mapping. Verified against a real Authentik provider.
-5. **Audit log.** Table, admin page with filters, retention and pruning; the console lines stay.
+5. **Audit log.** Done 2026-09-13. Table, admin page with filters, retention and pruning; the console lines stay.

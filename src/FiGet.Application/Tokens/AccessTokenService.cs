@@ -168,6 +168,24 @@ public sealed class AccessTokenService(IAccessTokenStore store, IUserStore users
     }
 
     /// <summary>
+    /// Why a secret that did not validate was refused, for the audit log: the token's name and what is wrong with it, or
+    /// null when it is no token at all. Never anything of the secret itself - a Basic password may be a person's password.
+    /// </summary>
+    public async Task<(string Name, string Reason)?> DescribeRefusedAsync(string secret, CancellationToken cancellationToken)
+    {
+        var token = await store.FindByHashAsync(HashSecret(secret.Trim()), cancellationToken);
+        if (token is null)
+        {
+            return null;
+        }
+
+        var reason = token.RevokedUtc is not null ? "revoked"
+            : token.ExpiresUtc is not null && token.ExpiresUtc <= time.GetUtcNow().UtcDateTime ? "expired"
+            : "owner disabled or deleted";
+        return (token.Name, reason);
+    }
+
+    /// <summary>
     /// Whether a validated token may do <paramref name="scope"/> on <paramref name="feed"/>: its own limits, and for a
     /// personal key also its owner's level on the feed right now, so a grant removed or a group left applies at once.
     /// </summary>

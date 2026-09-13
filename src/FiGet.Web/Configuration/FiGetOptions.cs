@@ -28,6 +28,8 @@ public sealed class FiGetOptions
 
     public AssetOptions Assets { get; set; } = new();
 
+    public AuditOptions Audit { get; set; } = new();
+
     /// <summary>
     /// Compress protocol answers (<c>/nuget</c> and <c>/api/packages</c>) when the client accepts it. On by default:
     /// one <c>Find-Module</c> of a package with thousands of versions is about 80 MB of Atom, and a server on a slow
@@ -182,6 +184,15 @@ public sealed class LimitsOptions
 
     /// <summary>The largest archive an import accepts, and the most it may unpack to.</summary>
     public int MaxImportSizeMB { get; set; } = 4096;
+}
+
+public sealed class AuditOptions
+{
+    /// <summary>
+    /// Audit entries older than this many days are deleted, checked every few hours. 0 keeps them forever; the server
+    /// being replaced does that, and its own documentation then tells administrators to purge a table grown to gigabytes.
+    /// </summary>
+    public int RetentionDays { get; set; } = 365;
 }
 
 public sealed class AssetOptions

@@ -54,11 +54,13 @@ public static class FeedAccess
         var tokens = http.RequestServices.GetRequiredService<AccessTokenService>();
         ValidatedToken? best = null;
         var tokenAllows = false;
+        string? refused = null;
         foreach (var secret in RequestCredentials.Candidates(http.Request))
         {
             var token = await tokens.ValidateAsync(secret, cancellationToken);
             if (token is null)
             {
+                refused ??= secret;
                 continue;
             }
 
@@ -71,6 +73,11 @@ public static class FeedAccess
                 tokenAllows = true;
                 break;
             }
+        }
+
+        if (best is null && refused is not null)
+        {
+            await RecordRefusedAsync(http, tokens, refused, feed, cancellationToken);
         }
 
         var allowed = tokenAllows || (required == TokenScopes.Read && feed.AnonymousRead);
@@ -105,6 +112,31 @@ public static class FeedAccess
 
         http.Response.Headers.WWWAuthenticate = $"Basic realm=\"{Realm}\"";
         return (null, Results.Json(new { error = "Credentials are required." }, statusCode: StatusCodes.Status401Unauthorized));
+    }
+
+    /// <summary>
+    /// A key that no longer works, still being sent: a scheduled job nobody updated, or a leaked key being tried. Once per
+    /// ten minutes per key and address, because such a client repeats it on every request. A secret that is no token at
+    /// all is recorded only when it came as an API key header; as a Basic password it may be someone's real password, and
+    /// a NuGet client sends whatever is stored for the source.
+    /// </summary>
+    private static async Task RecordRefusedAsync(HttpContext http, AccessTokenService tokens, string secret, Feed feed, CancellationToken cancellationToken)
+    {
+        var known = await tokens.DescribeRefusedAsync(secret, cancellationToken);
+        if (known is null && !RequestCredentials.HasApiKeyHeader(http.Request))
+        {
+            return;
+        }
+
+        var subject = known?.Name ?? "unknown key";
+        var caller = RequestActor.Caller(http);
+        http.RequestServices.GetRequiredService<AuditLog>().RecordThrottled(
+            http,
+            $"token.refused|{subject}|{caller}|{feed.Key}",
+            TimeSpan.FromMinutes(10),
+            "token.refused",
+            subject,
+            $"feed={feed.Name} reason={known?.Reason ?? "not a key"}");
     }
 }
 
