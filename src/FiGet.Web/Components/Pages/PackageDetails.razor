@@ -154,9 +154,9 @@
         </div>
 
         <h2>Install the latest</h2>
-        <pre><code>Install-Module -Name @displayId -RequiredVersion @shown.NormalizedVersion -Repository @feed.Name</code></pre>
-        <pre><code>Install-PSResource -Name @displayId -Version @shown.NormalizedVersion -Repository @feed.Name</code></pre>
-        <pre><code>dotnet add package @displayId --version @shown.NormalizedVersion --source @(feedUrl)/v3/index.json</code></pre>
+        <CommandSnippet Command="@($"Install-Module -Name {displayId} -RequiredVersion {shown.NormalizedVersion} -Repository {feed.Name}")" />
+        <CommandSnippet Command="@($"Install-PSResource -Name {displayId} -Version {shown.NormalizedVersion} -Repository {feed.Name}")" />
+        <CommandSnippet Command="@($"dotnet add package {displayId} --version {shown.NormalizedVersion} --source {feedUrl}/v3/index.json")" />
 
         <h2>Recent versions</h2>
         @VersionTable(visible.Reverse().Take(RecentCount))

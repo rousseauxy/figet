@@ -76,6 +76,30 @@ public sealed class PackagePageTests(ProxyServerFixture server) : IClassFixture<
     }
 
     /// <summary>
+    /// Each install command has a copy button carrying exactly the command shown, on the package page and on a
+    /// version's page. Reported from testing: with a dark theme a selection was nearly invisible, so selecting a
+    /// command by hand left nobody sure what they had copied.
+    /// </summary>
+    [Fact]
+    public async Task Each_install_command_can_be_copied()
+    {
+        var id = FiGetServerFixture.UniqueId("Page.Copy");
+        using (var package = TestPackages.Create(id, "1.2.3"))
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("public", package));
+        }
+
+        using var client = server.CreateClient();
+        foreach (var path in new[] { $"feeds/public/packages/{id}", $"feeds/public/packages/{id}/1.2.3" })
+        {
+            var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync(path));
+            Assert.Contains($"data-copy=\"Install-Module -Name {id} -RequiredVersion 1.2.3 -Repository public\"", page, StringComparison.Ordinal);
+            Assert.Contains($"data-copy=\"Install-PSResource -Name {id} -Version 1.2.3 -Repository public\"", page, StringComparison.Ordinal);
+            Assert.Contains($"data-copy=\"dotnet add package {id} --version 1.2.3 --source ", page, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
     /// The id is encoded before its breaks are inserted. The helper returns markup, which bypasses Razor's
     /// own encoding, and an id comes from whoever pushed the package. A valid id cannot hold angle brackets,
     /// but a helper that emits markup must be safe without leaning on validation somewhere else.

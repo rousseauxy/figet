@@ -164,7 +164,9 @@ pre {
 }
 pre code { padding: 0; background: none; }
 
-::selection { background: var(--accent-soft); }
+/* Mixed from the accent rather than its soft tint: on several themes the tint is within a few shades of the
+   page, and a selection nobody can see is a selection nobody trusts. */
+::selection { background: color-mix(in srgb, var(--accent) 40%, transparent); }
 
 /* ── Utilities ──────────────────────────────────────────────────── */
 .fg-row   { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
@@ -755,6 +757,11 @@ legend {
 
 .fg-nav-dropdown > summary {
   list-style: none;
+/* A command with its copy button beside it; the button sits at the top so a wrapped command keeps it in reach. */
+.fg-snippet { display: flex; align-items: flex-start; gap: 0.4rem; margin: 0 0 0.5rem; }
+.fg-snippet pre { flex: 1; min-width: 0; margin: 0; }
+.fg-snippet .fg-copy { margin-top: 0.55rem; }
+
   cursor: pointer;
   display: inline-flex;
   align-items: center;

@@ -1,0 +1,14 @@
+@*
+    One command to paste into a shell, with a button that copies it. Selecting the text by hand is not
+    enough: on some themes a selection is barely visible, so nobody can tell what they are about to copy.
+*@
+
+<div class="fg-snippet">
+    <pre><code>@Command</code></pre>
+    <button type="button" class="fg-copy" data-copy="@Command" title="Copy this command" aria-label="Copy the command">Copy</button>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Command { get; set; } = "";
+}

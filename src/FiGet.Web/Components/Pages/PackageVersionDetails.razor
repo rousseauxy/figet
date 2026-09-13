@@ -115,9 +115,9 @@
         </div>
 
         <h2>Install this version</h2>
-        <pre><code>Install-Module -Name @displayId -RequiredVersion @row.NormalizedVersion -Repository @feed.Name</code></pre>
-        <pre><code>Install-PSResource -Name @displayId -Version @row.NormalizedVersion -Repository @feed.Name</code></pre>
-        <pre><code>dotnet add package @displayId --version @row.NormalizedVersion --source @(feedUrl)/v3/index.json</code></pre>
+        <CommandSnippet Command="@($"Install-Module -Name {displayId} -RequiredVersion {row.NormalizedVersion} -Repository {feed.Name}")" />
+        <CommandSnippet Command="@($"Install-PSResource -Name {displayId} -Version {row.NormalizedVersion} -Repository {feed.Name}")" />
+        <CommandSnippet Command="@($"dotnet add package {displayId} --version {row.NormalizedVersion} --source {feedUrl}/v3/index.json")" />
         break;
 }
 
