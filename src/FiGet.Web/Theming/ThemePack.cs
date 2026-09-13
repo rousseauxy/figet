@@ -22,6 +22,8 @@ public sealed class ThemePack
 
     public ThemeTokens? Tokens { get; set; }
 
+    public ThemeBranding? Branding { get; set; }
+
     /// <summary>Appended verbatim after the token blocks, for the rare rule tokens cannot express.</summary>
     public string? CustomCss { get; set; }
 }
@@ -44,8 +46,35 @@ public sealed class ThemeFonts
     public string? FontUrl { get; set; }
 }
 
+/// <summary>
+/// The name and logo in the top bar. The same block the sibling application reads - <c>titlePlain</c> is its key - with a
+/// logo added; keys either application has no use for are ignored.
+/// </summary>
+public sealed class ThemeBranding
+{
+    /// <summary>The product name next to the logo, and in page titles' place of "FiGet". Empty keeps "FiGet".</summary>
+    public string? TitlePlain { get; set; }
+
+    /// <summary>
+    /// The logo, shown on the top bar - dark in both light and dark mode, so one image serves both. Either a file name next
+    /// to the pack (<c>acme-logo.svg</c>; SVG, PNG, WebP, JPEG or GIF, at most 1 MB), served by this server, or a
+    /// <c>data:image/...</c> URL. Deliberately not a link to another site: the logo would then depend on that site, and
+    /// every reader's browser would call it.
+    /// </summary>
+    public string? Logo { get; set; }
+
+    /// <summary>What a screen reader says for the logo. Empty: the title.</summary>
+    public string? LogoAlt { get; set; }
+
+    /// <summary>When the logo already carries the name, the text beside it can go.</summary>
+    public bool HideTitle { get; set; }
+}
+
 public sealed class ThemeLayout
 {
+    /// <summary>The widest the page's content grows, emitted as <c>--page-width</c> (default 1440px).</summary>
+    public string? PageWidth { get; set; }
+
     /// <summary>Base corner radius, emitted as <c>--r-1</c>.</summary>
     public string? Radius { get; set; }
 

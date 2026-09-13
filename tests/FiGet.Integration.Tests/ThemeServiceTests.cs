@@ -104,6 +104,56 @@ public sealed class ThemeServiceTests : IDisposable
         Assert.Equal("test", pack.Name);
     }
 
+    /// <summary>
+    /// A pack's logo is served only when it is the file the pack names, next to the pack: never another file in the
+    /// directory, never a path out of it, and never a link to another site.
+    /// </summary>
+    [Fact]
+    public void Only_the_logo_a_pack_names_is_served()
+    {
+        File.WriteAllText(Path.Combine(root, "brand.yaml"), """
+            name: brand
+            branding:
+              titlePlain: Acme packages
+              logo: acme.svg
+              logoAlt: Acme
+            """);
+        File.WriteAllText(Path.Combine(root, "acme.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"/>");
+        File.WriteAllText(Path.Combine(root, "other.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"/>");
+
+        var service = Service(path: root, webRoot: Path.Combine(root, "unused"));
+
+        var brand = service.GetBrand("brand");
+        Assert.Equal("Acme packages", brand.Title);
+        Assert.Equal("/themes/brand/assets/acme.svg", brand.LogoUrl);
+        Assert.Equal("Acme", brand.LogoAlt);
+        Assert.Equal("image/svg+xml", service.GetAsset("brand", "acme.svg")!.Value.ContentType);
+        Assert.Null(service.GetAsset("brand", "other.svg"));
+        Assert.Null(service.GetAsset("brand", "../brand.yaml"));
+        Assert.Null(service.GetAsset("nobody", "acme.svg"));
+        Assert.Equal(ThemeBrand.Default, service.GetBrand("nobody"));
+    }
+
+    [Theory]
+    [InlineData("data:image/svg+xml;base64,PHN2Zy8+", true)]
+    [InlineData("https://example.com/logo.svg", false)]
+    [InlineData("../outside.svg", false)]
+    [InlineData("logo.exe", false)]
+    public void A_logo_is_a_file_next_to_the_pack_or_a_data_url(string logo, bool shown)
+    {
+        File.WriteAllText(Path.Combine(root, "brand.yaml"), $"""
+            name: brand
+            branding:
+              logo: "{logo}"
+              hideTitle: true
+            """);
+
+        var brand = Service(path: root, webRoot: Path.Combine(root, "unused")).GetBrand("brand");
+
+        Assert.Equal(shown, brand.LogoUrl is not null);
+        Assert.Equal(shown, brand.HideTitle);
+    }
+
     private static ThemeService Service(string? path, string webRoot) =>
         new(new StubEnvironment(webRoot),
             new ConfigurationBuilder()

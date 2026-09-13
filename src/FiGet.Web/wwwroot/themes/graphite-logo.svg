@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="FiGet">
+  <!-- FiGet's mark: a package, with an arrow coming down into it. Drawn for the graphite pack's accent on a dark top bar. -->
+  <path d="M5 12.5 16 18l11-5.5V25a2 2 0 0 1-1.1 1.8l-9 4.4a2 2 0 0 1-1.8 0l-9-4.4A2 2 0 0 1 5 25z" fill="#e0a355" opacity="0.35"/>
+  <path d="M5 12.5 16 18l11-5.5M16 18v13" fill="none" stroke="#e0a355" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M16 1v11m-4.5-4.5L16 12l4.5-4.5" fill="none" stroke="#e0a355" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

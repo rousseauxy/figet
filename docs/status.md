@@ -2534,3 +2534,21 @@ numbers: what they referred to is gone.
 
 Test: `AuditTrailTests` removes a group's Manage grant through the feed's access endpoint and finds the entry under the
 group's name with `group level=Manage`.
+
+## Logo from the theme pack, and a wider page - 2026-09-13
+
+Asked by the owner after the tester's CSS experiment (a logo as a background image, the content at 90% with a 1200px
+minimum). The minimum would have made phones scroll sideways, and a background image has no alt text, so:
+
+- **`branding` in theme packs** (the sibling application's block, extended): `titlePlain`, `logo`, `logoAlt`,
+  `hideTitle`. The logo is a file next to the pack, served by `/themes/{pack}/assets/{file}` only when it is the file the
+  pack names (no other file, no path out of the directory, 1 MB at most, `Content-Security-Policy: ... sandbox`,
+  `nosniff`), or a `data:image/...` URL; a link to another site is refused with a log line. The top bar renders a real
+  `<img>` with alt text. Both shipped packs have FiGet's own mark (a package with an arrow into it) in their dark accent.
+- **Page width**: one `--page-width` token for the header and the content, default 1440px (was 1200px for the header and
+  1100px for the content, whose edges did not line up); a pack sets it with `layout.pageWidth`. No minimum width.
+- The upstream name sits beside its source badge instead of under it.
+
+Tests: `ThemeServiceTests` (only the named logo is served, not another file or a path out; a logo is a file or a data
+URL, a link to another site is refused) and `ThemePackTests` (each shipped pack's logo is served as SVG with a
+sandboxing policy, its YAML is not, and its CSS sets the page width).

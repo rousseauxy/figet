@@ -6,7 +6,16 @@
 <div class="fg-shell">
     <nav class="fg-navbar">
         <div class="fg-navbar-inner">
-            <a class="fg-navbar-brand" href="/">FiGet</a>
+            <a class="fg-navbar-brand" href="/" aria-label="@(Brand.HideTitle ? Brand.Title : null)">
+                @if (Brand.LogoUrl is { } logo)
+                {
+                    <img class="fg-brand-logo" src="@logo" alt="@(Brand.HideTitle ? "" : Brand.LogoAlt)" />
+                }
+                @if (!Brand.HideTitle)
+                {
+                    <span>@Brand.Title</span>
+                }
+            </a>
             <div class="fg-nav-links">
                 <a href="/">Feeds</a>
                 <a href="/assets">Assets</a>
@@ -64,6 +73,9 @@
 </div>
 
 @code {
+    [CascadingParameter]
+    private FiGet.Web.Theming.ThemeBrand Brand { get; set; } = FiGet.Web.Theming.ThemeBrand.Default;
+
     [Inject]
     private IOptions<FiGetOptions> Options { get; set; } = default!;
 

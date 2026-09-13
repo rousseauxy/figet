@@ -30,7 +30,10 @@
     </script>
 </head>
 <body>
-    <Routes />
+    @* The brand reaches the top bar through a cascading value: the layout cannot take it from the page it wraps. *@
+    <CascadingValue Value="brand" IsFixed="true">
+        <Routes />
+    </CascadingValue>
     <script src="@Assets["app.js"]"></script>
 </body>
 </html>
@@ -42,7 +45,12 @@
     [Inject]
     private IServiceScopeFactory Scopes { get; set; } = default!;
 
+    [Inject]
+    private FiGet.Web.Theming.IThemeService Themes { get; set; } = default!;
+
     private string? theme;
+
+    private FiGet.Web.Theming.ThemeBrand brand = FiGet.Web.Theming.ThemeBrand.Default;
 
     /// <summary>
     /// A choice made in the admin area beats the configured one, so the look can change without a
@@ -60,5 +68,6 @@
         var settings = scope.ServiceProvider.GetRequiredService<FiGet.Application.Ports.ISettingStore>();
         var stored = await settings.GetAsync(FiGet.Domain.Entities.SettingKeys.Theme, CancellationToken.None);
         theme = string.IsNullOrWhiteSpace(stored) ? Options.Value.Theming.Theme : stored;
+        brand = Themes.GetBrand(theme);
     }
 }

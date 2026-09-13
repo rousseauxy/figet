@@ -18,9 +18,19 @@ fonts:
   ui: "'Inter', ui-sans-serif, 'Segoe UI', system-ui, sans-serif"
   mono: "'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace"
 
+# The name and logo in the top bar. The logo is a file next to this pack, served by FiGet itself; a
+# data:image/... URL works too. Not a link to another site: the logo would depend on it, and every
+# reader's browser would call it. hideTitle: true drops the name when the logo already carries it.
+branding:
+  titlePlain: FiGet
+  logo: graphite-logo.svg
+  logoAlt: FiGet
+
 layout:
   radius: 4px
   radiusLarge: 8px
+  # The widest the content grows; 1440px is the default.
+  pageWidth: 1440px
 
 tokens:
   light:

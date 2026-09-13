@@ -10,6 +10,12 @@ namespace FiGet.Web.Theming;
 /// <summary>One theme, as a chooser needs to know it.</summary>
 public sealed record ThemeSummary(string Name, string Label, string? Description);
 
+/// <summary>What the top bar shows for a theme: the name, and the logo's address when the pack has one.</summary>
+public sealed record ThemeBrand(string Title, string? LogoUrl, string LogoAlt, bool HideTitle)
+{
+    public static readonly ThemeBrand Default = new("FiGet", null, "FiGet", HideTitle: false);
+}
+
 public interface IThemeService
 {
     /// <summary>Every theme found, by label.</summary>
@@ -19,6 +25,15 @@ public interface IThemeService
     (string Css, string ETag)? GetCss(string name);
 
     ThemePack? GetPack(string name);
+
+    /// <summary>The brand of a theme, or the default one when there is no such theme or it names no brand.</summary>
+    ThemeBrand GetBrand(string? name);
+
+    /// <summary>
+    /// A file a pack's branding names, to serve: its path and content type. Null for anything else - a file the pack does
+    /// not name is never served, whatever sits in the directory.
+    /// </summary>
+    (string Path, string ContentType)? GetAsset(string name, string file);
 
     /// <summary>Re-reads the themes directory, so a pack can be added or edited without a restart.</summary>
     void Reload();
@@ -72,6 +87,72 @@ public sealed class ThemeService : IThemeService
 
     public ThemePack? GetPack(string name) => packs.TryGetValue(name, out var entry) ? entry.Pack : null;
 
+    /// <summary>The largest logo served. A logo is kilobytes; anything near this is a mistake worth refusing.</summary>
+    public const long MaxAssetBytes = 1024 * 1024;
+
+    private static readonly Dictionary<string, string> AssetTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".svg"] = "image/svg+xml",
+        [".png"] = "image/png",
+        [".webp"] = "image/webp",
+        [".jpg"] = "image/jpeg",
+        [".jpeg"] = "image/jpeg",
+        [".gif"] = "image/gif",
+    };
+
+    public ThemeBrand GetBrand(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || !packs.TryGetValue(name, out var entry) || entry.Pack.Branding is not { } branding)
+        {
+            return ThemeBrand.Default;
+        }
+
+        var title = string.IsNullOrWhiteSpace(branding.TitlePlain) ? ThemeBrand.Default.Title : branding.TitlePlain.Trim();
+        string? logo = null;
+        var value = branding.Logo?.Trim();
+        if (!string.IsNullOrEmpty(value))
+        {
+            if (value.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+            {
+                logo = value;
+            }
+            else if (IsPlainFileName(value) && AssetTypes.ContainsKey(Path.GetExtension(value)))
+            {
+                logo = $"/themes/{Uri.EscapeDataString(entry.Pack.Name)}/assets/{Uri.EscapeDataString(value)}";
+            }
+            else
+            {
+                logger.LogWarning("Theme {Theme} names a logo that is neither a file next to the pack nor a data: URL; it is not shown.", entry.Pack.Name);
+            }
+        }
+
+        var alt = string.IsNullOrWhiteSpace(branding.LogoAlt) ? title : branding.LogoAlt.Trim();
+        return new ThemeBrand(title, logo, alt, branding.HideTitle && logo is not null);
+    }
+
+    public (string Path, string ContentType)? GetAsset(string name, string file)
+    {
+        if (!packs.TryGetValue(name, out var entry)
+            || entry.Pack.Branding?.Logo?.Trim() is not { } logo
+            || !string.Equals(logo, file, StringComparison.OrdinalIgnoreCase)
+            || !IsPlainFileName(logo)
+            || !AssetTypes.TryGetValue(Path.GetExtension(logo), out var type))
+        {
+            return null;
+        }
+
+        var path = Path.Combine(directory, logo);
+        var info = new FileInfo(path);
+        return info.Exists && info.Length <= MaxAssetBytes ? (path, type) : null;
+    }
+
+    /// <summary>A name in the pack's own directory: no separators, no parent references, nothing a path could escape through.</summary>
+    private static bool IsPlainFileName(string value) =>
+        value.Length is > 0 and <= 128
+        && value.IndexOfAny(['/', '\\', ':']) < 0
+        && value != "." && value != ".."
+        && value.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
+
     public void Reload()
     {
         packs.Clear();
@@ -122,6 +203,7 @@ public sealed class ThemeService : IThemeService
         Add(light, "font-mono", pack.Fonts?.Mono);
         Add(light, "r-1", pack.Layout?.Radius);
         Add(light, "r-2", pack.Layout?.RadiusLarge);
+        Add(light, "page-width", pack.Layout?.PageWidth);
 
         Block(css, ":root", light);
 

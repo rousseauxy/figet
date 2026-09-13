@@ -338,6 +338,21 @@ public static class FiGetApp
             return Results.Text(theme.Value.Css, "text/css");
         });
 
+        // A logo a theme pack names, from the pack's own directory. Served with a policy that runs nothing: an SVG opened
+        // directly is a document, and one with a script in it must not run as this site.
+        app.MapGet("/themes/{name}/assets/{file}", (string name, string file, HttpContext http, IThemeService themes) =>
+        {
+            if (themes.GetAsset(name, file) is not { } asset)
+            {
+                return Results.NotFound();
+            }
+
+            http.Response.Headers.ContentSecurityPolicy = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+            http.Response.Headers.XContentTypeOptions = "nosniff";
+            http.Response.Headers.CacheControl = "public, max-age=3600";
+            return Results.File(asset.Path, asset.ContentType, enableRangeProcessing: false);
+        });
+
         app.MapNuGetV2();
         app.MapNuGetV3();
         app.MapAssetEndpoints();

@@ -43,6 +43,9 @@
 
   --r-1: 6px;
   --r-2: 10px;
+
+  /* The widest the page's content grows, header and body alike. A theme pack sets it with layout.pageWidth. */
+  --page-width: 1440px;
   --r-pill: 999px;
   --shadow-1: 0 1px 2px rgb(30 27 20 / 0.06);
   --shadow-2: 0 8px 28px rgb(30 27 20 / 0.14);
@@ -196,7 +199,7 @@ pre code { padding: 0; background: none; }
 .fg-navbar { background-color: var(--chrome); padding: 0 1.5rem; }
 
 .fg-navbar-inner {
-  max-width: 1200px;
+  max-width: var(--page-width);
   margin: 0 auto;
   min-height: 48px;
   padding: 0.45rem 0;
@@ -217,6 +220,8 @@ pre code { padding: 0; background: none; }
   margin-right: auto;
 }
 .fg-navbar-brand:hover { color: #fff; text-decoration: none; }
+.fg-navbar-brand { display: inline-flex; align-items: center; gap: 0.55rem; }
+.fg-brand-logo { display: block; height: 26px; width: auto; max-width: 180px; }
 
 .fg-nav-links { display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
 
@@ -269,7 +274,8 @@ pre code { padding: 0; background: none; }
 .fg-main {
   flex: 1;
   width: 100%;
-  max-width: 1100px;
+  /* Its padding inside the width, so its content lines up with the header's, which has its padding outside. */
+  max-width: calc(var(--page-width) + 3rem);
   margin: 1.6rem auto;
   padding: 0 1.5rem;
 }
@@ -1180,3 +1186,6 @@ textarea.fg-mono { font-family: var(--font-mono); font-size: 0.8rem; }
 
 /* A badge after a version number in a table cell keeps a gap from it. */
 .fg-num .fg-badge { margin-left: 0.4rem; }
+
+/* The upstream a package comes from, beside its source badge. */
+.fg-source-upstream { margin-left: 0.4rem; white-space: nowrap; }

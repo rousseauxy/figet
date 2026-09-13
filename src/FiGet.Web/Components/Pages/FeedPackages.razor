@@ -116,7 +116,7 @@ else
                             <span class="fg-badge @SourceBadge(row.Source)">@row.Source</span>
                             @if (row.Upstream.Length > 0)
                             {
-                                <div class="fg-small fg-muted" title="The upstream this package comes from">@row.Upstream</div>
+                                <span class="fg-small fg-muted fg-source-upstream" title="The upstream this package comes from">@row.Upstream</span>
                             }
                         </td>
                         <td class="fg-num">@(row.Local ? Display.Count(row.Downloads) : Display.None)</td>
