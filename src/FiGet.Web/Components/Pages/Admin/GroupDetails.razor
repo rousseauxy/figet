@@ -1,0 +1,175 @@
+@page "/admin/groups/{Key:int}"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@layout AdminLayout
+@using System.ComponentModel.DataAnnotations
+@inject IGroupStore Groups
+@inject IUserStore Users
+@inject FiGet.Http.AuditLog Audit
+
+<PageTitle>@(group?.Name ?? "Group") · admin · FiGet</PageTitle>
+
+<p class="fg-crumbs"><a href="/admin/groups">Groups</a> <span class="fg-crumb-sep">/</span> <span>@(group?.Name ?? "Unknown")</span></p>
+
+@if (group is null)
+{
+    <h1>No such group</h1>
+    <p class="fg-muted">It may have been deleted. <a href="/admin/groups">Back to groups</a>.</p>
+    return;
+}
+
+<h1>@group.Name</h1>
+
+@if (Done is "added" or "removed" || saved)
+{
+    <div class="fg-alert fg-alert-ok" role="status">@(saved ? "Group saved." : Done == "added" ? "Member added." : "Member removed.")</div>
+}
+
+<section class="fg-panel">
+    <h2>Members</h2>
+    @if (members.Count == 0)
+    {
+        <p class="fg-empty">Nobody yet.</p>
+    }
+    else
+    {
+        <div class="fg-table-wrap">
+            <table class="fg-table">
+                <tbody>
+                    @foreach (var member in members)
+                    {
+                        <tr>
+                            <td><strong>@member.UserName</strong> <span class="fg-muted fg-small">@member.DisplayName</span></td>
+                            <td class="fg-cell-actions">
+                                <form method="post" action="/admin/groups/@group.Key/remove">
+                                    <AntiforgeryToken />
+                                    <input type="hidden" name="user" value="@member.Key" />
+                                    <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Remove</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (candidates.Count > 0)
+    {
+        <form method="post" action="/admin/groups/@group.Key/add" class="fg-form">
+            <AntiforgeryToken />
+            <div class="fg-field">
+                <label for="add-member">Add an account</label>
+                <select id="add-member" name="user" required>
+                    @foreach (var user in candidates)
+                    {
+                        <option value="@user.Key">@user.UserName@(string.IsNullOrEmpty(user.DisplayName) ? "" : $" ({user.DisplayName})")</option>
+                    }
+                </select>
+            </div>
+            <button type="submit" class="fg-btn fg-btn-primary">Add member</button>
+        </form>
+    }
+</section>
+
+<section class="fg-panel">
+    <h2>Name and description</h2>
+    <EditForm Model="Edit!" FormName="edit-group" OnValidSubmit="SaveAsync" method="post" class="fg-form">
+        <DataAnnotationsValidator />
+        <div class="fg-field">
+            <label for="group-name">Name</label>
+            <InputText id="group-name" @bind-Value="Edit!.Name" />
+            <ValidationMessage For="() => Edit!.Name" />
+        </div>
+        <div class="fg-field">
+            <label for="group-description">Description</label>
+            <InputText id="group-description" @bind-Value="Edit!.Description" />
+        </div>
+        @if (error is not null)
+        {
+            <p class="fg-error">@error</p>
+        }
+        <button type="submit" class="fg-btn">Save</button>
+    </EditForm>
+</section>
+
+<section class="fg-panel fg-panel-danger">
+    <h2>Delete this group</h2>
+    <p class="fg-muted fg-small">Removes the group, its memberships, and every grant made to it. The accounts stay.</p>
+    <form method="post" action="/admin/groups/@group.Key/delete">
+        <AntiforgeryToken />
+        <button type="submit" class="fg-btn fg-btn-danger">Delete group</button>
+    </form>
+</section>
+
+@code {
+    private Group? group;
+    private IReadOnlyList<User> members = [];
+    private IReadOnlyList<User> candidates = [];
+    private string? error;
+    private bool saved;
+
+    [Parameter]
+    public int Key { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "edit-group")]
+    private GroupForm? Edit { get; set; }
+
+    [SupplyParameterFromQuery(Name = "done")]
+    private string? Done { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        Edit ??= new GroupForm { Name = group?.Name ?? "", Description = group?.Description ?? "" };
+    }
+
+    private async Task LoadAsync()
+    {
+        group = await Groups.FindAsync(Key, HttpContext.RequestAborted);
+        if (group is null)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        members = await Groups.MembersAsync(Key, HttpContext.RequestAborted);
+        var memberKeys = members.Select(m => m.Key).ToHashSet();
+        candidates = (await Users.ListAsync(HttpContext.RequestAborted)).Where(u => !memberKeys.Contains(u.Key)).ToList();
+    }
+
+    private async Task SaveAsync()
+    {
+        if (group is null)
+        {
+            return;
+        }
+
+        var name = Edit!.Name.Trim();
+        if (!FiGet.Application.Accounts.AccountService.IsValidUserName(name))
+        {
+            error = "Use letters, digits, dot, dash or underscore, starting with a letter or digit (at most 64).";
+            return;
+        }
+
+        if (!await Groups.UpdateAsync(Key, name, Edit.Description.Trim(), HttpContext.RequestAborted))
+        {
+            error = "That name is taken.";
+            return;
+        }
+
+        Audit.Record(HttpContext, "group.update", name, $"was={group.Name}");
+        saved = true;
+        await LoadAsync();
+    }
+
+    private sealed class GroupForm
+    {
+        [Required(ErrorMessage = "Enter a name.")]
+        public string Name { get; set; } = "";
+
+        public string Description { get; set; } = "";
+    }
+}

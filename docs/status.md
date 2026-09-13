@@ -2253,3 +2253,28 @@ Not deployed with this commit: the live instance would start with `admin` / `adm
 signs in and changes it, so the deploy waits for the owner.
 
 Suites: unit 107/0; integration 288/0 on SQLite and on SQL Server.
+
+## Accounts, phase 2: groups and per-feed permissions - 2026-09-13
+
+- **Levels Read, Publish, Manage** on a feed or asset directory, granted to an account or a group
+  (`FeedPermissions`, `Groups`, `GroupMembers`). `FeedAccessService` is the one place that answers: admins manage every
+  feed; otherwise the highest of anonymous read, the account's own grant and its groups' grants. Evaluated per request,
+  so removing a grant or a membership applies on the next request.
+- **Pages** use it instead of "is admin or anonymous read": feed and asset lists, the feed, package and version pages,
+  the asset browser (upload and delete at Publish, settings link at Manage), unlisted versions (Publish), and feed
+  settings (Manage), which now has an **Access** panel to grant and remove. Deleting a feed stays with admins.
+  **Groups** pages for admins: create, rename, members, delete.
+- **Admin endpoints**: the `/admin` group asks only for a signed-in account. Each endpoint declares what it needs - a
+  level on the feed in its route, or admin only - and the group's filter refuses one that declares neither. A feed the
+  account cannot read answers 404, one it cannot change enough 403.
+- **Protocols**: a signed-in browser reads a private feed it has Read on (a download link on a package page). Only
+  reading: a cookie travels with any request the browser makes, so a push or delete still needs a key.
+- Deleting an account removes its grants and memberships; deleting a feed its grants; deleting a group its memberships
+  and grants.
+
+Tests: `FeedPermissionTests` on both providers (no grant, Read, Publish through a group and losing it, a cookie that
+cannot push, Manage granting a colleague but not reaching the admin area, asset directory controls, anonymous read and
+admins, deletes taking grants with them). With group grants ignored and the endpoint level check skipped, the group and
+Read tests fail. Walked through on a local instance: group created, member added, a user and a group granted on a feed.
+
+Suites: unit 107/0; integration 305/0 on SQLite and on SQL Server.

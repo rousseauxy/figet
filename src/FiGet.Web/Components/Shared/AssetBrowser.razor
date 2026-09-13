@@ -36,7 +36,7 @@
 <div class="fg-page-head">
     <h1>@(Folder.IsRoot ? Feed.Name : Folder.Name)</h1>
     <span class="fg-badge">Asset directory</span>
-    @if (IsAdmin)
+    @if (Level >= FeedAccessLevel.Manage)
     {
         <a class="fg-btn fg-btn-sm" href="/admin/assets/@Feed.Name">Settings</a>
     }
@@ -59,7 +59,7 @@
     return;
 }
 
-@if (IsAdmin)
+@if (Level >= FeedAccessLevel.Publish)
 {
     <section class="fg-dropzone" data-asset-upload data-upload-url="/admin/assets/@Uri.EscapeDataString(Feed.Name)/upload" data-import-url="/admin/assets/@Uri.EscapeDataString(Feed.Name)/import" data-folder="@Folder.Value">
         <AntiforgeryToken />
@@ -162,7 +162,7 @@ else
                             {
                                 <button type="button" class="fg-copy" data-copy="@ContentUrl(item)" title="Copy the download URL" aria-label="Copy the download URL of @item.Name">Copy URL</button>
                             }
-                            @if (IsAdmin)
+                            @if (Level >= FeedAccessLevel.Publish)
                             {
                                 <form method="post" action="/admin/assets/@Uri.EscapeDataString(Feed.Name)/delete"
                                       data-confirm="@(item.IsDirectory ? $"Delete the folder {item.Name} and everything in it?" : $"Delete {item.Name}?")">
@@ -191,8 +191,13 @@ else
     [Parameter]
     public string? Path { get; set; }
 
+    /// <summary>What the viewer may do here: Publish shows the upload and delete controls, Manage the settings link.</summary>
     [Parameter]
-    public bool IsAdmin { get; set; }
+    public FeedAccessLevel Level { get; set; }
+
+    /// <summary>A signed-in viewer exports through the page's own route, which reads with their account.</summary>
+    [Parameter]
+    public bool SignedIn { get; set; }
 
     [Parameter]
     public long MaxAssetBytes { get; set; }
@@ -238,7 +243,7 @@ else
     private string ExportLink(string format)
     {
         var path = Folder.IsRoot ? "" : AssetEndpoints.EscapePath(Folder.Value);
-        return IsAdmin
+        return SignedIn
             ? $"/admin/assets/{Uri.EscapeDataString(Feed.Name)}/export?format={format}&path={Uri.EscapeDataString(Folder.Value)}"
             : $"/endpoints/{Uri.EscapeDataString(Feed.Name)}/export/{path}?format={format}&recursive=true";
     }

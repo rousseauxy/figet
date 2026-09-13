@@ -356,6 +356,39 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.ToTable("Feeds", (string)null);
                 });
 
+            modelBuilder.Entity("FiGet.Domain.Entities.FeedPermission", b =>
+                {
+                    b.Property<int>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Key"));
+
+                    b.Property<int>("FeedKey")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GroupKey")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("UserKey")
+                        .HasColumnType("int");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("GroupKey");
+
+                    b.HasIndex("UserKey");
+
+                    b.HasIndex("FeedKey", "GroupKey");
+
+                    b.HasIndex("FeedKey", "UserKey");
+
+                    b.ToTable("FeedPermissions", (string)null);
+                });
+
             modelBuilder.Entity("FiGet.Domain.Entities.FeedUpstream", b =>
                 {
                     b.Property<int>("Key")
@@ -408,6 +441,55 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                         .IsUnique();
 
                     b.ToTable("FeedUpstreams", (string)null);
+                });
+
+            modelBuilder.Entity("FiGet.Domain.Entities.Group", b =>
+                {
+                    b.Property<int>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Key"));
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("NameLower")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("NameLower")
+                        .IsUnique();
+
+                    b.ToTable("Groups", (string)null);
+                });
+
+            modelBuilder.Entity("FiGet.Domain.Entities.GroupMember", b =>
+                {
+                    b.Property<int>("GroupKey")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserKey")
+                        .HasColumnType("int");
+
+                    b.HasKey("GroupKey", "UserKey");
+
+                    b.HasIndex("UserKey");
+
+                    b.ToTable("GroupMembers", (string)null);
                 });
 
             modelBuilder.Entity("FiGet.Domain.Entities.Package", b =>
@@ -827,6 +909,25 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.Navigation("FeedUpstream");
                 });
 
+            modelBuilder.Entity("FiGet.Domain.Entities.FeedPermission", b =>
+                {
+                    b.HasOne("FiGet.Domain.Entities.Feed", null)
+                        .WithMany()
+                        .HasForeignKey("FeedKey")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FiGet.Domain.Entities.Group", null)
+                        .WithMany()
+                        .HasForeignKey("GroupKey")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("FiGet.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserKey")
+                        .OnDelete(DeleteBehavior.NoAction);
+                });
+
             modelBuilder.Entity("FiGet.Domain.Entities.FeedUpstream", b =>
                 {
                     b.HasOne("FiGet.Domain.Entities.Feed", "Feed")
@@ -836,6 +937,21 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                         .IsRequired();
 
                     b.Navigation("Feed");
+                });
+
+            modelBuilder.Entity("FiGet.Domain.Entities.GroupMember", b =>
+                {
+                    b.HasOne("FiGet.Domain.Entities.Group", null)
+                        .WithMany()
+                        .HasForeignKey("GroupKey")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FiGet.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserKey")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("FiGet.Domain.Entities.Package", b =>

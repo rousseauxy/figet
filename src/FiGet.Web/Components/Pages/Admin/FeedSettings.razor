@@ -1,10 +1,15 @@
 @page "/admin/feeds/{Name}"
 @page "/admin/assets/{Name}"
-@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@attribute [Authorize]
 @layout AdminLayout
 @using System.ComponentModel.DataAnnotations
+@using FiGet.Application.Accounts
 @using FiGet.Application.Ports
 @inject IFeedStore Feeds
+@inject FeedAccessService Access
+@inject IFeedPermissionStore Permissions
+@inject IUserStore Users
+@inject IGroupStore Groups
 @inject IPackageStorage Storage
 @inject IAssetStorage AssetStorage
 @inject NavigationManager Navigation
@@ -15,7 +20,7 @@
 @if (feed is null)
 {
     <h1>Feed not found</h1>
-    <p class="fg-muted">There is no feed named <code>@Name</code>. <a href="/admin/feeds">Back to feeds</a>.</p>
+    <p class="fg-muted">There is no feed or asset directory named <code>@Name</code> that you can manage.</p>
 }
 else
 {
@@ -231,6 +236,88 @@ else
     </section>
     }
 
+    <section class="fg-panel">
+        <h2>Access</h2>
+        <p class="fg-muted fg-small">
+            @(feed.AnonymousRead ? "Anyone can read this " + Noun + "; grants below add more than reading." : "Only the accounts and groups below, and admins, can see this " + Noun + ".")
+            Read lists and downloads; Publish also pushes, uploads, pulls and removes; Manage also changes these settings and
+            this list. Admins and super admins manage everything without a grant.
+        </p>
+
+        @if (grants.Count == 0)
+        {
+            <p class="fg-empty">No grants yet.</p>
+        }
+        else
+        {
+            <div class="fg-table-wrap">
+                <table class="fg-table">
+                    <thead>
+                        <tr><th>Who</th><th>Level</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var grant in grants)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="fg-badge fg-badge-plain">@(grant.UserKey is null ? "Group" : "User")</span>
+                                    @grant.Name
+                                </td>
+                                <td><span class="fg-badge @(grant.Level == FeedAccessLevel.Manage ? "fg-badge-accent" : grant.Level == FeedAccessLevel.Publish ? "fg-badge-info" : "")">@grant.Level</span></td>
+                                <td class="fg-cell-actions">
+                                    <form method="post" action="/admin/feeds/@feed.Name/access/remove">
+                                        <AntiforgeryToken />
+                                        <input type="hidden" name="grant" value="@grant.Key" />
+                                        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                                        <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Remove</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        <form method="post" action="/admin/feeds/@feed.Name/access/set" class="fg-form">
+            <AntiforgeryToken />
+            <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+            <div class="fg-field">
+                <label for="grant-who">Grant to</label>
+                <select id="grant-who" name="who" required>
+                    <option value="">Choose an account or a group</option>
+                    @if (groupChoices.Count > 0)
+                    {
+                        <optgroup label="Groups">
+                            @foreach (var group in groupChoices)
+                            {
+                                <option value="group:@group.Key">@group.Name</option>
+                            }
+                        </optgroup>
+                    }
+                    <optgroup label="Accounts">
+                        @foreach (var user in userChoices)
+                        {
+                            <option value="user:@user.Key">@user.UserName@(string.IsNullOrEmpty(user.DisplayName) ? "" : $" ({user.DisplayName})")</option>
+                        }
+                    </optgroup>
+                </select>
+            </div>
+            <div class="fg-field">
+                <label for="grant-level">Level</label>
+                <select id="grant-level" name="level">
+                    <option value="@FeedAccessLevel.Read">Read</option>
+                    <option value="@FeedAccessLevel.Publish">Publish</option>
+                    <option value="@FeedAccessLevel.Manage">Manage</option>
+                </select>
+            </div>
+            <p class="fg-muted fg-small">Granting to someone who already has a grant replaces its level.</p>
+            <button type="submit" class="fg-btn fg-btn-primary">Grant access</button>
+        </form>
+    </section>
+
+    @if (IsAdmin)
+    {
     <section class="fg-panel fg-panel-danger">
         <h2>Delete this @Noun</h2>
         <p class="fg-muted fg-small">
@@ -246,11 +333,18 @@ else
             <button type="submit" class="fg-btn fg-btn-danger">Delete @Noun</button>
         </EditForm>
     </section>
+    }
 }
 
 @code {
     private Feed? feed;
     private int versionCount;
+    private IReadOnlyList<FeedGrant> grants = [];
+    private IReadOnlyList<User> userChoices = [];
+    private IReadOnlyList<GroupSummary> groupChoices = [];
+
+    /// <summary>Deleting a feed stays with admins: Manage is about a feed's settings and access, not whether it exists.</summary>
+    private bool IsAdmin => HttpContext.User.IsInRole(FiGetApp.AdminRole);
     private string? message;
     private bool messageIsError;
 
@@ -294,6 +388,23 @@ else
     private async Task LoadAsync()
     {
         feed = await Feeds.FindAsync(Name, HttpContext.RequestAborted);
+
+        // Checked here, before any form handler on this page runs: every handler returns early without a feed. A feed the
+        // account cannot manage reads as not found, whether or not it could read it.
+        if (feed is not null && await Access.LevelAsync(feed, FiGetApp.Actor(HttpContext.User), HttpContext.RequestAborted) < FeedAccessLevel.Manage)
+        {
+            feed = null;
+        }
+
+        if (feed is null)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        grants = await Permissions.ListAsync(feed.Key, HttpContext.RequestAborted);
+        userChoices = await Users.ListAsync(HttpContext.RequestAborted);
+        groupChoices = await Groups.ListAsync(HttpContext.RequestAborted);
         versionCount = feed is null ? 0
             : feed.Kind == FeedKind.Assets ? await Feeds.CountAssetsAsync(feed.Key, HttpContext.RequestAborted)
             : await Feeds.CountVersionsAsync(feed.Key, HttpContext.RequestAborted);
@@ -326,7 +437,7 @@ else
 
     private async Task DeleteAsync()
     {
-        if (feed is null)
+        if (feed is null || !IsAdmin)
         {
             return;
         }

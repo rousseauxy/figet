@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text;
+using FiGet.Application.Accounts;
 using FiGet.Application.Ports;
 using FiGet.Application.Tokens;
 using FiGet.Domain.Entities;
@@ -70,6 +71,14 @@ public static class FeedAccess
 
         var allowed = required == TokenScopes.Read && feed.AnonymousRead
             || (best is not null && best.Allows(required, feed.Key));
+
+        // A signed-in browser - a download link on a package page - reads with its account's level. Reading only: a
+        // cookie is sent with any request the browser makes, so it must never be what lets a push or a delete through.
+        if (!allowed && required == TokenScopes.Read && best is null && AccountClaims.Actor(http.User) is { } actor)
+        {
+            var access = http.RequestServices.GetRequiredService<FeedAccessService>();
+            allowed = await access.LevelAsync(feed, actor, cancellationToken) >= FeedAccessLevel.Read;
+        }
         if (allowed)
         {
             if (best is not null)

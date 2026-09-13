@@ -1,0 +1,123 @@
+@page "/admin/groups"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@layout AdminLayout
+@using System.ComponentModel.DataAnnotations
+@inject IGroupStore Groups
+@inject TimeProvider Time
+@inject FiGet.Http.AuditLog Audit
+
+<PageTitle>Groups · admin · FiGet</PageTitle>
+
+<h1>Groups</h1>
+<p class="fg-lede">
+    Accounts that get the same access. Grant a group Read, Publish or Manage on a feed from that feed's settings, and
+    everyone in it has that level; adding or removing a member takes effect on their next request.
+</p>
+
+@if (Done == "deleted")
+{
+    <div class="fg-alert fg-alert-ok" role="status">Group deleted, with its memberships and grants.</div>
+}
+
+@if (groups.Count == 0)
+{
+    <p class="fg-empty">No groups yet.</p>
+}
+else
+{
+    <div class="fg-table-wrap">
+        <table class="fg-table">
+            <thead>
+                <tr><th>Group</th><th>Members</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var group in groups)
+                {
+                    <tr>
+                        <td>
+                            <a href="/admin/groups/@group.Key"><strong>@group.Name</strong></a>
+                            @if (!string.IsNullOrEmpty(group.Description))
+                            {
+                                <div class="fg-small fg-muted">@group.Description</div>
+                            }
+                        </td>
+                        <td class="fg-num">@group.Members.ToString(CultureInfo.InvariantCulture)</td>
+                        <td class="fg-cell-actions"><a class="fg-btn fg-btn-sm" href="/admin/groups/@group.Key">Edit</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<h2>Create a group</h2>
+<div class="fg-panel">
+    <EditForm Model="NewGroup!" FormName="create-group" OnValidSubmit="CreateAsync" method="post" class="fg-form">
+        <DataAnnotationsValidator />
+        <div class="fg-field">
+            <label for="group-name">Name</label>
+            <InputText id="group-name" @bind-Value="NewGroup!.Name" placeholder="for example: publishers" />
+            <ValidationMessage For="() => NewGroup!.Name" />
+        </div>
+        <div class="fg-field">
+            <label for="group-description">Description</label>
+            <InputText id="group-description" @bind-Value="NewGroup!.Description" />
+        </div>
+        @if (error is not null)
+        {
+            <p class="fg-error">@error</p>
+        }
+        <button type="submit" class="fg-btn fg-btn-primary">Create group</button>
+    </EditForm>
+</div>
+
+@code {
+    private IReadOnlyList<GroupSummary> groups = [];
+    private string? error;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "create-group")]
+    private GroupForm? NewGroup { get; set; }
+
+    [SupplyParameterFromQuery(Name = "done")]
+    private string? Done { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        NewGroup ??= new();
+        groups = await Groups.ListAsync(HttpContext.RequestAborted);
+    }
+
+    private async Task CreateAsync()
+    {
+        var name = NewGroup!.Name.Trim();
+        if (!FiGet.Application.Accounts.AccountService.IsValidUserName(name))
+        {
+            error = "Use letters, digits, dot, dash or underscore, starting with a letter or digit (at most 64).";
+            return;
+        }
+
+        var created = await Groups.AddAsync(
+            new Group { Name = name, NameLower = name.ToLowerInvariant(), Description = NewGroup.Description.Trim(), CreatedUtc = Time.GetUtcNow().UtcDateTime },
+            HttpContext.RequestAborted);
+        if (!created)
+        {
+            error = "That name is taken.";
+            return;
+        }
+
+        Audit.Record(HttpContext, "group.create", name);
+        NewGroup = new();
+        groups = await Groups.ListAsync(HttpContext.RequestAborted);
+    }
+
+    private sealed class GroupForm
+    {
+        [Required(ErrorMessage = "Enter a name.")]
+        public string Name { get; set; } = "";
+
+        public string Description { get; set; } = "";
+    }
+}

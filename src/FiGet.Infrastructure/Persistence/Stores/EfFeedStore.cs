@@ -82,6 +82,7 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
             .ExecuteDeleteAsync(cancellationToken);
         await db.Packages.Where(p => p.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.AccessTokens.Where(t => t.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
+        await db.FeedPermissions.Where(p => p.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.CachedUpstreamDescriptions
             .Where(d => db.FeedUpstreams.Any(u => u.Key == d.FeedUpstreamKey && u.FeedKey == key))
             .ExecuteDeleteAsync(cancellationToken);

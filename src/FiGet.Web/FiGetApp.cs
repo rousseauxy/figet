@@ -50,16 +50,11 @@ public static class FiGetApp
     public const string AdminPolicy = "Admin";
     public const string SuperAdminPolicy = "SuperAdmin";
 
-    /// <summary>The signed-in account's key.</summary>
-    public const string UserKeyClaim = "figet:user";
-
-    /// <summary>The account's security stamp when the cookie was issued; a different stamp now ends the session.</summary>
-    public const string StampClaim = "figet:stamp";
-
-    /// <summary>Role claim values. A super admin carries "admin" too, so every admin check also admits them.</summary>
-    public const string AdminRole = "admin";
-    public const string SuperAdminRole = "superadmin";
-    public const string UserRoleClaim = "user";
+    public const string UserKeyClaim = AccountClaims.UserKey;
+    public const string StampClaim = AccountClaims.Stamp;
+    public const string AdminRole = AccountClaims.AdminRole;
+    public const string SuperAdminRole = AccountClaims.SuperAdminRole;
+    public const string UserRoleClaim = AccountClaims.UserRole;
 
     /// <summary>Set on a request whose account must choose a new password before it can do anything else.</summary>
     private const string MustChangePasswordItem = "figet:must-change-password";
@@ -111,6 +106,7 @@ public static class FiGetApp
         services.AddHostedService<AssetUploadCleanupService>();
         services.AddScoped<AccessTokenService>();
         services.AddScoped<AccountService>();
+        services.AddScoped<FeedAccessService>();
 
         // Proxy feeds. The client is a singleton because NuGet's repositories cache resources and
         // connections inside themselves; the service is scoped because it writes through the request's
@@ -425,17 +421,7 @@ public static class FiGetApp
     }
 
     /// <summary>The signed-in account as the account rules see it, or null when nobody is signed in.</summary>
-    public static AccountActor? Actor(ClaimsPrincipal user)
-    {
-        ArgumentNullException.ThrowIfNull(user);
-        if (!int.TryParse(user.FindFirst(UserKeyClaim)?.Value, out var key))
-        {
-            return null;
-        }
-
-        var role = user.IsInRole(SuperAdminRole) ? UserRole.SuperAdmin : user.IsInRole(AdminRole) ? UserRole.Admin : UserRole.User;
-        return new AccountActor(key, role);
-    }
+    public static AccountActor? Actor(ClaimsPrincipal user) => AccountClaims.Actor(user);
 
     private static void MapAccountEndpoints(this WebApplication app)
     {
@@ -460,8 +446,13 @@ public static class FiGetApp
         // had open - and SameSite=Lax does not stop that from a sibling subdomain, which counts as the same
         // site. The token is read from the RequestVerificationToken header or the form, so the upload page,
         // whose body is the file, is covered by the same check.
+        //
+        // Signed in is all the group asks. What each endpoint needs is stated on it: RequiresFeedLevel for a change to one
+        // feed or asset directory, checked against that feed by the filter below, or the admin policy for everything
+        // else. An endpoint with neither would be open to every account, so the filter refuses it rather than let one
+        // slip through unannotated.
         var admin = app.MapGroup("/admin")
-            .RequireAuthorization(AdminPolicy)
+            .RequireAuthorization()
             .AddEndpointFilter(async (context, next) =>
             {
                 var http = context.HttpContext;
@@ -472,7 +463,28 @@ public static class FiGetApp
                     return Results.Json(new { error = "The page has expired. Reload it and try again." }, statusCode: StatusCodes.Status400BadRequest);
                 }
 
-                return await next(context);
+                var endpoint = http.GetEndpoint();
+                var required = endpoint?.Metadata.GetMetadata<RequiresFeedLevel>();
+                if (required is null)
+                {
+                    var allowed = endpoint?.Metadata.GetMetadata<AnyAccount>() is not null
+                        || (endpoint?.Metadata.GetMetadata<AdminOnly>() is not null && http.User.IsInRole(AdminRole));
+                    return allowed ? await next(context) : Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                var name = http.GetRouteValue("feed") as string ?? http.GetRouteValue("directory") as string;
+                var feed = name is null ? null : await http.RequestServices.GetRequiredService<IFeedStore>().FindAsync(name, http.RequestAborted);
+                var level = feed is null
+                    ? FeedAccessLevel.None
+                    : await http.RequestServices.GetRequiredService<FeedAccessService>().LevelAsync(feed, Actor(http.User), http.RequestAborted);
+
+                // A feed the account cannot even read does not exist as far as it is told.
+                if (level < FeedAccessLevel.Read)
+                {
+                    return Results.NotFound();
+                }
+
+                return level >= required.Level ? await next(context) : Results.StatusCode(StatusCodes.Status403Forbidden);
             });
 
         // The bare path is what a person types when they want the admin area, and it used to answer 404.
@@ -480,11 +492,17 @@ public static class FiGetApp
         // redirect to a page that would only bounce them to the sign-in page anyway. One template only:
         // "" and "/" both normalise to the group prefix, so mapping both made every request to it an
         // AmbiguousMatchException, which surfaces as a 500 rather than as anything that names the cause.
-        admin.MapGet("", () => Results.Redirect("/admin/feeds"));
+        var anyAccount = admin.MapGroup("").WithMetadata(new AnyAccount());
+        var adminOnly = admin.MapGroup("").WithMetadata(new AdminOnly());
+        var readFeed = admin.MapGroup("").WithMetadata(new RequiresFeedLevel(FeedAccessLevel.Read));
+        var publishFeed = admin.MapGroup("").WithMetadata(new RequiresFeedLevel(FeedAccessLevel.Publish));
+        var manageFeed = admin.MapGroup("").WithMetadata(new RequiresFeedLevel(FeedAccessLevel.Manage));
+
+        anyAccount.MapGet("", (HttpContext http) => Results.Redirect(http.User.IsInRole(AdminRole) ? "/admin/feeds" : "/account/profile"));
 
         // Fetch a package an upstream has but this feed has not cached yet, with everything it depends on: the
         // machine a pull is for has no internet, and a meta-module without its sub-modules does not install.
-        admin.MapPost("/feeds/{feed}/pull", async (
+        publishFeed.MapPost("/feeds/{feed}/pull", async (
             string feed,
             HttpContext http,
             IFeedStore feeds,
@@ -509,7 +527,7 @@ public static class FiGetApp
             return Back(returnUrl, $"/feeds/{Uri.EscapeDataString(feed)}");
         });
 
-        admin.MapPost("/feeds/{feed}/upstreams/add", async (
+        manageFeed.MapPost("/feeds/{feed}/upstreams/add", async (
             string feed,
             HttpContext http,
             IFeedStore feeds,
@@ -547,7 +565,7 @@ public static class FiGetApp
 
         // The two buttons of the unlisted view. Relisting offers a version again; deleting removes it for
         // good, because unlisting what is already unlisted would do nothing.
-        admin.MapPost("/feeds/{feed}/versions/relist", async (
+        publishFeed.MapPost("/feeds/{feed}/versions/relist", async (
             string feed,
             HttpContext http,
             IFeedStore feeds,
@@ -565,7 +583,7 @@ public static class FiGetApp
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}/unlisted");
         });
 
-        admin.MapPost("/feeds/{feed}/versions/delete", async (
+        publishFeed.MapPost("/feeds/{feed}/versions/delete", async (
             string feed,
             HttpContext http,
             IFeedStore feeds,
@@ -586,7 +604,7 @@ public static class FiGetApp
         // Forget what this feed cached of one package, so it follows the gallery again. Not a delete: the
         // versions come back on the next download, which is why one button does it rather than a typed
         // confirmation.
-        admin.MapPost("/feeds/{feed}/packages/uncache", async (
+        publishFeed.MapPost("/feeds/{feed}/packages/uncache", async (
             string feed,
             HttpContext http,
             IFeedStore feeds,
@@ -612,7 +630,7 @@ public static class FiGetApp
         // sign-in cookie: a cookie is sent by the browser on its own, so an API that honoured one could be
         // made to upload by any page the admin happened to visit. Here the request carries the antiforgery
         // token in a header - the body is the file - and the storing is the API's own code.
-        admin.MapPost("/assets/{directory}/upload", async (
+        publishFeed.MapPost("/assets/{directory}/upload", async (
             string directory,
             string? path,
             bool? overwrite,
@@ -656,7 +674,7 @@ public static class FiGetApp
 
         // Importing an archive from the page: the body is the archive and the token travels in a header, for the
         // same reason as the upload above. The import itself is the API's.
-        admin.MapPost("/assets/{directory}/import", async (
+        publishFeed.MapPost("/assets/{directory}/import", async (
             string directory,
             string? path,
             string? format,
@@ -681,7 +699,7 @@ public static class FiGetApp
 
         // Fetching a file from a URL. A plain form post that waits for the download, then returns to the
         // folder with a word on how it went - a fixed code, so the page never echoes text from the request.
-        admin.MapPost("/assets/{directory}/fetch", async (
+        publishFeed.MapPost("/assets/{directory}/fetch", async (
             string directory,
             HttpContext http,
             IFeedStore feeds,
@@ -738,7 +756,7 @@ public static class FiGetApp
 
         // Downloading a folder as an archive from the page. A GET, so the sign-in cookie is enough: reading a
         // folder changes nothing, and the API would want a token the browser does not have.
-        admin.MapGet("/assets/{directory}/export", async (
+        readFeed.MapGet("/assets/{directory}/export", async (
             string directory,
             string? path,
             string? format,
@@ -753,7 +771,7 @@ public static class FiGetApp
                 : await AssetEndpoints.ExportAsync(target, path, format, recursive: true, archives, upload.Value, cancellationToken);
         });
 
-        admin.MapPost("/assets/{directory}/folders", async (
+        publishFeed.MapPost("/assets/{directory}/folders", async (
             string directory,
             HttpContext http,
             IFeedStore feeds,
@@ -777,7 +795,7 @@ public static class FiGetApp
             return Back(form["returnUrl"].ToString(), $"/assets/{Uri.EscapeDataString(directory)}");
         });
 
-        admin.MapPost("/assets/{directory}/delete", async (
+        publishFeed.MapPost("/assets/{directory}/delete", async (
             string directory,
             HttpContext http,
             IFeedStore feeds,
@@ -798,7 +816,7 @@ public static class FiGetApp
             return Back(form["returnUrl"].ToString(), $"/assets/{Uri.EscapeDataString(directory)}");
         });
 
-        admin.MapPost("/feeds/{feed}/upstreams/remove", async (
+        manageFeed.MapPost("/feeds/{feed}/upstreams/remove", async (
             string feed,
             HttpContext http,
             IFeedStore feeds,
@@ -818,7 +836,7 @@ public static class FiGetApp
 
         // Account row actions on the users page. The rules - who may change whom, and never the last super admin -
         // are AccountService's; these only translate its outcome into a fixed code for the page to show.
-        admin.MapPost("/users/{key:int}/{action}", async (
+        adminOnly.MapPost("/users/{key:int}/{action}", async (
             int key,
             string action,
             HttpContext http,
@@ -865,7 +883,105 @@ public static class FiGetApp
                 : $"/admin/users/{key}?done={code}");
         });
 
-        admin.MapPost("/feeds/{feed}/upstreams/move", async (
+        // Who has access to one feed. Managing a feed includes its access list, so this is Manage, not admin-only.
+        manageFeed.MapPost("/feeds/{feed}/access/set", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            IFeedPermissionStore permissions,
+            IUserStore users,
+            IGroupStore groups,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            var who = form["who"].ToString();
+            var colon = who.IndexOf(':', StringComparison.Ordinal);
+            if (target is not null
+                && colon > 0
+                && int.TryParse(who[(colon + 1)..], out var whoKey)
+                && Enum.TryParse<FeedAccessLevel>(form["level"].ToString(), out var level)
+                && Enum.IsDefined(level))
+            {
+                var kind = who[..colon];
+                string? name = kind switch
+                {
+                    "user" => (await users.FindAsync(whoKey, cancellationToken))?.UserName,
+                    "group" => (await groups.FindAsync(whoKey, cancellationToken))?.Name,
+                    _ => null,
+                };
+                if (name is not null)
+                {
+                    await permissions.SetAsync(target.Key, kind == "user" ? whoKey : null, kind == "group" ? whoKey : null, level, cancellationToken);
+                    audit.Record(http, "access.set", name, $"feed={target.Name} {kind} level={level}");
+                }
+            }
+
+            return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
+        });
+
+        manageFeed.MapPost("/feeds/{feed}/access/remove", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            IFeedPermissionStore permissions,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            if (target is not null && int.TryParse(form["grant"].ToString(), out var grantKey)
+                && await permissions.RemoveAsync(target.Key, grantKey, cancellationToken))
+            {
+                audit.Record(http, "access.remove", grantKey.ToString(CultureInfo.InvariantCulture), $"feed={target.Name}");
+            }
+
+            return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
+        });
+
+        // Group membership and deletion. Creating and renaming are forms on the groups pages themselves.
+        adminOnly.MapPost("/groups/{key:int}/{action}", async (
+            int key,
+            string action,
+            HttpContext http,
+            IGroupStore groups,
+            IUserStore users,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var group = await groups.FindAsync(key, cancellationToken);
+            if (group is null)
+            {
+                return Results.Redirect("/admin/groups");
+            }
+
+            var done = "";
+            if (int.TryParse(form["user"].ToString(), out var userKey) && await users.FindAsync(userKey, cancellationToken) is { } user)
+            {
+                if (action == "add" && await groups.AddMemberAsync(key, userKey, cancellationToken))
+                {
+                    audit.Record(http, "group.member.add", user.UserName, $"group={group.Name}");
+                    done = "added";
+                }
+                else if (action == "remove" && await groups.RemoveMemberAsync(key, userKey, cancellationToken))
+                {
+                    audit.Record(http, "group.member.remove", user.UserName, $"group={group.Name}");
+                    done = "removed";
+                }
+            }
+
+            if (action == "delete" && await groups.DeleteAsync(key, cancellationToken))
+            {
+                audit.Record(http, "group.delete", group.Name);
+                return Results.Redirect("/admin/groups?done=deleted");
+            }
+
+            return Results.Redirect($"/admin/groups/{key}" + (done.Length > 0 ? "?done=" + done : ""));
+        });
+
+        manageFeed.MapPost("/feeds/{feed}/upstreams/move", async (
             string feed,
             HttpContext http,
             IFeedStore feeds,
@@ -886,6 +1002,15 @@ public static class FiGetApp
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
         });
     }
+
+    /// <summary>An admin endpoint that changes one feed or asset directory, and the level it needs on it.</summary>
+    private sealed record RequiresFeedLevel(FeedAccessLevel Level);
+
+    /// <summary>An admin endpoint for admins and super admins only.</summary>
+    private sealed class AdminOnly;
+
+    /// <summary>An admin endpoint any signed-in account may call, deciding for itself what to show.</summary>
+    private sealed class AnyAccount;
 
     /// <summary>A return address with what a pull did, as counts, replacing what an earlier pull left there.</summary>
     private static string WithPullResult(string returnUrl, PullReport report)

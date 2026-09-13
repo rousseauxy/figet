@@ -1,8 +1,9 @@
 @page "/admin/feeds/{Name}/unlisted"
-@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@attribute [Authorize]
 @layout AdminLayout
 @using FiGet.Application.Ports
 @inject IFeedStore Feeds
+@inject FiGet.Application.Accounts.FeedAccessService Access
 @inject IPackageStore Packages
 
 <PageTitle>Unlisted versions · @Name · FiGet</PageTitle>
@@ -10,7 +11,7 @@
 @if (feed is null)
 {
     <h1>Feed not found</h1>
-    <p class="fg-muted">There is no feed named <code>@Name</code>. <a href="/admin/feeds">Back to feeds</a>.</p>
+    <p class="fg-muted">There is no feed named <code>@Name</code> that you can publish to.</p>
 }
 else
 {
@@ -124,6 +125,13 @@ else
     {
         Page = Math.Max(1, Page);
         feed = await Feeds.FindAsync(Name, HttpContext.RequestAborted);
+
+        // Relisting and deleting are publishing; a feed the account cannot publish to is not found here.
+        if (feed is not null && await Access.LevelAsync(feed, FiGetApp.Actor(HttpContext.User), HttpContext.RequestAborted) < FeedAccessLevel.Publish)
+        {
+            feed = null;
+        }
+
         if (feed is null)
         {
             HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;

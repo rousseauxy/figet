@@ -16,6 +16,11 @@
 @layout MainLayout
 @inject NavigationManager Navigation
 
+@*
+    The Manage group is for admins. An account that manages or publishes to one feed reaches that feed's pages through
+    its own settings button, and sees only that feed's group here.
+*@
+
 <div class="fg-admin-shell">
     <nav class="fg-admin-nav" aria-label="Admin">
         @Links
@@ -63,17 +68,19 @@
     {
         get
         {
-            var groups = new List<NavGroup>
+            var groups = new List<NavGroup>();
+            if (HttpContext?.User.IsInRole(FiGetApp.AdminRole) == true)
             {
-                new("Manage",
+                groups.Add(new("Manage",
                 [
                     new("Feeds", "/admin/feeds"),
                     new("Assets", "/admin/assets"),
                     new("Users", "/admin/users"),
+                    new("Groups", "/admin/groups"),
                     new("Tokens", "/admin/tokens"),
                     new("Appearance", "/admin/appearance"),
-                ]),
-            };
+                ]));
+            }
 
             if (Managed is { } managed)
             {
@@ -95,6 +102,9 @@
             return groups;
         }
     }
+
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
 
     /// <summary>The path alone, without the query, and without a trailing slash to compare against.</summary>
     private string CurrentPath =>

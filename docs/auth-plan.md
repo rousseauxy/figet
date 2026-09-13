@@ -92,10 +92,10 @@ Evaluated per request, so a change applies at once. Browsing pages use the same 
 
 Each phase ships on its own: migrations for both providers, tests on both databases, deployed and checked live.
 
-1. **Local accounts and roles.** Users table, password sign-in, first-start `admin`/`admin` with forced change,
+1. **Local accounts and roles.** Done 2026-09-13. Users table, password sign-in, first-start `admin`/`admin` with forced change,
    lockout, security stamp, recovery variables, users admin page (admins manage users; super admins manage admins),
    profile page with password change, token sign-in removed, audit entries to the console as today.
-2. **Groups and per-feed permissions.** Groups page, an Access section on each feed's settings, effective-permission
+2. **Groups and per-feed permissions.** Done 2026-09-13. Groups page, an Access section on each feed's settings, effective-permission
    evaluation in protocol requests and browsing pages, tests for every level.
 3. **API keys.** Personal keys on the profile page, service tokens restricted to admins, the ceiling rule.
 4. **OpenID Connect.** Providers page, runtime schemes, sign-in page modes and the local fallback, account creation,

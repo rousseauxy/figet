@@ -1,5 +1,6 @@
 @page "/assets"
 @using System.Security.Claims
+@inject FiGet.Application.Accounts.FeedAccessService Access
 @inject IFeedStore Feeds
 
 <PageTitle>Assets · FiGet</PageTitle>
@@ -66,6 +67,8 @@ else
     protected override async Task OnInitializedAsync()
     {
         var all = await Feeds.ListAsync(HttpContext.RequestAborted);
-        directories = all.Where(f => f.Kind == FeedKind.Assets && (IsAdmin || f.AnonymousRead)).ToList();
+        var assetDirectories = all.Where(f => f.Kind == FeedKind.Assets).ToList();
+        var levels = await Access.LevelsAsync(assetDirectories, FiGetApp.Actor(HttpContext.User), HttpContext.RequestAborted);
+        directories = assetDirectories.Where(f => levels[f.Key] >= FeedAccessLevel.Read).ToList();
     }
 }

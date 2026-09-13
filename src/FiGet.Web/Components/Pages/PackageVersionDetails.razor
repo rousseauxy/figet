@@ -2,6 +2,7 @@
 @using System.Security.Claims
 @using FiGet.Application.Connectors
 @using FiGet.Domain.Versions
+@inject FiGet.Application.Accounts.FeedAccessService Access
 @inject IFeedStore Feeds
 @inject IPackageStore Packages
 @inject IPackageStorage Storage
@@ -59,7 +60,7 @@
     {
         <a class="fg-btn fg-btn-primary fg-icon-download" href="@(feedUrl)/package/@displayId/@row.NormalizedVersion">Download</a>
     }
-    else if (IsAdmin)
+    else if (level >= FeedAccessLevel.Publish)
     {
         @* Not here yet: fetch it from the upstream and keep it, so a machine without internet can have it. *@
         <form method="post" action="/admin/feeds/@feed.Name/pull" data-busy="Pulling with its dependencies...">
@@ -151,7 +152,8 @@
 
     private bool IsLocal => entry!.Source == VersionSource.Local;
 
-    private bool IsAdmin => HttpContext.User.HasClaim(ClaimTypes.Role, "admin");
+    /// <summary>What the signed-in account, or a visitor, may do with this feed.</summary>
+    private FeedAccessLevel level;
 
     private string ReturnUrl => HttpContext.Request.Path + HttpContext.Request.QueryString;
 
@@ -167,7 +169,8 @@
     protected override async Task OnInitializedAsync()
     {
         feed = await Feeds.FindAsync(Name, HttpContext.RequestAborted);
-        if (feed is not null && !feed.AnonymousRead && !IsAdmin)
+        level = feed is null ? FeedAccessLevel.None : await Access.LevelAsync(feed, FiGetApp.Actor(HttpContext.User), HttpContext.RequestAborted);
+        if (feed is not null && level < FeedAccessLevel.Read)
         {
             feed = null;
         }

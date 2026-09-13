@@ -1153,3 +1153,6 @@ h2 + .fg-panel { margin-top: 0.5rem; }
 @media (prefers-reduced-motion: reduce) {
   .fg-btn.is-busy::before { animation-duration: 2.4s; }
 }
+
+/* A form that adds to the table above it - a grant, a member - starts below it, not against its border. */
+.fg-table-wrap + .fg-form { margin-top: 1rem; }

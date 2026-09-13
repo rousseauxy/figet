@@ -28,6 +28,12 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
 
     public DbSet<User> Users => Set<User>();
 
+    public DbSet<Group> Groups => Set<Group>();
+
+    public DbSet<GroupMember> GroupMembers => Set<GroupMember>();
+
+    public DbSet<FeedPermission> FeedPermissions => Set<FeedPermission>();
+
     public DbSet<CachedUpstreamDescription> CachedUpstreamDescriptions => Set<CachedUpstreamDescription>();
 
     public DbSet<CachedUpstreamTagSet> CachedUpstreamTagSets => Set<CachedUpstreamTagSet>();
@@ -108,6 +114,40 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.Property(x => x.PasswordHash).HasMaxLength(256);
             e.Property(x => x.Role).HasConversion<string>().HasMaxLength(16);
             e.Property(x => x.SecurityStamp).HasMaxLength(64);
+        });
+
+        modelBuilder.Entity<Group>(e =>
+        {
+            e.ToTable("Groups");
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Name).HasMaxLength(64);
+            e.Property(x => x.NameLower).HasMaxLength(64);
+            e.HasIndex(x => x.NameLower).IsUnique();
+            e.Property(x => x.Description).HasMaxLength(512);
+        });
+
+        modelBuilder.Entity<GroupMember>(e =>
+        {
+            e.ToTable("GroupMembers");
+            e.HasKey(x => new { x.GroupKey, x.UserKey });
+            e.HasIndex(x => x.UserKey);
+            e.HasOne<Group>().WithMany().HasForeignKey(x => x.GroupKey).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserKey).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Deleted explicitly by the stores rather than by cascade from feeds, users and groups at once: SQL Server refuses
+        // a table reachable by more than one cascade path. The feed's own cascade is the one kept.
+        modelBuilder.Entity<FeedPermission>(e =>
+        {
+            e.ToTable("FeedPermissions");
+            e.HasKey(x => x.Key);
+            e.HasIndex(x => new { x.FeedKey, x.UserKey });
+            e.HasIndex(x => new { x.FeedKey, x.GroupKey });
+            e.HasIndex(x => x.UserKey);
+            e.HasIndex(x => x.GroupKey);
+            e.HasOne<Feed>().WithMany().HasForeignKey(x => x.FeedKey).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserKey).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne<Group>().WithMany().HasForeignKey(x => x.GroupKey).OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<CachedUpstreamDescription>(e =>
