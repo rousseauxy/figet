@@ -1,0 +1,146 @@
+@page "/admin/providers/{Key:int}"
+@attribute [Authorize(Policy = FiGetApp.SuperAdminPolicy)]
+@layout AdminLayout
+@using FiGet.Web.SignIn
+@inject IOidcProviderStore Providers
+@inject ISecretProtector Secrets
+@inject TimeProvider Time
+@inject NavigationManager Navigation
+@inject FiGet.Http.AuditLog Audit
+
+<PageTitle>@(provider?.DisplayName ?? "Provider") · admin · FiGet</PageTitle>
+
+<p class="fg-crumbs"><a href="/admin/providers">Sign-in providers</a> <span class="fg-crumb-sep">/</span> <span>@(provider?.DisplayName ?? "Unknown")</span></p>
+
+@if (provider is null)
+{
+    <h1>No such provider</h1>
+    <p class="fg-muted">It may have been deleted. <a href="/admin/providers">Back to sign-in providers</a>.</p>
+    return;
+}
+
+<h1>@provider.DisplayName</h1>
+
+@if (Done == "created" || saved)
+{
+    <div class="fg-alert fg-alert-ok" role="status">@(saved ? "Provider saved. The next sign-in uses the change." : "Provider added. Register the redirect URI below at the provider.")</div>
+}
+
+<section class="fg-panel">
+    <h2>Register at the provider</h2>
+    <dl class="fg-facts">
+        <dt>Redirect URI</dt>
+        <dd>
+            <div class="fg-url">
+                <pre><code>@RedirectUri</code></pre>
+                <button type="button" class="fg-copy" data-copy="@RedirectUri" title="Copy the redirect URI" aria-label="Copy the redirect URI">Copy</button>
+            </div>
+        </dd>
+        <dt>Client type</dt><dd>Confidential, authorization code flow</dd>
+        <dt>Client secret</dt><dd>@(Secrets.Unprotect(provider.ProtectedClientSecret) is null ? "Missing or unreadable: enter it again" : "Stored")</dd>
+    </dl>
+</section>
+
+<section class="fg-panel">
+    <h2>Settings</h2>
+    <EditForm Model="Edit!" FormName="edit-provider" OnValidSubmit="SaveAsync" method="post" class="fg-form">
+        <DataAnnotationsValidator />
+        <ProviderFields Model="Edit!" Editing="true" />
+        @if (error is not null)
+        {
+            <p class="fg-error">@error</p>
+        }
+        <button type="submit" class="fg-btn fg-btn-primary">Save</button>
+    </EditForm>
+</section>
+
+<section class="fg-panel fg-panel-danger">
+    <h2>Delete this provider</h2>
+    <p class="fg-muted fg-small">
+        Removes the provider, every account's connection to it, its group links and the memberships it gave. Accounts stay,
+        but one that only signed in with this provider has no way left to sign in until an admin sets it a password. To
+        stop sign-ins for a while, disable it instead.
+    </p>
+    <EditForm Model="Delete!" FormName="delete-provider" OnSubmit="DeleteAsync" method="post">
+        <button type="submit" class="fg-btn fg-btn-danger">Delete provider</button>
+    </EditForm>
+</section>
+
+@code {
+    private OidcProvider? provider;
+    private string? error;
+    private bool saved;
+
+    [Parameter]
+    public int Key { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    // Named Model: the shared fields component names its inputs from its own Model parameter.
+    [SupplyParameterFromForm(FormName = "edit-provider", Name = "Model")]
+    private ProviderInput? Edit { get; set; }
+
+    [SupplyParameterFromForm(FormName = "delete-provider")]
+    private DeleteInput? Delete { get; set; }
+
+    [SupplyParameterFromQuery(Name = "done")]
+    private string? Done { get; set; }
+
+    private string RedirectUri => PublicUrls.Base(HttpContext) + OidcSchemes.CallbackPath(provider!.Slug);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Delete ??= new();
+        provider = await Providers.FindAsync(Key, HttpContext.RequestAborted);
+        if (provider is null)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        Edit ??= ProviderInput.From(provider);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (provider is null)
+        {
+            return;
+        }
+
+        if (Edit!.Problem() is { } problem)
+        {
+            error = problem;
+            return;
+        }
+
+        var was = provider.Slug;
+        Edit.ApplyTo(provider, Secrets, Time.GetUtcNow().UtcDateTime);
+        if (!await Providers.UpdateAsync(provider, HttpContext.RequestAborted))
+        {
+            error = "That slug is taken.";
+            provider = await Providers.FindAsync(Key, HttpContext.RequestAborted);
+            return;
+        }
+
+        Audit.Record(HttpContext, "provider.update", provider.Slug, $"was={was} authority={provider.Authority} enabled={provider.Enabled} secret={(Edit.ClientSecret.Length > 0 ? "replaced" : "kept")}");
+        saved = true;
+        Edit.ClientSecret = "";
+        provider = await Providers.FindAsync(Key, HttpContext.RequestAborted);
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (provider is not null && await Providers.DeleteAsync(provider.Key, HttpContext.RequestAborted))
+        {
+            Audit.Record(HttpContext, "provider.delete", provider.Slug);
+        }
+
+        Navigation.NavigateTo("/admin/providers?done=deleted");
+    }
+
+    private sealed class DeleteInput
+    {
+    }
+}

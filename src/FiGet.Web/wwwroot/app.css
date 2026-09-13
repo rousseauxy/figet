@@ -345,6 +345,11 @@ pre code { padding: 0; background: none; }
 /* Sign-in is the one page that is a single narrow column rather than a full-width view. */
 .fg-signin { max-width: 26rem; margin: 3rem auto; }
 
+/* One full-width button per sign-in provider, and the way to the local form underneath. */
+.fg-signin-providers { display: grid; gap: 0.5rem; }
+.fg-btn.fg-btn-block { width: 100%; justify-content: center; }
+.fg-signin-local { margin: 0.9rem 0 0; text-align: center; font-size: 0.9em; }
+
 .fg-panel-grid {
   display: grid;
   gap: 1rem;

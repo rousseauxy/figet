@@ -4,6 +4,8 @@
 @using FiGet.Application.Accounts
 @using FiGet.Web.Components.Pages.Account
 @inject IUserStore Users
+@inject IExternalLoginStore Logins
+@inject IOidcProviderStore Providers
 
 @*
     One account, one page. The changes were on the list, folded into a cell of each row, and opening one widened the
@@ -48,6 +50,7 @@
         <dt>Created</dt><dd class="fg-num">@user.CreatedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) UTC</dd>
         <dt>Last sign-in</dt><dd class="fg-num">@(user.LastSignInUtc?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? Display.None)</dd>
         <dt>Password</dt><dd>@(user.PasswordHash is null ? "None (signs in through a provider)" : "Set")</dd>
+        <dt>Sign-in providers</dt><dd>@(providerNames.Count == 0 ? Display.None : string.Join(", ", providerNames))</dd>
     </dl>
 </section>
 
@@ -111,6 +114,7 @@
 
 @code {
     private User? user;
+    private IReadOnlyList<string> providerNames = [];
     private AccountActor? actor;
 
     [Parameter]
@@ -149,6 +153,12 @@
         if (user is null)
         {
             HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
         }
+
+        var providers = await Providers.ListAsync(HttpContext.RequestAborted);
+        providerNames = (await Logins.ListForUserAsync(user.Key, HttpContext.RequestAborted))
+            .Select(l => providers.FirstOrDefault(p => p.Key == l.ProviderKey) is { } p ? $"{p.DisplayName}{(string.IsNullOrEmpty(l.Email) ? "" : " (" + l.Email + ")")}" : "?")
+            .ToList();
     }
 }

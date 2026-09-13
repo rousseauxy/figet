@@ -30,6 +30,26 @@ public interface IGroupStore
 
     /// <summary>The groups an account belongs to, ordered by name.</summary>
     Task<IReadOnlyList<Group>> GroupsOfAsync(int userKey, CancellationToken cancellationToken);
+
+    /// <summary>The members of a group that a provider's groups claim put there, rather than an admin.</summary>
+    Task<IReadOnlySet<int>> ProviderMembersAsync(int groupKey, CancellationToken cancellationToken);
+
+    /// <summary>The provider groups linked to one FiGet group.</summary>
+    Task<IReadOnlyList<GroupProviderLink>> ProviderLinksAsync(int groupKey, CancellationToken cancellationToken);
+
+    /// <summary>Every link to groups of one provider, for refreshing memberships at a sign-in there.</summary>
+    Task<IReadOnlyList<GroupProviderLink>> ProviderLinksForProviderAsync(int providerKey, CancellationToken cancellationToken);
+
+    /// <summary>False when the same link exists or the group or provider does not.</summary>
+    Task<bool> AddProviderLinkAsync(GroupProviderLink link, CancellationToken cancellationToken);
+
+    Task<bool> RemoveProviderLinkAsync(int groupKey, int linkKey, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Makes the memberships this provider gave the account exactly <paramref name="groupKeys"/>: adds the missing ones,
+    /// removes its own rows for groups no longer listed, and never touches a membership an admin added.
+    /// </summary>
+    Task SyncProviderMembershipsAsync(int userKey, int providerKey, IReadOnlySet<int> groupKeys, CancellationToken cancellationToken);
 }
 
 /// <summary>One grant on a feed, with the name of whoever it is for.</summary>

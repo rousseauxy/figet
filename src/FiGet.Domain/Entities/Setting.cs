@@ -23,4 +23,17 @@ public static class SettingKeys
 {
     /// <summary>Name of the active theme pack. Empty means "whatever configuration says".</summary>
     public const string Theme = "theming:theme";
+
+    /// <summary>What the sign-in page offers once a provider is enabled; see <see cref="SignInModes"/>.</summary>
+    public const string SignInMode = "auth:signin-mode";
+}
+
+/// <summary>The values of <see cref="SettingKeys.SignInMode"/>. <c>/account/login/local</c> shows the local form in both.</summary>
+public static class SignInModes
+{
+    /// <summary>Provider buttons, and a link to sign in with a local account. The default.</summary>
+    public const string ProvidersAndLocal = "providers-and-local";
+
+    /// <summary>Provider buttons only.</summary>
+    public const string ProvidersOnly = "providers-only";
 }

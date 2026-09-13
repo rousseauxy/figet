@@ -78,12 +78,18 @@
                     new("Assets", "/admin/assets"),
                     new("Appearance", "/admin/appearance"),
                 ]));
-                groups.Add(new("Authentication",
-                [
+                var authentication = new List<NavLink>
+                {
                     new("Users", "/admin/users"),
                     new("Groups", "/admin/groups"),
                     new("Tokens", "/admin/tokens"),
-                ]));
+                };
+                if (HttpContext.User.IsInRole(FiGetApp.SuperAdminRole))
+                {
+                    authentication.Add(new("Providers", "/admin/providers"));
+                }
+
+                groups.Add(new("Authentication", authentication));
             }
 
             if (Managed is { } managed)

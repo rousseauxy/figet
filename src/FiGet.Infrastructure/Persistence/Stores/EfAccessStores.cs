@@ -105,6 +105,81 @@ public sealed class EfGroupStore(FiGetDbContext db) : IGroupStore
             .Where(g => db.GroupMembers.Any(m => m.GroupKey == g.Key && m.UserKey == userKey))
             .OrderBy(g => g.NameLower)
             .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlySet<int>> ProviderMembersAsync(int groupKey, CancellationToken cancellationToken) =>
+        (await db.GroupMembers.AsNoTracking().Where(m => m.GroupKey == groupKey && m.ProviderKey != null).Select(m => m.UserKey).ToListAsync(cancellationToken)).ToHashSet();
+
+    public async Task<IReadOnlyList<GroupProviderLink>> ProviderLinksAsync(int groupKey, CancellationToken cancellationToken) =>
+        await db.GroupProviderLinks.AsNoTracking().Where(l => l.GroupKey == groupKey).OrderBy(l => l.ProviderKey).ThenBy(l => l.ProviderGroup).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<GroupProviderLink>> ProviderLinksForProviderAsync(int providerKey, CancellationToken cancellationToken) =>
+        await db.GroupProviderLinks.AsNoTracking().Where(l => l.ProviderKey == providerKey).ToListAsync(cancellationToken);
+
+    public async Task<bool> AddProviderLinkAsync(GroupProviderLink link, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(link);
+        if (!await db.Groups.AnyAsync(g => g.Key == link.GroupKey, cancellationToken)
+            || !await db.OidcProviders.AnyAsync(p => p.Key == link.ProviderKey, cancellationToken)
+            || await db.GroupProviderLinks.AnyAsync(l => l.GroupKey == link.GroupKey && l.ProviderKey == link.ProviderKey && l.ProviderGroup == link.ProviderGroup, cancellationToken))
+        {
+            return false;
+        }
+
+        db.GroupProviderLinks.Add(link);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            return false;
+        }
+        finally
+        {
+            db.Entry(link).State = EntityState.Detached;
+        }
+    }
+
+    /// <summary>
+    /// The link goes; the memberships it made stay until that member's next sign-in with the provider, which removes them.
+    /// Removing them here would need the provider's other links to tell which rows another link still justifies.
+    /// </summary>
+    public async Task<bool> RemoveProviderLinkAsync(int groupKey, int linkKey, CancellationToken cancellationToken) =>
+        await db.GroupProviderLinks.Where(l => l.Key == linkKey && l.GroupKey == groupKey).ExecuteDeleteAsync(cancellationToken) > 0;
+
+    public async Task SyncProviderMembershipsAsync(int userKey, int providerKey, IReadOnlySet<int> groupKeys, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(groupKeys);
+        var wanted = groupKeys.ToList();
+        await db.GroupMembers
+            .Where(m => m.UserKey == userKey && m.ProviderKey == providerKey && !wanted.Contains(m.GroupKey))
+            .ExecuteDeleteAsync(cancellationToken);
+
+        var present = await db.GroupMembers.AsNoTracking().Where(m => m.UserKey == userKey && wanted.Contains(m.GroupKey)).Select(m => m.GroupKey).ToListAsync(cancellationToken);
+        var added = wanted.Except(present).Select(g => new GroupMember { GroupKey = g, UserKey = userKey, ProviderKey = providerKey }).ToList();
+        if (added.Count == 0)
+        {
+            return;
+        }
+
+        db.GroupMembers.AddRange(added);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            // A sign-in on another replica added the same membership at the same moment; it is there either way.
+        }
+        finally
+        {
+            foreach (var member in added)
+            {
+                db.Entry(member).State = EntityState.Detached;
+            }
+        }
+    }
 }
 
 public sealed class EfFeedPermissionStore(FiGetDbContext db) : IFeedPermissionStore

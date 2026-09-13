@@ -4,12 +4,15 @@
 @using System.ComponentModel.DataAnnotations
 @using FiGet.Application.Accounts
 @inject AccountService Accounts
+@inject IOidcProviderStore Providers
+@inject ISettingStore Settings
 @inject NavigationManager Navigation
 @inject FiGet.Http.AuditLog Audit
 
 @*
-    Two addresses, one form. /account/login/local is the fallback that always shows the local form, whatever sign-in
-    providers are configured later; today both show it.
+    Two addresses. /account/login shows the enabled sign-in providers as buttons, with a link to the local form unless a
+    super admin chose providers only; with no provider enabled it is the local form. /account/login/local always shows
+    the local form, so a local account - the first administrator above all - can sign in whatever the providers do.
 *@
 
 <PageTitle>Sign in · FiGet</PageTitle>
@@ -18,30 +21,61 @@
     <div class="fg-card">
         <div class="fg-card-header">Sign in</div>
         <div class="fg-card-body">
-            <EditForm Model="Input!" FormName="login" OnValidSubmit="SignInAsync" method="post" class="fg-form">
-                <DataAnnotationsValidator />
-                <div class="fg-field">
-                    <label for="username">User name</label>
-                    <InputText id="username" autocomplete="username" @bind-Value="Input!.UserName" />
-                    <ValidationMessage For="() => Input!.UserName" />
+            @if (ExternalMessage is { } externalMessage)
+            {
+                <p class="fg-error" role="alert">@externalMessage</p>
+            }
+
+            @if (!IsLocalPath && providers.Count > 0)
+            {
+                <div class="fg-signin-providers">
+                    @foreach (var provider in providers)
+                    {
+                        <form method="post" action="/account/external/@provider.Slug">
+                            <AntiforgeryToken />
+                            <input type="hidden" name="returnUrl" value="@SafeReturnUrl" />
+                            <button type="submit" class="fg-btn fg-btn-primary fg-btn-block">Sign in with @provider.DisplayName</button>
+                        </form>
+                    }
                 </div>
-                <div class="fg-field">
-                    <label for="password">Password</label>
-                    <InputText id="password" type="password" autocomplete="current-password" @bind-Value="Input!.Password" />
-                    <ValidationMessage For="() => Input!.Password" />
-                </div>
-                @if (error is not null)
+                @if (mode != SignInModes.ProvidersOnly)
                 {
-                    <p class="fg-error">@error</p>
+                    <p class="fg-signin-local"><a href="@LocalHref">Sign in with a local account</a></p>
                 }
-                <button type="submit" class="fg-btn fg-btn-primary">Sign in</button>
-            </EditForm>
+            }
+            else
+            {
+                <EditForm Model="Input!" FormName="login" OnValidSubmit="SignInAsync" method="post" class="fg-form">
+                    <DataAnnotationsValidator />
+                    <div class="fg-field">
+                        <label for="username">User name</label>
+                        <InputText id="username" autocomplete="username" @bind-Value="Input!.UserName" />
+                        <ValidationMessage For="() => Input!.UserName" />
+                    </div>
+                    <div class="fg-field">
+                        <label for="password">Password</label>
+                        <InputText id="password" type="password" autocomplete="current-password" @bind-Value="Input!.Password" />
+                        <ValidationMessage For="() => Input!.Password" />
+                    </div>
+                    @if (error is not null)
+                    {
+                        <p class="fg-error">@error</p>
+                    }
+                    <button type="submit" class="fg-btn fg-btn-primary">Sign in</button>
+                </EditForm>
+                @if (IsLocalPath && providers.Count > 0)
+                {
+                    <p class="fg-signin-local"><a href="/account/login@(SafeReturnUrl == "/" ? "" : "?returnUrl=" + Uri.EscapeDataString(SafeReturnUrl))">Sign in with a provider instead</a></p>
+                }
+            }
         </div>
     </div>
 </section>
 
 @code {
     private string? error;
+    private IReadOnlyList<OidcProvider> providers = [];
+    private string mode = SignInModes.ProvidersAndLocal;
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
@@ -52,7 +86,36 @@
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
 
-    protected override void OnInitialized() => Input ??= new();
+    [SupplyParameterFromQuery(Name = "external")]
+    private string? External { get; set; }
+
+    private bool IsLocalPath => HttpContext.Request.Path.StartsWithSegments("/account/login/local", StringComparison.OrdinalIgnoreCase);
+
+    private string SafeReturnUrl =>
+        !string.IsNullOrEmpty(ReturnUrl) && ReturnUrl.StartsWith('/') && !ReturnUrl.StartsWith("//", StringComparison.Ordinal) && !ReturnUrl.StartsWith("/\\", StringComparison.Ordinal)
+            ? ReturnUrl
+            : "/";
+
+    private string LocalHref => "/account/login/local" + (SafeReturnUrl == "/" ? "" : "?returnUrl=" + Uri.EscapeDataString(SafeReturnUrl));
+
+    private string? ExternalMessage => External switch
+    {
+        "failed" => "Signing in with the provider did not work. Try again, or ask an administrator.",
+        "disabled" => "This account is disabled.",
+        "unknown" => "That sign-in provider is not available.",
+        "expired" => "The page had expired. Try again.",
+        _ => null,
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        providers = (await Providers.ListAsync(HttpContext.RequestAborted)).Where(p => p.Enabled).ToList();
+        if (providers.Count > 0)
+        {
+            mode = await Settings.GetAsync(SettingKeys.SignInMode, HttpContext.RequestAborted) ?? SignInModes.ProvidersAndLocal;
+        }
+    }
 
     private async Task SignInAsync()
     {
@@ -86,10 +149,7 @@
             return;
         }
 
-        var target = !string.IsNullOrEmpty(ReturnUrl) && ReturnUrl.StartsWith('/') && !ReturnUrl.StartsWith("//", StringComparison.Ordinal)
-            ? ReturnUrl
-            : "/";
-        Navigation.NavigateTo(target);
+        Navigation.NavigateTo(SafeReturnUrl);
     }
 
     private sealed class LoginInput

@@ -32,6 +32,12 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
 
     public DbSet<GroupMember> GroupMembers => Set<GroupMember>();
 
+    public DbSet<OidcProvider> OidcProviders => Set<OidcProvider>();
+
+    public DbSet<ExternalLogin> ExternalLogins => Set<ExternalLogin>();
+
+    public DbSet<GroupProviderLink> GroupProviderLinks => Set<GroupProviderLink>();
+
     public DbSet<FeedPermission> FeedPermissions => Set<FeedPermission>();
 
     public DbSet<CachedUpstreamDescription> CachedUpstreamDescriptions => Set<CachedUpstreamDescription>();
@@ -133,6 +139,46 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.HasIndex(x => x.UserKey);
             e.HasOne<Group>().WithMany().HasForeignKey(x => x.GroupKey).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UserKey).OnDelete(DeleteBehavior.Cascade);
+
+            // Deleted by EfOidcProviderStore with the provider; a third cascade into this table is one SQL Server may refuse.
+            e.HasOne<OidcProvider>().WithMany().HasForeignKey(x => x.ProviderKey).OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<OidcProvider>(e =>
+        {
+            e.ToTable("OidcProviders");
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Slug).HasMaxLength(32);
+            e.HasIndex(x => x.Slug).IsUnique();
+            e.Property(x => x.DisplayName).HasMaxLength(64);
+            e.Property(x => x.Authority).HasMaxLength(512);
+            e.Property(x => x.ClientId).HasMaxLength(256);
+            e.Property(x => x.ProtectedClientSecret).HasMaxLength(2048);
+            e.Property(x => x.Scopes).HasMaxLength(512);
+            e.Property(x => x.UserNameClaim).HasMaxLength(64);
+            e.Property(x => x.GroupsClaim).HasMaxLength(64);
+        });
+
+        modelBuilder.Entity<ExternalLogin>(e =>
+        {
+            e.ToTable("ExternalLogins");
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Subject).HasMaxLength(256);
+            e.Property(x => x.Email).HasMaxLength(256);
+            e.HasIndex(x => new { x.ProviderKey, x.Subject }).IsUnique();
+            e.HasIndex(x => x.UserKey);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserKey).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<OidcProvider>().WithMany().HasForeignKey(x => x.ProviderKey).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GroupProviderLink>(e =>
+        {
+            e.ToTable("GroupProviderLinks");
+            e.HasKey(x => x.Key);
+            e.Property(x => x.ProviderGroup).HasMaxLength(256);
+            e.HasIndex(x => new { x.GroupKey, x.ProviderKey, x.ProviderGroup }).IsUnique();
+            e.HasOne<Group>().WithMany().HasForeignKey(x => x.GroupKey).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<OidcProvider>().WithMany().HasForeignKey(x => x.ProviderKey).OnDelete(DeleteBehavior.Cascade);
         });
 
         // Deleted explicitly by the stores rather than by cascade from feeds, users and groups at once: SQL Server refuses

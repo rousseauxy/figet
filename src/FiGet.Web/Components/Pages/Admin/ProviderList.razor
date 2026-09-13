@@ -1,0 +1,152 @@
+@page "/admin/providers"
+@attribute [Authorize(Policy = FiGetApp.SuperAdminPolicy)]
+@layout AdminLayout
+@using FiGet.Web.SignIn
+@inject IOidcProviderStore Providers
+@inject ISettingStore Settings
+@inject ISecretProtector Secrets
+@inject TimeProvider Time
+@inject NavigationManager Navigation
+@inject FiGet.Http.AuditLog Audit
+
+@*
+    OpenID Connect providers, for super admins (docs/auth-plan.md). Saved to the database and read at each sign-in, so a
+    change applies without a restart, on every replica.
+*@
+
+<PageTitle>Sign-in providers · admin · FiGet</PageTitle>
+
+<h1>Sign-in providers</h1>
+<p class="fg-lede">
+    OpenID Connect providers people sign in with, side by side: Authentik, Entra ID, Google, Keycloak. A first sign-in
+    makes a new account with the user role; people connect a provider to an existing account from their profile page.
+</p>
+
+@if (Done == "deleted")
+{
+    <div class="fg-alert fg-alert-ok" role="status">Provider deleted, with its connections and group links.</div>
+}
+@if (modeSaved)
+{
+    <div class="fg-alert fg-alert-ok" role="status">Sign-in page saved.</div>
+}
+
+@if (providers.Count == 0)
+{
+    <p class="fg-empty">No providers yet. Until one is enabled, the sign-in page asks for a user name and password.</p>
+}
+else
+{
+    <div class="fg-table-wrap">
+        <table class="fg-table">
+            <thead>
+                <tr><th>Provider</th><th>Redirect URI</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var provider in providers)
+                {
+                    <tr class="@(provider.Enabled ? "" : "is-inactive")">
+                        <td><a href="/admin/providers/@provider.Key"><strong>@provider.DisplayName</strong></a> <span class="fg-small fg-muted">@provider.Slug</span></td>
+                        <td><code class="fg-small">@RedirectUri(provider)</code></td>
+                        <td><span class="fg-badge @(provider.Enabled ? "fg-badge-plain" : "fg-badge-warn")">@(provider.Enabled ? "Enabled" : "Disabled")</span></td>
+                        <td class="fg-cell-actions"><a class="fg-btn fg-btn-sm" href="/admin/providers/@provider.Key">Edit</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <h2>Sign-in page</h2>
+    <div class="fg-panel">
+        <EditForm Model="Mode!" FormName="signin-mode" OnSubmit="SaveModeAsync" method="post" class="fg-form">
+            <InputRadioGroup @bind-Value="Mode!.Value">
+                <label class="fg-check"><InputRadio Value="SignInModes.ProvidersAndLocal" /> Provider buttons, and a link to sign in with a local account</label>
+                <label class="fg-check"><InputRadio Value="SignInModes.ProvidersOnly" /> Provider buttons only</label>
+            </InputRadioGroup>
+            <p class="fg-small fg-muted"><code>/account/login/local</code> always shows the user name and password form, whichever is chosen.</p>
+            <button type="submit" class="fg-btn">Save</button>
+        </EditForm>
+    </div>
+}
+
+<h2>Add a provider</h2>
+<div class="fg-panel">
+    <EditForm Model="NewProvider!" FormName="create-provider" OnValidSubmit="CreateAsync" method="post" class="fg-form">
+        <DataAnnotationsValidator />
+        <ProviderFields Model="NewProvider!" />
+        @if (error is not null)
+        {
+            <p class="fg-error">@error</p>
+        }
+        <button type="submit" class="fg-btn fg-btn-primary">Add provider</button>
+    </EditForm>
+</div>
+
+@code {
+    private IReadOnlyList<OidcProvider> providers = [];
+    private string? error;
+    private bool modeSaved;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    // Named Model: the shared fields component names its inputs from its own Model parameter.
+    [SupplyParameterFromForm(FormName = "create-provider", Name = "Model")]
+    private ProviderInput? NewProvider { get; set; }
+
+    [SupplyParameterFromForm(FormName = "signin-mode")]
+    private ModeInput? Mode { get; set; }
+
+    [SupplyParameterFromQuery(Name = "done")]
+    private string? Done { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        NewProvider ??= new() { Enabled = true };
+        providers = await Providers.ListAsync(HttpContext.RequestAborted);
+        Mode ??= new ModeInput { Value = await Settings.GetAsync(SettingKeys.SignInMode, HttpContext.RequestAborted) ?? SignInModes.ProvidersAndLocal };
+    }
+
+    private string RedirectUri(OidcProvider provider) => PublicUrls.Base(HttpContext) + OidcSchemes.CallbackPath(provider.Slug);
+
+    private async Task CreateAsync()
+    {
+        if (NewProvider!.Problem() is { } problem)
+        {
+            error = problem;
+            return;
+        }
+
+        if (NewProvider.ClientSecret.Length == 0)
+        {
+            error = "Enter the client secret.";
+            return;
+        }
+
+        var now = Time.GetUtcNow().UtcDateTime;
+        var provider = new OidcProvider { Slug = "", DisplayName = "", Authority = "", ClientId = "", CreatedUtc = now };
+        NewProvider.ApplyTo(provider, Secrets, now);
+        if (!await Providers.AddAsync(provider, HttpContext.RequestAborted))
+        {
+            error = "That slug is taken.";
+            return;
+        }
+
+        Audit.Record(HttpContext, "provider.create", provider.Slug, $"authority={provider.Authority} enabled={provider.Enabled}");
+        var added = await Providers.FindBySlugAsync(provider.Slug, HttpContext.RequestAborted);
+        Navigation.NavigateTo($"/admin/providers/{added?.Key}?done=created");
+    }
+
+    private async Task SaveModeAsync()
+    {
+        var value = Mode!.Value == SignInModes.ProvidersOnly ? SignInModes.ProvidersOnly : SignInModes.ProvidersAndLocal;
+        await Settings.SetAsync(SettingKeys.SignInMode, value, HttpContext.User.Identity?.Name, HttpContext.RequestAborted);
+        Audit.Record(HttpContext, "signin.mode", value);
+        modeSaved = true;
+    }
+
+    private sealed class ModeInput
+    {
+        public string Value { get; set; } = SignInModes.ProvidersAndLocal;
+    }
+}

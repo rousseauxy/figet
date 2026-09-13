@@ -26,6 +26,7 @@ using FiGet.Web.Components;
 using FiGet.Web.Configuration;
 using FiGet.Web.Connectors;
 using FiGet.Web.Logging;
+using FiGet.Web.SignIn;
 using FiGet.Web.Theming;
 using NuGet.Versioning;
 using Microsoft.AspNetCore.Antiforgery;
@@ -107,6 +108,7 @@ public static class FiGetApp
         services.AddScoped<AccessTokenService>();
         services.AddScoped<AccountService>();
         services.AddScoped<FeedAccessService>();
+        services.AddScoped<ExternalAccountService>();
 
         // Proxy feeds. The client is a singleton because NuGet's repositories cache resources and
         // connections inside themselves; the service is scoped because it writes through the request's
@@ -150,6 +152,7 @@ public static class FiGetApp
                 cookie.ExpireTimeSpan = TimeSpan.FromHours(8);
                 cookie.Events.OnValidatePrincipal = ValidateCookieAsync;
             });
+        services.AddOidcProviders();
         services.AddAuthorizationBuilder()
             .AddPolicy(AdminPolicy, policy => policy.RequireAuthenticatedUser().RequireClaim(ClaimTypes.Role, AdminRole))
             .AddPolicy(SuperAdminPolicy, policy => policy.RequireAuthenticatedUser().RequireClaim(ClaimTypes.Role, SuperAdminRole));
@@ -239,6 +242,9 @@ public static class FiGetApp
         // again after them rather than having happened once before them.
         app.UseRouting();
 
+        // A provider's callback, before the sign-in cookie is read: those schemes come from the database, so the
+        // authentication middleware does not know to run them.
+        app.UseOidcCallbacks();
         app.UseAuthentication();
 
         // An account that must choose a new password - the first administrator, or after a reset - reaches nothing
@@ -290,6 +296,7 @@ public static class FiGetApp
         app.MapAssetEndpoints();
         app.MapPackageManagement();
         app.MapAccountEndpoints();
+        app.MapExternalSignIn();
         app.MapAdminEndpoints();
         app.MapStaticAssets();
         app.MapRazorComponents<App>();
@@ -970,6 +977,22 @@ public static class FiGetApp
                     audit.Record(http, "group.member.remove", user.UserName, $"group={group.Name}");
                     done = "removed";
                 }
+            }
+
+            if (action == "link-provider"
+                && int.TryParse(form["provider"].ToString(), out var providerKey)
+                && form["providerGroup"].ToString().Trim() is { Length: > 0 and <= 256 } providerGroup
+                && await groups.AddProviderLinkAsync(new GroupProviderLink { GroupKey = key, ProviderKey = providerKey, ProviderGroup = providerGroup }, cancellationToken))
+            {
+                audit.Record(http, "group.provider.link", providerGroup, $"group={group.Name} provider={providerKey}");
+                done = "linked";
+            }
+            else if (action == "unlink-provider"
+                && int.TryParse(form["link"].ToString(), out var linkKey)
+                && await groups.RemoveProviderLinkAsync(key, linkKey, cancellationToken))
+            {
+                audit.Record(http, "group.provider.unlink", linkKey.ToString(CultureInfo.InvariantCulture), $"group={group.Name}");
+                done = "unlinked";
             }
 
             if (action == "delete" && await groups.DeleteAsync(key, cancellationToken))

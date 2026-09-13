@@ -1,0 +1,59 @@
+@using FiGet.Web.SignIn
+
+@* The fields of a sign-in provider, inside the EditForm of the page that adds or edits one. *@
+
+<div class="fg-field">
+    <label for="provider-display">Button name</label>
+    <InputText id="provider-display" @bind-Value="Model.DisplayName" placeholder="for example: Authentik" />
+    <ValidationMessage For="() => Model.DisplayName" />
+</div>
+<div class="fg-field">
+    <label for="provider-slug">Slug</label>
+    <InputText id="provider-slug" @bind-Value="Model.Slug" placeholder="for example: authentik" />
+    <span class="fg-small fg-muted">In the redirect URI. Changing it later means registering the new URI at the provider.</span>
+    <ValidationMessage For="() => Model.Slug" />
+</div>
+<div class="fg-field">
+    <label for="provider-authority">Issuer URL</label>
+    <InputText id="provider-authority" @bind-Value="Model.Authority" placeholder="https://auth.example.org/application/o/figet/" />
+    <span class="fg-small fg-muted">Where <code>/.well-known/openid-configuration</code> is found.</span>
+    <ValidationMessage For="() => Model.Authority" />
+</div>
+<div class="fg-field">
+    <label for="provider-client">Client id</label>
+    <InputText id="provider-client" @bind-Value="Model.ClientId" autocomplete="off" />
+    <ValidationMessage For="() => Model.ClientId" />
+</div>
+<div class="fg-field">
+    <label for="provider-secret">Client secret</label>
+    <InputText id="provider-secret" type="password" @bind-Value="Model.ClientSecret" autocomplete="new-password" />
+    <span class="fg-small fg-muted">@(Editing ? "Leave empty to keep the stored secret. It is never shown again." : "Stored encrypted and never shown again.")</span>
+</div>
+<div class="fg-field">
+    <label for="provider-scopes">Scopes</label>
+    <InputText id="provider-scopes" @bind-Value="Model.Scopes" />
+</div>
+<div class="fg-field">
+    <label for="provider-username-claim">User name claim</label>
+    <InputText id="provider-username-claim" @bind-Value="Model.UserNameClaim" />
+    <span class="fg-small fg-muted">A new account's user name comes from this claim, or else from the email address.</span>
+    <ValidationMessage For="() => Model.UserNameClaim" />
+</div>
+<div class="fg-field">
+    <label for="provider-groups-claim">Groups claim</label>
+    <InputText id="provider-groups-claim" @bind-Value="Model.GroupsClaim" placeholder="for example: groups" />
+    <span class="fg-small fg-muted">Empty turns group mapping off. Link provider groups to FiGet groups on each group's page.</span>
+</div>
+<div class="fg-field">
+    <label for="provider-order">Button order</label>
+    <InputNumber id="provider-order" @bind-Value="Model.Ordinal" />
+</div>
+<label class="fg-check"><InputCheckbox @bind-Value="Model.Enabled" /> Enabled: show it on the sign-in page and accept sign-ins</label>
+
+@code {
+    [Parameter, EditorRequired]
+    public ProviderInput Model { get; set; } = default!;
+
+    [Parameter]
+    public bool Editing { get; set; }
+}

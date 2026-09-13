@@ -34,6 +34,12 @@ public sealed class GroupMember
     public int GroupKey { get; set; }
 
     public int UserKey { get; set; }
+
+    /// <summary>
+    /// Null for a member an admin added. Otherwise the provider whose groups claim made them a member: a sign-in with that
+    /// provider replaces its own rows and leaves every other row alone.
+    /// </summary>
+    public int? ProviderKey { get; set; }
 }
 
 /// <summary>A level on one feed, granted to exactly one of an account or a group.</summary>

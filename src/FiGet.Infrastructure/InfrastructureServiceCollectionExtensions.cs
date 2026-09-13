@@ -20,6 +20,8 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IUserStore, EfUserStore>();
         services.AddScoped<IGroupStore, EfGroupStore>();
         services.AddScoped<IFeedPermissionStore, EfFeedPermissionStore>();
+        services.AddScoped<IOidcProviderStore, EfOidcProviderStore>();
+        services.AddScoped<IExternalLoginStore, EfExternalLoginStore>();
         services.AddSingleton<IPasswordHasher, Accounts.PlatformPasswordHasher>();
         services.AddScoped<ISettingStore, EfSettingStore>();
         services.AddScoped<IAssetStore, EfAssetStore>();

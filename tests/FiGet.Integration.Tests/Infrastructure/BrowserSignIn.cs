@@ -12,7 +12,7 @@ public static partial class BrowserSignIn
         string password = FiGetServerFixture.AdminPassword)
     {
         ArgumentNullException.ThrowIfNull(client);
-        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/account/login"));
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/account/login/local"));
         var fields = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (Match hidden in HiddenInput().Matches(page))
         {
@@ -22,7 +22,7 @@ public static partial class BrowserSignIn
         fields[InputName(page, "username")] = userName;
         fields[InputName(page, "password")] = password;
         using var content = new FormUrlEncodedContent(fields);
-        return await client.PostAsync("/account/login", content);
+        return await client.PostAsync("/account/login/local", content);
     }
 
     /// <summary>The generated name of the input with this id; Blazor derives it from the model path.</summary>

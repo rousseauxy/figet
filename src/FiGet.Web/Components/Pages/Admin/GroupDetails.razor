@@ -4,6 +4,7 @@
 @using System.ComponentModel.DataAnnotations
 @inject IGroupStore Groups
 @inject IUserStore Users
+@inject IOidcProviderStore Providers
 @inject FiGet.Http.AuditLog Audit
 
 <PageTitle>@(group?.Name ?? "Group") · admin · FiGet</PageTitle>
@@ -19,9 +20,9 @@
 
 <h1>@group.Name</h1>
 
-@if (Done is "added" or "removed" || saved)
+@if (Done is "added" or "removed" or "linked" or "unlinked" || saved)
 {
-    <div class="fg-alert fg-alert-ok" role="status">@(saved ? "Group saved." : Done == "added" ? "Member added." : "Member removed.")</div>
+    <div class="fg-alert fg-alert-ok" role="status">@DoneMessage</div>
 }
 
 <section class="fg-panel">
@@ -38,7 +39,13 @@
                     @foreach (var member in members)
                     {
                         <tr>
-                            <td><strong>@member.UserName</strong> <span class="fg-muted fg-small">@member.DisplayName</span></td>
+                            <td>
+                                <strong>@member.UserName</strong> <span class="fg-muted fg-small">@member.DisplayName</span>
+                                @if (providerMembers.Contains(member.Key))
+                                {
+                                    <span class="fg-badge fg-badge-info" title="Added by a sign-in provider's groups, and removed again when the provider no longer lists them">From provider</span>
+                                }
+                            </td>
                             <td class="fg-cell-actions">
                                 <form method="post" action="/admin/groups/@group.Key/remove">
                                     <AntiforgeryToken />
@@ -70,6 +77,63 @@
         </form>
     }
 </section>
+
+@if (providers.Count > 0)
+{
+    <section class="fg-panel">
+        <h2>Provider groups</h2>
+        <p class="fg-muted fg-small">
+            Everyone in a linked group at a sign-in provider is a member here, refreshed each time they sign in with that
+            provider. The provider needs a groups claim on its settings page. A provider group never grants a role.
+        </p>
+        @if (links.Count > 0)
+        {
+            <div class="fg-table-wrap">
+                <table class="fg-table">
+                    <tbody>
+                        @foreach (var link in links)
+                        {
+                            var linked = providers.FirstOrDefault(p => p.Key == link.ProviderKey);
+                            <tr>
+                                <td>
+                                    <strong>@link.ProviderGroup</strong> <span class="fg-muted fg-small">at @(linked?.DisplayName ?? "?")</span>
+                                    @if (linked is not null && string.IsNullOrEmpty(linked.GroupsClaim))
+                                    {
+                                        <span class="fg-badge fg-badge-warn">No groups claim set</span>
+                                    }
+                                </td>
+                                <td class="fg-cell-actions">
+                                    <form method="post" action="/admin/groups/@group.Key/unlink-provider">
+                                        <AntiforgeryToken />
+                                        <input type="hidden" name="link" value="@link.Key" />
+                                        <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Unlink</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        <form method="post" action="/admin/groups/@group.Key/link-provider" class="fg-form">
+            <AntiforgeryToken />
+            <div class="fg-field">
+                <label for="link-provider">Provider</label>
+                <select id="link-provider" name="provider" required>
+                    @foreach (var provider in providers)
+                    {
+                        <option value="@provider.Key">@provider.DisplayName</option>
+                    }
+                </select>
+            </div>
+            <div class="fg-field">
+                <label for="link-group">Group at the provider</label>
+                <input id="link-group" name="providerGroup" required maxlength="256" placeholder="as the provider names it" />
+            </div>
+            <button type="submit" class="fg-btn">Link provider group</button>
+        </form>
+    </section>
+}
 
 <section class="fg-panel">
     <h2>Name and description</h2>
@@ -105,6 +169,9 @@
     private Group? group;
     private IReadOnlyList<User> members = [];
     private IReadOnlyList<User> candidates = [];
+    private IReadOnlyList<OidcProvider> providers = [];
+    private IReadOnlyList<GroupProviderLink> links = [];
+    private IReadOnlySet<int> providerMembers = new HashSet<int>();
     private string? error;
     private bool saved;
 
@@ -136,6 +203,9 @@
         }
 
         members = await Groups.MembersAsync(Key, HttpContext.RequestAborted);
+        providerMembers = await Groups.ProviderMembersAsync(Key, HttpContext.RequestAborted);
+        providers = await Providers.ListAsync(HttpContext.RequestAborted);
+        links = await Groups.ProviderLinksAsync(Key, HttpContext.RequestAborted);
         var memberKeys = members.Select(m => m.Key).ToHashSet();
         candidates = (await Users.ListAsync(HttpContext.RequestAborted)).Where(u => !memberKeys.Contains(u.Key)).ToList();
     }
@@ -164,6 +234,14 @@
         saved = true;
         await LoadAsync();
     }
+
+    private string DoneMessage => saved ? "Group saved." : Done switch
+    {
+        "added" => "Member added.",
+        "removed" => "Member removed.",
+        "linked" => "Provider group linked. Its members join at their next sign-in with that provider.",
+        _ => "Provider group unlinked. Members it added leave at their next sign-in with that provider.",
+    };
 
     private sealed class GroupForm
     {

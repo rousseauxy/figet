@@ -69,11 +69,12 @@ public sealed class EfUserStore(FiGetDbContext db) : IUserStore
                 cancellationToken) > 0;
     }
 
-    /// <summary>The account with its grants, memberships and personal keys.</summary>
+    /// <summary>The account with its grants, memberships, personal keys and provider links.</summary>
     public async Task<bool> DeleteAsync(int key, CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await db.AccessTokens.Where(t => t.UserKey == key).ExecuteDeleteAsync(cancellationToken);
+        await db.ExternalLogins.Where(l => l.UserKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.FeedPermissions.Where(p => p.UserKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.GroupMembers.Where(m => m.UserKey == key).ExecuteDeleteAsync(cancellationToken);
         var deleted = await db.Users.Where(u => u.Key == key).ExecuteDeleteAsync(cancellationToken) > 0;

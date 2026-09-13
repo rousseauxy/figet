@@ -313,6 +313,46 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.ToTable("CachedUpstreamTagSets", (string)null);
                 });
 
+            modelBuilder.Entity("FiGet.Domain.Entities.ExternalLogin", b =>
+                {
+                    b.Property<int>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Key"));
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime?>("LastUsedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("LinkedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ProviderKey")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<int>("UserKey")
+                        .HasColumnType("int");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("UserKey");
+
+                    b.HasIndex("ProviderKey", "Subject")
+                        .IsUnique();
+
+                    b.ToTable("ExternalLogins", (string)null);
+                });
+
             modelBuilder.Entity("FiGet.Domain.Entities.Feed", b =>
                 {
                     b.Property<int>("Key")
@@ -490,11 +530,113 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.Property<int>("UserKey")
                         .HasColumnType("int");
 
+                    b.Property<int?>("ProviderKey")
+                        .HasColumnType("int");
+
                     b.HasKey("GroupKey", "UserKey");
+
+                    b.HasIndex("ProviderKey");
 
                     b.HasIndex("UserKey");
 
                     b.ToTable("GroupMembers", (string)null);
+                });
+
+            modelBuilder.Entity("FiGet.Domain.Entities.GroupProviderLink", b =>
+                {
+                    b.Property<int>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Key"));
+
+                    b.Property<int>("GroupKey")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProviderGroup")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<int>("ProviderKey")
+                        .HasColumnType("int");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("ProviderKey");
+
+                    b.HasIndex("GroupKey", "ProviderKey", "ProviderGroup")
+                        .IsUnique();
+
+                    b.ToTable("GroupProviderLinks", (string)null);
+                });
+
+            modelBuilder.Entity("FiGet.Domain.Entities.OidcProvider", b =>
+                {
+                    b.Property<int>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Key"));
+
+                    b.Property<string>("Authority")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("GroupsClaim")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProtectedClientSecret")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<string>("Scopes")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UserNameClaim")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("OidcProviders", (string)null);
                 });
 
             modelBuilder.Entity("FiGet.Domain.Entities.Package", b =>
@@ -921,6 +1063,21 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.Navigation("FeedUpstream");
                 });
 
+            modelBuilder.Entity("FiGet.Domain.Entities.ExternalLogin", b =>
+                {
+                    b.HasOne("FiGet.Domain.Entities.OidcProvider", null)
+                        .WithMany()
+                        .HasForeignKey("ProviderKey")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FiGet.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserKey")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("FiGet.Domain.Entities.FeedPermission", b =>
                 {
                     b.HasOne("FiGet.Domain.Entities.Feed", null)
@@ -959,9 +1116,29 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("FiGet.Domain.Entities.OidcProvider", null)
+                        .WithMany()
+                        .HasForeignKey("ProviderKey")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("FiGet.Domain.Entities.User", null)
                         .WithMany()
                         .HasForeignKey("UserKey")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("FiGet.Domain.Entities.GroupProviderLink", b =>
+                {
+                    b.HasOne("FiGet.Domain.Entities.Group", null)
+                        .WithMany()
+                        .HasForeignKey("GroupKey")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("FiGet.Domain.Entities.OidcProvider", null)
+                        .WithMany()
+                        .HasForeignKey("ProviderKey")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
