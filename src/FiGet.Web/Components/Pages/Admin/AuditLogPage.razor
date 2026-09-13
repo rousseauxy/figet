@@ -19,14 +19,14 @@
     @(RetentionDays > 0 ? $"Entries are kept for {RetentionDays} days." : "Entries are kept forever.")
 </p>
 
-<form method="get" action="/admin/audit" class="fg-form fg-audit-filters">
+<form method="get" action="/admin/audit" class="fg-audit-filters">
     <div class="fg-field">
         <label for="audit-action">Event</label>
         <select id="audit-action" name="action">
             <option value="">Any</option>
             @foreach (var group in actionGroups)
             {
-                <option value="@(group).">@group.* </option>
+                <option value="@(group)." selected="@(Action == group + ".")">@group.*</option>
             }
             @foreach (var name in actions)
             {
@@ -36,7 +36,7 @@
     </div>
     <div class="fg-field">
         <label for="audit-actor">Who</label>
-        <input id="audit-actor" name="actor" value="@Actor" placeholder="user name, token name or user:name" />
+        <input id="audit-actor" name="actor" value="@Actor" placeholder="user or token name" />
     </div>
     <div class="fg-field">
         <label for="audit-feed">Feed or directory</label>

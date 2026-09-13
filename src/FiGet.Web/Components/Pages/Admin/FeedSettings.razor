@@ -244,9 +244,7 @@ else
     <section class="fg-panel" id="retention">
         <h2>Retention and cache pruning</h2>
         <p class="fg-muted fg-small">
-            Checked every hour. Pushed versions beyond what is kept are @(feed.DeletionBehavior == PackageDeletionBehavior.HardDelete ? "deleted, files included" : "unlisted, as this feed's delete behaviour says")
-            ; the newest version of a package is always kept.@(feed.Upstreams.Count > 0 ? " Cached copies nobody has downloaded for the pruning period are deleted - the upstream still has them, and the next request caches one again." : "")
-            Leave a field empty for no rule.
+            @RetentionIntro Leave a field empty for no rule.
         </p>
 
         @if (RetentionDone is { } done)
@@ -511,6 +509,12 @@ else
                 + (parts.Length > 4 ? " More remain for the next run." : "");
         }
     }
+
+    private string RetentionIntro =>
+        "Checked every hour. Pushed versions beyond what is kept are "
+        + (feed!.DeletionBehavior == PackageDeletionBehavior.HardDelete ? "deleted, files included" : "unlisted, as this feed's delete behaviour says")
+        + "; the newest version of a package is always kept."
+        + (feed.Upstreams.Count > 0 ? " Cached copies nobody has downloaded for the pruning period are deleted: the upstream still has them, and the next request caches one again." : "");
 
     private static string ReasonText(RetentionReason reason) => reason switch
     {
