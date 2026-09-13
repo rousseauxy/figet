@@ -787,7 +787,9 @@ legend {
 /* A command with its copy button inside the box, top right, where a reader looks for it. The command keeps
    room on its right so a long one never runs under the button. */
 .fg-snippet { position: relative; margin: 0 0 0.5rem; }
-.fg-snippet pre { margin: 0; padding-right: 2.9rem; }
+/* Wrapped, not scrolled. A scrolling box slides its text under the button, and on a phone every command scrolls: the
+   reserved right padding only keeps text clear of the button when the text wraps inside it. */
+.fg-snippet pre { margin: 0; padding-right: 2.9rem; white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: visible; }
 .fg-snippet .fg-copy { position: absolute; top: 0.4rem; right: 0.4rem; }
 
 /* ── The signed-in menu ─────────────────────────────────────────── */
