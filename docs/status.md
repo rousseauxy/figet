@@ -1830,3 +1830,23 @@ the tag text itself). An attempt to read it from the request log was discarded a
 `Find-Module`'s `Includes` (Function, Cmdlet, Command) from exactly those `PSCommand_*` / `PSFunction_*`
 tags and needs the `PSEdition_*` ones, so trimming them silently changes what people see. That is a decision,
 not an overnight change. The options are in the backlog entry.
+
+## Admin buttons accepted posts without their antiforgery token - 2026-09-13
+
+Found while testing the asset upload page. Signed in as admin, a form post to `/admin/assets/files/folders`
+with no antiforgery token was answered 302 and the folder was created. The same was true of every admin
+button: pull, add and remove upstream, relist, delete and un-cache.
+
+**Why.** The pages carry `<AntiforgeryToken />` and the app calls `UseAntiforgery()`, which reads as
+protected. It is not: the middleware only records whether the token was valid, and minimal APIs act on
+that verdict only while binding a form to a handler parameter. These handlers read their forms with
+`ReadFormAsync`, so the verdict was never consulted.
+
+**Why it mattered.** The sign-in cookie is `SameSite=Lax`, which stops a post from another *site* - but a
+sibling subdomain is the same site, so any page on another host under the same domain could press these
+buttons for a signed-in admin.
+
+**Fix.** One endpoint filter on the `/admin` group validates the token on every non-GET request, from the
+`RequestVerificationToken` header or the form. `AdminUiTests.An_admin_button_post_without_its_page_token_changes_nothing`
+posts to "add upstream" without the token (400, nothing added) and then with the page's token (302, added).
+With the filter's check disabled the test fails with `Expected 400, got 302 Found`; restored, it passes.

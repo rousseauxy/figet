@@ -22,6 +22,7 @@ using FiGet.Web.Connectors;
 using FiGet.Web.Logging;
 using FiGet.Web.Theming;
 using NuGet.Versioning;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
@@ -288,7 +289,27 @@ public static class FiGetApp
     /// </summary>
     private static void MapAdminEndpoints(this WebApplication app)
     {
-        var admin = app.MapGroup("/admin").RequireAuthorization(AdminPolicy);
+        // Every change here needs the antiforgery token of one of this server's own pages. Checked explicitly
+        // because the framework's own check is not what it looks like: the antiforgery middleware only
+        // records a verdict, and minimal APIs enforce it only while binding a form to a parameter. These
+        // handlers read their forms by hand, so every one of them accepted a post from any page the admin
+        // had open - and SameSite=Lax does not stop that from a sibling subdomain, which counts as the same
+        // site. The token is read from the RequestVerificationToken header or the form, so the upload page,
+        // whose body is the file, is covered by the same check.
+        var admin = app.MapGroup("/admin")
+            .RequireAuthorization(AdminPolicy)
+            .AddEndpointFilter(async (context, next) =>
+            {
+                var http = context.HttpContext;
+                if (!HttpMethods.IsGet(http.Request.Method)
+                    && !HttpMethods.IsHead(http.Request.Method)
+                    && !await http.RequestServices.GetRequiredService<IAntiforgery>().IsRequestValidAsync(http))
+                {
+                    return Results.Json(new { error = "The page has expired. Reload it and try again." }, statusCode: StatusCodes.Status400BadRequest);
+                }
+
+                return await next(context);
+            });
 
         // The bare path is what a person types when they want the admin area, and it used to answer 404.
         // Inside the authorised group on purpose: a stranger then meets the sign-in page, rather than a

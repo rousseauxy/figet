@@ -241,6 +241,41 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         Assert.Null(await FindFeedAsync(feed));
     }
 
+    /// <summary>
+    /// The admin buttons are plain form posts to minimal API handlers, and a browser sends the sign-in cookie
+    /// with a post from any page - including a page on a sibling subdomain, which SameSite=Lax counts as the
+    /// same site. The antiforgery token is what proves the post came from this server's own page.
+    ///
+    /// These handlers read their forms by hand, and the framework enforces the token only while binding a
+    /// form to a parameter, so for as long as the admin area has existed every one of them accepted a post
+    /// without it: this one answered 302 and added the upstream.
+    /// </summary>
+    [Fact]
+    public async Task An_admin_button_post_without_its_page_token_changes_nothing()
+    {
+        using var client = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        var feed = await CreateFeedAsync("forgery-target", anonymousRead: true);
+        var upstream = new Dictionary<string, string> { ["name"] = "forged", ["url"] = "https://example.invalid/v3/index.json", ["kind"] = "V3" };
+
+        using var forged = new FormUrlEncodedContent(upstream);
+        HttpAssert.Status(HttpStatusCode.BadRequest, await client.PostAsync($"/admin/feeds/{feed}/upstreams/add", forged));
+        Assert.Empty((await FindFeedAsync(feed))!.Upstreams);
+
+        // The same post from the settings page, token and all, still works.
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/admin/feeds/{feed}"));
+        var form = FormElement().Matches(page).Single(f => f.Value.Contains("upstreams/add", StringComparison.Ordinal)).Value;
+        var fields = HiddenFields(form);
+        foreach (var (key, value) in upstream)
+        {
+            fields[key] = value;
+        }
+
+        using var genuine = new FormUrlEncodedContent(fields);
+        HttpAssert.Status(HttpStatusCode.Redirect, await client.PostAsync($"/admin/feeds/{feed}/upstreams/add", genuine));
+        Assert.Single((await FindFeedAsync(feed))!.Upstreams);
+    }
+
     /// <summary>The HTML of the form whose hidden _handler field carries this form name.</summary>
     private static string FormBlock(string html, string formName)
     {
