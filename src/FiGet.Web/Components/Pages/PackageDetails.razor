@@ -274,7 +274,7 @@
                             </td>
                             <td class="fg-num">@(local ? Display.Date(row.PublishedUtc) : Display.None)</td>
                             <td class="fg-num">@(local ? Display.Size(row.Size) : Display.None)</td>
-                            <td class="fg-num">@Display.Count(row.Downloads)</td>
+                            <td class="fg-num" title="@(local ? null : "The gallery reports only a total for the whole package, not per version")">@(local ? Display.Count(row.Downloads) : Display.None)</td>
                             <td class="fg-cell-actions">
                                 @if (local)
                                 {

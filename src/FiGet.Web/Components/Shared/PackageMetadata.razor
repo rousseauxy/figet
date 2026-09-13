@@ -16,7 +16,7 @@
         <dt>Origin</dt><dd>@Origin</dd>
         <dt>Published</dt><dd class="fg-num">@Display.Date(Row.PublishedUtc)</dd>
         <dt>Size</dt><dd class="fg-num">@(IsLocal ? Display.Size(Row.Size) : Display.None)</dd>
-        <dt>Downloads</dt><dd class="fg-num">@Display.Count(Row.Downloads)</dd>
+        <dt>Downloads</dt><dd class="fg-num">@(IsLocal ? Display.Count(Row.Downloads) : Display.None)</dd>
         <dt>Licence</dt>
         <dd>
             @if (Row.LicenseExpression is { Length: > 0 } expression)
