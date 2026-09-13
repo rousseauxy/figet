@@ -2460,3 +2460,25 @@ build of the falsified file left the DLL's timestamp equal to the source's, so t
 full suite ran the falsified code. Touching the file forced the rebuild.
 
 Suites: unit 132/0; integration 360/0 on SQLite and on SQL Server.
+
+## The overview and the package page agree on "latest"; prerelease is a switch - 2026-09-13
+
+Reported by the tester: PnP.PowerShell showed 1.11.0 as latest in the feed overview (the cached copy) and
+3.4.25-nightly on its own page. Two causes: the overview took the latest from the versions stored locally, while the
+package page merged in the upstream's list; and both counted prereleases.
+
+- **Same merge on both**: the overview now merges each proxy-feed row with what is already stored about the upstream
+  (`ConnectorService.StoredUpstreamCandidatesAsync`: the owning upstream's persisted catalogue, no network call, a stale
+  one queued for refresh), so a row shows the version its page opens on.
+- **Latest stable by default**: `VersionListBuilder.Shown` picks the latest stable version, or with prerelease on the
+  absolute latest; a package with only prereleases shows its newest one either way.
+- **Prerelease switch** (`?pre=1`): a checkbox in the overview's search bar (upstream search follows it too) and a link
+  under the package page's version lists ("N prerelease versions hidden. Show prerelease versions"), carried from the
+  overview to the package page and across its tabs. Off, prerelease versions are left out of the version lists.
+  Protocol answers are unchanged: clients ask for prerelease themselves.
+
+Test: `PackagePageTests` - an old version cached, the upstream holding a newer stable and a nightly: the overview and the
+package page both show the stable one and hide the nightly, and with the switch on both show the nightly and the
+overview's link carries the switch. With the overview's upstream merge removed, it fails.
+
+Suites: unit 132/0; integration 361/0 on SQLite and on SQL Server.

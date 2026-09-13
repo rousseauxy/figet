@@ -37,6 +37,43 @@ public sealed class PackagePageTests(ProxyServerFixture server) : IClassFixture<
     }
 
     /// <summary>
+    /// The feed overview and the package page agree on the version they show (reported by the tester, 2026-09-13): an old cached copy
+    /// must not read as the latest while the upstream has newer, and the latest shown is the stable one unless
+    /// prerelease is switched on - on both pages, carried from one to the other.
+    /// </summary>
+    [Fact]
+    public async Task The_overview_and_the_package_page_show_the_same_latest_and_prerelease_is_a_switch()
+    {
+        var id = FiGetServerFixture.UniqueId("Latest.Agrees");
+        using (var old = TestPackages.Create(id, "1.0.0"))
+        {
+            server.Upstream.Add(id, "1.0.0", old.ToArray());
+        }
+
+        server.Upstream.AddVersions(id, ["2.0.0", "3.0.0-nightly.1"]);
+        using var client = server.CreateClient();
+        var lower = id.ToLowerInvariant();
+        HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync($"nuget/proxy/v3/flatcontainer/{lower}/1.0.0/{lower}.1.0.0.nupkg"));
+
+        var overview = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"feeds/proxy?q={id}&src=cached"));
+        Assert.Contains("<td class=\"fg-num\">2.0.0", overview, StringComparison.Ordinal);
+        Assert.DoesNotContain("<td class=\"fg-num\">1.0.0", overview, StringComparison.Ordinal);
+
+        var package = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"feeds/proxy/packages/{id}"));
+        Assert.Contains($"-RequiredVersion 2.0.0 ", package, StringComparison.Ordinal);
+        Assert.Contains("1 prerelease version hidden", package, StringComparison.Ordinal);
+        Assert.DoesNotContain(">3.0.0-nightly.1</a>", package, StringComparison.Ordinal);
+
+        var withPrerelease = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"feeds/proxy?q={id}&src=cached&pre=1"));
+        Assert.Contains("<td class=\"fg-num\">3.0.0-nightly.1", withPrerelease, StringComparison.Ordinal);
+        Assert.Contains($"packages/{id}?pre=1", withPrerelease, StringComparison.Ordinal);
+
+        package = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"feeds/proxy/packages/{id}?pre=1"));
+        Assert.Contains("-RequiredVersion 3.0.0-nightly.1 ", package, StringComparison.Ordinal);
+        Assert.Contains(">3.0.0-nightly.1</a>", package, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// A size nobody offered falls back to the default. The rows are rendered server-side, so without this
     /// a hand-typed <c>per=100000</c> would render every version of a package that has 2098 of them.
     /// </summary>

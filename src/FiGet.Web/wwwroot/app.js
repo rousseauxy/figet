@@ -266,7 +266,7 @@
     // reads as broken. Without script the form still works; it just takes the extra press.
 
     document.addEventListener("change", function (event) {
-        var select = event.target.closest("select[data-autosubmit]");
+        var select = event.target.closest("select[data-autosubmit], input[type=checkbox][data-autosubmit]");
         if (select && select.form) {
             select.form.submit();
         }

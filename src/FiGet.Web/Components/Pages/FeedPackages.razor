@@ -63,8 +63,12 @@
             </select>
         }
         <button type="submit">Search</button>
+        @* Off by default, like a gallery: the version a row shows is the latest stable one. *@
+        <label class="fg-check fg-search-toggle" title="Show prerelease versions as the latest">
+            <input type="checkbox" name="pre" value="1" checked="@IncludePrerelease" data-autosubmit /> Prerelease
+        </label>
     </form>
-    @if (Q?.Length > 0 || Src.Length > 0)
+    @if (Q?.Length > 0 || Src.Length > 0 || IncludePrerelease)
     {
         <a class="fg-btn fg-btn-ghost" href="/feeds/@feed.Name">Clear</a>
     }
@@ -105,8 +109,8 @@ else
                            every version the upstreams report and describes them, which is the whole point
                            of a proxy feed. Leaving those rows as plain text made the one case a proxy
                            exists for the one case you could not click. *@
-                        <td><a href="/feeds/@feed.Name/packages/@row.Id">@Display.BreakableId(row.Id)</a></td>
-                        <td class="fg-num">@row.Latest</td>
+                        <td><a href="@PackageLink(row.Id)">@Display.BreakableId(row.Id)</a></td>
+                        <td class="fg-num">@row.Latest @if (row.Latest.Contains('-')) { <span class="fg-badge fg-badge-warn">prerelease</span> }</td>
                         <td class="fg-num">@(row.Versions > 0 ? row.Versions.ToString(CultureInfo.InvariantCulture) : Display.None)</td>
                         <td><span class="fg-badge @SourceBadge(row.Source)">@row.Source</span></td>
                         <td class="fg-num">@(row.Local ? Display.Count(row.Downloads) : Display.None)</td>
@@ -163,6 +167,15 @@ else
 
     [SupplyParameterFromQuery(Name = "page")]
     private int Page { get; set; }
+
+    [SupplyParameterFromQuery(Name = "pre")]
+    private string? Pre { get; set; }
+
+    private bool IncludePrerelease => Pre == "1";
+
+    /// <summary>A package's page, with the prerelease choice carried over so it opens on the version the row shows.</summary>
+    private string PackageLink(string id) =>
+        $"/feeds/{Uri.EscapeDataString(Name)}/packages/{Uri.EscapeDataString(id)}" + (IncludePrerelease ? "?pre=1" : "");
 
     [SupplyParameterFromQuery(Name = "sort")]
     private string? SortField { get; set; }
@@ -242,8 +255,11 @@ else
                 continue;
             }
 
-            var list = VersionListBuilder.BuildLocal(package.Versions, includeSemVer2: true);
-            var latest = list.Latest(includePrerelease: true) ?? list[^1];
+            // The same merge the package page makes, from what is already stored about the upstream, so the version a row
+            // shows is the one its page opens on: a cached old version must not read as the latest while the gallery has newer.
+            var upstream = IsProxy ? await Connector.StoredUpstreamCandidatesAsync(feed!, package, package.IdLower, HttpContext.RequestAborted) : [];
+            var list = VersionListBuilder.Build(package.Versions.Select(VersionListBuilder.ToCandidate).Concat(upstream), includeSemVer2: true);
+            var latest = list.Shown(IncludePrerelease)!;
             rows.Add(new Row(
                 package.Id,
                 latest.Payload!.NormalizedVersion,
@@ -258,7 +274,7 @@ else
     private async Task AddUpstreamAsync()
     {
         var known = rows.Select(r => r.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var hits = await Connector.SearchUpstreamsAsync(feed!, Q!, includePrerelease: true, PageSize, HttpContext.RequestAborted);
+        var hits = await Connector.SearchUpstreamsAsync(feed!, Q!, includePrerelease: IncludePrerelease, PageSize, HttpContext.RequestAborted);
 
         foreach (var hit in hits.Where(h => !known.Contains(h.Id)))
         {
@@ -321,6 +337,11 @@ else
         if (sort is not null)
         {
             link += "&sort=" + sort.Field.ToString().ToLowerInvariant() + (sort.Descending ? "&dir=desc" : "");
+        }
+
+        if (IncludePrerelease)
+        {
+            link += "&pre=1";
         }
 
         return link;

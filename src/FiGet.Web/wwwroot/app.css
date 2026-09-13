@@ -1174,3 +1174,6 @@ input[type=date] { color-scheme: inherit; }
 .fg-instruction-caption { margin: 0.8rem 0 0.25rem; font-size: 0.78rem; color: var(--text-2); font-weight: 600; }
 .fg-connect { margin: 0.25rem 0 1rem; }
 textarea.fg-mono { font-family: var(--font-mono); font-size: 0.8rem; }
+
+/* The prerelease switch sits in the search bar beside the button. */
+.fg-search-toggle { margin: 0 0.25rem 0 0.5rem; white-space: nowrap; font-size: 0.84rem; }

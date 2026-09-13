@@ -133,14 +133,15 @@
                 </form>
             </section>
         }
-        @if (Hidden > 0)
+        @if (UnlistedHidden > 0)
         {
             <p class="fg-muted">
-                @Hidden unlisted version@(Hidden == 1 ? "" : "s") hidden, as the gallery hides
-                @(Hidden == 1 ? "it" : "them"). @(Hidden == 1 ? "It stays" : "They stay") installable
+                @UnlistedHidden unlisted version@(UnlistedHidden == 1 ? "" : "s") hidden, as the gallery hides
+                @(UnlistedHidden == 1 ? "it" : "them"). @(UnlistedHidden == 1 ? "It stays" : "They stay") installable
                 by exact version.
             </p>
         }
+        @PrereleaseNote
         break;
 
     default:
@@ -166,14 +167,15 @@
         {
             <p class="fg-result-count"><a href="@TabLink("versions")">Show all @visible.Count versions</a>.</p>
         }
-        @if (Hidden > 0)
+        @if (UnlistedHidden > 0)
         {
             <p class="fg-muted">
-                @Hidden unlisted version@(Hidden == 1 ? "" : "s") hidden, as the gallery hides
-                @(Hidden == 1 ? "it" : "them"). @(Hidden == 1 ? "It stays" : "They stay") installable
+                @UnlistedHidden unlisted version@(UnlistedHidden == 1 ? "" : "s") hidden, as the gallery hides
+                @(UnlistedHidden == 1 ? "it" : "them"). @(UnlistedHidden == 1 ? "It stays" : "They stay") installable
                 by exact version.
             </p>
         }
+        @PrereleaseNote
 
         break;
 }
@@ -334,20 +336,43 @@
     /// <summary>Newest first, because that is the version being looked for.</summary>
     private IEnumerable<VersionListEntry<PackageVersion>> Rows => visible.Reverse().Skip(Skip).Take(PageSize);
 
-    /// <summary>How many versions are held back from the tables, so the count is never quietly wrong.</summary>
-    private int Hidden => versions.Count - visible.Count;
+    [SupplyParameterFromQuery(Name = "pre")]
+    private string? Pre { get; set; }
+
+    /// <summary>Prerelease versions shown, and counted as the latest. Off by default, like a gallery.</summary>
+    private bool IncludePrerelease => Pre == "1";
+
+    /// <summary>Unlisted versions held back from the tables, so the count is never quietly wrong.</summary>
+    private int UnlistedHidden => versions.Count(e => !e.Listed);
+
+    /// <summary>Listed prerelease versions held back while prerelease is off.</summary>
+    private int PrereleaseHidden => IncludePrerelease ? 0 : versions.Count(e => e.Listed && e.Version.IsPrerelease && !ReferenceEquals(e, latest));
+
+    /// <summary>The switch, with what it hides or shows, under each version list.</summary>
+    private RenderFragment PrereleaseNote => __builder =>
+    {
+        if (IncludePrerelease && versions.Any(e => e.Listed && e.Version.IsPrerelease))
+        {
+            <p class="fg-muted">Prerelease versions shown. <a href="@TabLink(CurrentTab, prerelease: false)">Show stable versions only</a>.</p>
+        }
+        else if (PrereleaseHidden > 0)
+        {
+            <p class="fg-muted">@PrereleaseHidden prerelease version@(PrereleaseHidden == 1 ? "" : "s") hidden. <a href="@TabLink(CurrentTab, prerelease: true)">Show prerelease versions</a>.</p>
+        }
+    };
 
     private string Active(string tab) => CurrentTab == tab ? "active" : "";
 
-    private string TabLink(string tab, int? page = null, int? per = null)
+    private string TabLink(string tab, int? page = null, int? per = null, bool? prerelease = null)
     {
         var link = $"/feeds/{Uri.EscapeDataString(Name)}/packages/{Uri.EscapeDataString(displayId)}";
+        var pre = prerelease ?? IncludePrerelease;
         if (tab.Length == 0)
         {
-            return link;
+            return pre ? link + "?pre=1" : link;
         }
 
-        link += "?tab=" + tab;
+        link += "?tab=" + tab + (pre ? "&pre=1" : "");
         if (page is not null)
         {
             link += "&page=" + page.Value.ToString(CultureInfo.InvariantCulture);
@@ -396,8 +421,8 @@
             .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream.Versions), includeSemVer2: true)
             .Where(entry => entry.Payload is not null)];
 
-        visible = [.. versions.Where(entry => entry.Listed)];
-        latest = versions.Latest(includePrerelease: true) ?? versions[^1];
+        latest = versions.Shown(IncludePrerelease)!;
+        visible = [.. versions.Where(entry => entry.Listed && (IncludePrerelease || !entry.Version.IsPrerelease || ReferenceEquals(entry, latest)))];
         shown = latest.Payload;
         dependencies = [.. shown!.Dependencies.OrderBy(dependency => dependency.Ordinal)];
 

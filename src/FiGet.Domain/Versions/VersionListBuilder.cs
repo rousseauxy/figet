@@ -95,6 +95,13 @@ public static class VersionListBuilder
     public static VersionListEntry<T>? Latest<T>(this IReadOnlyList<VersionListEntry<T>> list, bool includePrerelease) =>
         list.LastOrDefault(e => includePrerelease ? e.IsAbsoluteLatestVersion : e.IsLatestVersion);
 
+    /// <summary>
+    /// The version a page shows for a package: the latest stable, or with prerelease the absolute latest. A package with
+    /// only prereleases shows its newest prerelease either way, rather than nothing.
+    /// </summary>
+    public static VersionListEntry<T>? Shown<T>(this IReadOnlyList<VersionListEntry<T>> list, bool includePrerelease) =>
+        list.Latest(includePrerelease) ?? list.Latest(includePrerelease: true) ?? (list.Count > 0 ? list[^1] : null);
+
     /// <summary>One local row as a merge candidate, so callers can merge it with upstream candidates.</summary>
     public static VersionCandidate<PackageVersion> ToCandidate(PackageVersion v)
     {

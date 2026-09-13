@@ -233,6 +233,51 @@ public sealed class ConnectorService(
     /// Makes sure one exact version exists locally, fetching it from the first upstream that has it and
     /// storing it as a cached package. Returns the local row, or null when no upstream has that version.
     /// </summary>
+    /// <summary>
+    /// The upstream versions of an id as far as this server already knows them, for a listing: from the stored catalogue
+    /// only, never a request, so a page of packages costs a database read each rather than a round trip to a gallery. The
+    /// first upstream in priority order that holds the id owns it, as everywhere else, and an id pushed to the feed has
+    /// none. A stale catalogue is still used and queued for refresh, so the next listing is current.
+    /// </summary>
+    public async Task<IReadOnlyList<VersionCandidate<PackageVersion>>> StoredUpstreamCandidatesAsync(Feed feed, Package? local, string idLower, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(feed);
+        if (feed.Upstreams.Count == 0 || (!feed.MergePushedIdsWithUpstreams && local?.Versions.Any(v => v.Origin == PackageOrigin.Pushed) == true))
+        {
+            return [];
+        }
+
+        foreach (var upstream in feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal))
+        {
+            if (!Allows(upstream, idLower))
+            {
+                continue;
+            }
+
+            var cached = await index.FindAsync(upstream.Key, idLower, cancellationToken);
+            if (cached is null || cached.Versions.Count == 0)
+            {
+                continue;
+            }
+
+            if (cached.Stale)
+            {
+                refreshes.Enqueue(upstream, idLower);
+            }
+
+            return cached.Versions
+                .Select(v => new VersionCandidate<PackageVersion>(
+                    v.Version,
+                    cached.Unlisted?.Contains(v.Version.ToNormalizedString()) != true,
+                    v.IsSemVer2,
+                    VersionSource.Upstream,
+                    Placeholder(idLower, v)))
+                .ToList();
+        }
+
+        return [];
+    }
+
     public async Task<PackageVersion?> EnsureCachedAsync(Feed feed, string id, NuGetVersion version, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(feed);
