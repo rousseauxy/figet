@@ -903,8 +903,8 @@ legend {
 /* Panels stacked in the admin body, one per section: without a gap their borders touched and read as one
    box with a seam. The facts under a settings form get a rule, so the Save button ends the form instead of
    sitting on top of the first fact. */
-.fg-admin-body .fg-panel + .fg-panel { margin-top: 1rem; }
-.fg-admin-body h2 + .fg-panel { margin-top: 0.5rem; }
+:not(.fg-panel-grid) > .fg-panel + .fg-panel { margin-top: 1rem; }
+h2 + .fg-panel { margin-top: 0.5rem; }
 .fg-panel .fg-form + .fg-facts {
   margin-top: 1rem;
   padding-top: 0.9rem;

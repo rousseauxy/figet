@@ -26,6 +26,8 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
 
     public DbSet<CachedUpstreamIndex> CachedUpstreamIndexes => Set<CachedUpstreamIndex>();
 
+    public DbSet<User> Users => Set<User>();
+
     public DbSet<CachedUpstreamDescription> CachedUpstreamDescriptions => Set<CachedUpstreamDescription>();
 
     public DbSet<CachedUpstreamTagSet> CachedUpstreamTagSets => Set<CachedUpstreamTagSet>();
@@ -92,6 +94,20 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.Property(x => x.Dependencies).IsRequired().HasDefaultValue("");
             e.HasIndex(x => new { x.FeedUpstreamKey, x.IdLower }).IsUnique();
             e.HasOne(x => x.FeedUpstream).WithMany().HasForeignKey(x => x.FeedUpstreamKey).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<User>(e =>
+        {
+            e.ToTable("Users");
+            e.HasKey(x => x.Key);
+            e.Property(x => x.UserName).HasMaxLength(64);
+            e.Property(x => x.UserNameLower).HasMaxLength(64);
+            e.HasIndex(x => x.UserNameLower).IsUnique();
+            e.Property(x => x.DisplayName).HasMaxLength(128);
+            e.Property(x => x.Email).HasMaxLength(256);
+            e.Property(x => x.PasswordHash).HasMaxLength(256);
+            e.Property(x => x.Role).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.SecurityStamp).HasMaxLength(64);
         });
 
         modelBuilder.Entity<CachedUpstreamDescription>(e =>

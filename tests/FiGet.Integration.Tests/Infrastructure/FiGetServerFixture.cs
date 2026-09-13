@@ -32,6 +32,11 @@ public abstract class FiGetServerFixture : IAsyncLifetime
 
     public const string AdminToken = "figet_test_admin_token_0123456789abcdef";
 
+    /// <summary>A super admin every fixture has, with a password that needs no change, for signing in to the pages.</summary>
+    public const string AdminUserName = "tester";
+
+    public const string AdminPassword = "figet-test-password-0123";
+
     private readonly string root = Path.Combine(Path.GetTempPath(), "figet-it-" + Guid.NewGuid().ToString("N"));
     private WebApplicationFactory<Program>? factory;
     private string? sqlServerDatabase;
@@ -110,6 +115,25 @@ public abstract class FiGetServerFixture : IAsyncLifetime
         if (db.Database.ProviderName != expected || (Database == TestDatabase.Sqlite && !File.Exists(Path.Combine(root, "figet.db"))))
         {
             throw new InvalidOperationException($"The test server is not using the expected database: provider {db.Database.ProviderName}, expected {expected}.");
+        }
+
+        // Written straight to the store rather than through the account rules: those would demand a password change
+        // at the first sign-in, which every page test would then have to walk through first.
+        var users = scope.ServiceProvider.GetRequiredService<FiGet.Application.Ports.IUserStore>();
+        if (await users.FindByUserNameAsync(AdminUserName, CancellationToken.None) is null)
+        {
+            var hasher = scope.ServiceProvider.GetRequiredService<FiGet.Application.Ports.IPasswordHasher>();
+            await users.AddAsync(
+                new FiGet.Domain.Entities.User
+                {
+                    UserName = AdminUserName,
+                    UserNameLower = AdminUserName,
+                    Role = FiGet.Domain.Entities.UserRole.SuperAdmin,
+                    PasswordHash = hasher.Hash(AdminPassword),
+                    SecurityStamp = Guid.NewGuid().ToString("N"),
+                    CreatedUtc = DateTime.UtcNow,
+                },
+                CancellationToken.None);
         }
     }
 

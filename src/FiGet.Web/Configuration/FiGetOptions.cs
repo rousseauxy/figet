@@ -155,10 +155,22 @@ public sealed class ConnectorOptions
 public sealed class AuthOptions
 {
     /// <summary>
-    /// An admin token secret registered on start. When empty and no admin token exists, one is generated and
-    /// written to the log once. Set this in clusters, from a secret, so every replica agrees.
+    /// A service token with admin scope registered on start, for automation that must work before anyone has signed in.
+    /// It does not sign in to the web UI; people use accounts.
     /// </summary>
     public string? BootstrapAdminToken { get; set; }
+
+    /// <summary>Resets an account on start when nobody can sign in any more. Remove after use.</summary>
+    public RecoveryOptions Recovery { get; set; } = new();
+}
+
+public sealed class RecoveryOptions
+{
+    /// <summary>The account to recover; created when it does not exist.</summary>
+    public string? UserName { get; set; }
+
+    /// <summary>A password to sign in with once; a new one is required straight after.</summary>
+    public string? Password { get; set; }
 }
 
 public sealed class LimitsOptions

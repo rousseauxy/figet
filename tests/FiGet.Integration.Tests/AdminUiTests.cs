@@ -58,7 +58,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         HttpAssert.Status(HttpStatusCode.Redirect, anonymous);
         Assert.Contains("/account/login", anonymous.Headers.Location!.ToString(), StringComparison.Ordinal);
 
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
 
         foreach (var path in new[] { "/admin", "/admin/" })
         {
@@ -74,20 +74,20 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         using var client = CreateBrowser();
         HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync("/feeds/private"));
 
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
         await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/private"));
     }
 
     [Fact]
-    public async Task A_wrong_token_is_refused_and_an_admin_token_signs_in()
+    public async Task A_wrong_password_is_refused_and_the_right_one_signs_in()
     {
         using var client = CreateBrowser();
 
-        var refused = await SignInAsync(client, "figet_wrong");
+        var refused = await BrowserSignIn.SignInAsync(client, FiGetServerFixture.AdminUserName, "not-the-password");
         HttpAssert.Status(HttpStatusCode.OK, refused);
-        Assert.Contains("not a valid admin token", await refused.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        Assert.Contains("The user name or password is not right.", await refused.Content.ReadAsStringAsync(), StringComparison.Ordinal);
 
-        var accepted = await SignInAsync(client, FiGetServerFixture.AdminToken);
+        var accepted = await BrowserSignIn.SignInAsync(client);
         HttpAssert.Status(HttpStatusCode.Redirect, accepted);
 
         var feeds = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/"));
@@ -106,21 +106,27 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/public"));
     }
 
+    /// <summary>
+    /// An API token no longer opens the pages, admin scope or not: people sign in with accounts, and a key is for
+    /// clients. Tried as the password of the token's own name and of a real account.
+    /// </summary>
     [Fact]
-    public async Task A_non_admin_token_cannot_sign_in()
+    public async Task An_api_token_does_not_sign_in_to_the_pages()
     {
         using var client = CreateBrowser();
-        var response = await SignInAsync(client, await CreatePushTokenAsync());
-
-        HttpAssert.Status(HttpStatusCode.OK, response);
-        Assert.Contains("not a valid admin token", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        foreach (var (user, secret) in new[] { ("bootstrap", FiGetServerFixture.AdminToken), (FiGetServerFixture.AdminUserName, FiGetServerFixture.AdminToken) })
+        {
+            var response = await BrowserSignIn.SignInAsync(client, user, secret);
+            HttpAssert.Status(HttpStatusCode.OK, response);
+            Assert.Contains("The user name or password is not right.", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        }
     }
 
     [Fact]
     public async Task The_feed_list_copies_a_url_and_the_admin_area_links_to_settings()
     {
         using var client = CreateBrowser();
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
 
         // Copying a source URL is reading, so it stays on the page anyone can see.
         var feeds = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/"));
@@ -141,7 +147,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
     public async Task A_feed_page_links_its_settings_into_the_admin_area()
     {
         using var client = CreateBrowser();
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
 
         var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/public"));
 
@@ -153,7 +159,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
     public async Task Feed_settings_can_be_changed()
     {
         using var client = CreateBrowser();
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
         var feed = await CreateFeedAsync("settings-target", anonymousRead: false);
 
         var before = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/admin/feeds/{feed}"));
@@ -183,7 +189,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
     public async Task A_chosen_theme_is_stored_and_linked_by_every_page()
     {
         using var client = CreateBrowser();
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
 
         var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/appearance"));
         Assert.Contains("cobalt", page, StringComparison.Ordinal);
@@ -223,7 +229,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
     public async Task An_asset_directory_is_created_from_its_own_tab()
     {
         using var client = CreateBrowser();
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
         var name = "dir-" + Guid.NewGuid().ToString("N")[..8];
 
         var feeds = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/feeds"));
@@ -250,7 +256,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
     public async Task A_pull_returns_to_its_page_with_the_counts()
     {
         using var client = CreateBrowser();
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
 
         var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/feeds"));
         var fields = HiddenFields(FormBlock(page, "create-feed"));
@@ -273,7 +279,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
     public async Task A_feed_is_deleted_only_when_its_name_is_typed_exactly()
     {
         using var client = CreateBrowser();
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
         var feed = await CreateFeedAsync("delete-target", anonymousRead: true);
 
         var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/admin/feeds/{feed}"));
@@ -308,7 +314,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
     public async Task An_admin_button_post_without_its_page_token_changes_nothing()
     {
         using var client = CreateBrowser();
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
         var feed = await CreateFeedAsync("forgery-target", anonymousRead: true);
         var upstream = new Dictionary<string, string> { ["name"] = "forged", ["url"] = "https://example.invalid/v3/index.json", ["kind"] = "V3" };
 
@@ -389,23 +395,6 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = true, CookieContainer = new CookieContainer() }) { BaseAddress = server.BaseAddress };
 
     /// <summary>Fetches the login form (for its antiforgery token and field names) and posts it.</summary>
-    private static async Task<HttpResponseMessage> SignInAsync(HttpClient client, string token)
-    {
-        var form = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/account/login"));
-        var fields = new Dictionary<string, string>();
-        foreach (Match hidden in HiddenInput().Matches(form))
-        {
-            fields[WebUtility.HtmlDecode(hidden.Groups["name"].Value)] = WebUtility.HtmlDecode(hidden.Groups["value"].Value);
-        }
-
-        var tokenField = TokenInputName().Match(form);
-        Assert.True(tokenField.Success, "The login form has no token input.");
-        fields[WebUtility.HtmlDecode(tokenField.Groups["name"].Value)] = token;
-
-        using var content = new FormUrlEncodedContent(fields);
-        return await client.PostAsync("/account/login", content);
-    }
-
     private async Task<string> CreatePushTokenAsync()
     {
         await using var scope = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.CreateAsyncScope(server.Services);
@@ -419,6 +408,4 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
     [GeneratedRegex("<form[^>]*>.*?</form>", RegexOptions.Singleline | RegexOptions.CultureInvariant)]
     private static partial Regex FormElement();
 
-    [GeneratedRegex("<input[^>]*id=\"token\"[^>]*name=\"(?<name>[^\"]+)\"|<input[^>]*name=\"(?<name>[^\"]+)\"[^>]*id=\"token\"", RegexOptions.CultureInvariant)]
-    private static partial Regex TokenInputName();
 }

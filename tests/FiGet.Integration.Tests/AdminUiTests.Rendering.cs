@@ -31,7 +31,7 @@ public sealed partial class AdminUiTests
         using var client = CreateBrowser();
         if (signedIn)
         {
-            HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+            HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
         }
 
         foreach (var path in signedIn ? new[] { "/", "/feeds/public", "/admin/feeds" } : ["/", "/feeds/public"])
@@ -64,7 +64,7 @@ public sealed partial class AdminUiTests
         Assert.DoesNotContain("fg-nav-dropdown", anonymous, StringComparison.Ordinal);
         Assert.DoesNotContain("Sign out", anonymous, StringComparison.Ordinal);
 
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
         var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/public"));
 
         Assert.Contains("fg-nav-dropdown", page, StringComparison.Ordinal);
@@ -90,7 +90,7 @@ public sealed partial class AdminUiTests
     public async Task The_admin_area_keeps_the_site_chrome()
     {
         using var client = CreateBrowser();
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
 
         var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/feeds"));
 

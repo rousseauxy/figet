@@ -2219,3 +2219,37 @@ Also stale and removed from the backlog: per-version leaves for upstream-only ve
 above admin and the audit log page are left for the SSO / authentication plan.
 
 Suites: unit 107/0; integration 280/0 on SQLite and on SQL Server.
+
+## Accounts, phase 1: local users and roles - 2026-09-13
+
+`docs/auth-plan.md` records the decisions for accounts, single sign-on and per-feed permissions, taken with the owner
+the same day. This is its first phase.
+
+- **The admin-token sign-in is gone.** People sign in with a user name and password. `BootstrapAdminToken` still
+  registers a service token for automation; it no longer opens the pages.
+- **The first administrator** is created when no account exists: `admin` / `admin`, super admin, and every page
+  redirects to `/account/password` until a new password is chosen. Protocol paths are not affected.
+- **Roles: super admin, admin, user.** A super admin carries the admin role claim too, so every existing admin check
+  admits them. An admin manages accounts with the user role only; a super admin manages every account. Nobody changes
+  their own role, disables or deletes themselves, and the last enabled super admin cannot be demoted, disabled or
+  deleted.
+- **Passwords**: ASP.NET Core Identity's `PasswordHasher` on its own (in Infrastructure, behind `IPasswordHasher`),
+  at least 12 characters, rehashed when the algorithm moves on. Five failures lock an account for fifteen minutes; an
+  unknown user costs the same hashing time as a wrong password, and neither says which it was.
+- **Sessions end when access changes.** The cookie carries the account's security stamp, checked on every request;
+  password, role and disabled changes move it. A cookie from the token sign-in has no account and is refused.
+- **Recovery** from configuration (`FiGet:Auth:Recovery:UserName` / `Password`), warned about on every start while set.
+- **Pages**: sign-in (`/account/login`, and `/account/login/local` for the SSO phase), change password, profile, and
+  `/admin/users` (create, role, reset password, disable, enable, delete). The signed-in menu shows Profile to everyone
+  and the admin links only to admins.
+
+Tests: `AccountTests` (first administrator, lockout, a disabled session ending, a user kept out of the admin area, an
+admin limited to users, the last super admin, creating an account from the page) and `RecoveryTests`; every page test
+now signs in as a seeded super admin through the real form. With the stamp check and the password-change redirect
+disabled, the session and first-administrator tests fail. Walked through by hand on a fresh instance: `admin`/`admin`,
+redirected from `/admin/feeds` to the password page, password changed, a user created from the users page.
+
+Not deployed with this commit: the live instance would start with `admin` / `admin` on a public address until someone
+signs in and changes it, so the deploy waits for the owner.
+
+Suites: unit 107/0; integration 288/0 on SQLite and on SQL Server.

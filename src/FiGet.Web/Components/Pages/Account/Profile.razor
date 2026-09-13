@@ -1,0 +1,110 @@
+@page "/account/profile"
+@attribute [Authorize]
+@using FiGet.Application.Accounts
+@inject AccountService Accounts
+@inject IUserStore Users
+@inject FiGet.Http.AuditLog Audit
+
+@*
+    The signed-in account's own page. Sign-in providers to connect, and personal API keys, arrive here in later phases
+    of docs/auth-plan.md.
+*@
+
+<PageTitle>Profile · FiGet</PageTitle>
+
+@if (user is null)
+{
+    return;
+}
+
+<h1>@user.UserName</h1>
+
+@if (message is not null)
+{
+    <div class="fg-alert fg-alert-ok" role="status">@message</div>
+}
+
+<section class="fg-panel">
+    <h2>Profile</h2>
+    <EditForm Model="Input!" FormName="profile" OnValidSubmit="SaveAsync" method="post" class="fg-form">
+        <div class="fg-field">
+            <label for="display-name">Display name</label>
+            <InputText id="display-name" @bind-Value="Input!.DisplayName" maxlength="128" />
+        </div>
+        <div class="fg-field">
+            <label for="email">Email</label>
+            <InputText id="email" type="email" @bind-Value="Input!.Email" maxlength="256" />
+        </div>
+        <button type="submit" class="fg-btn fg-btn-primary">Save profile</button>
+    </EditForm>
+
+    <dl class="fg-facts">
+        <dt>Role</dt><dd>@RoleName(user.Role)</dd>
+        <dt>Member since</dt><dd class="fg-num">@user.CreatedUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</dd>
+        <dt>Last sign-in</dt><dd class="fg-num">@(user.LastSignInUtc?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? Display.None)</dd>
+    </dl>
+</section>
+
+<section class="fg-panel">
+    <h2>Password</h2>
+    @if (user.PasswordHash is null)
+    {
+        <p class="fg-muted fg-small">This account signs in through a sign-in provider and has no password here.</p>
+    }
+    else
+    {
+        <p><a class="fg-btn" href="/account/password">Change password</a></p>
+    }
+</section>
+
+@code {
+    private User? user;
+    private string? message;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "profile")]
+    private ProfileInput? Input { get; set; }
+
+    [SupplyParameterFromQuery(Name = "saved")]
+    private string? Saved { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        Input ??= new ProfileInput { DisplayName = user?.DisplayName ?? "", Email = user?.Email ?? "" };
+        if (Saved == "password")
+        {
+            message = "Password changed.";
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        var actor = FiGetApp.Actor(HttpContext.User);
+        user = actor is null ? null : await Users.FindAsync(actor.Key, HttpContext.RequestAborted);
+    }
+
+    private async Task SaveAsync()
+    {
+        await Accounts.UpdateProfileAsync(user!.Key, Input!.DisplayName, Input.Email, HttpContext.RequestAborted);
+        Audit.Record(HttpContext, "account.profile", user.UserName);
+        message = "Profile saved.";
+        await LoadAsync();
+    }
+
+    public static string RoleName(UserRole role) => role switch
+    {
+        UserRole.SuperAdmin => "Super admin",
+        UserRole.Admin => "Admin",
+        _ => "User",
+    };
+
+    private sealed class ProfileInput
+    {
+        public string DisplayName { get; set; } = "";
+
+        public string Email { get; set; } = "";
+    }
+}

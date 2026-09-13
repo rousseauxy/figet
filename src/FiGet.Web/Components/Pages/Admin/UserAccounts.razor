@@ -1,0 +1,242 @@
+@page "/admin/users"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@layout AdminLayout
+@using System.ComponentModel.DataAnnotations
+@using FiGet.Application.Accounts
+@inject IUserStore Users
+@inject AccountService Accounts
+@inject FiGet.Http.AuditLog Audit
+
+@*
+    Accounts. An admin manages accounts with the user role; a super admin manages every account. Buttons on a row
+    post to /admin/users/{key}/... and come back here with a fixed outcome code, so nothing from the address bar is
+    ever shown as text.
+*@
+
+<PageTitle>Users · admin · FiGet</PageTitle>
+
+<h1>Users</h1>
+<p class="fg-lede">
+    People who sign in. @(actor?.Role == UserRole.SuperAdmin
+        ? "As a super admin you manage every account."
+        : "As an admin you manage accounts with the user role; admins and super admins are managed by a super admin.")
+</p>
+
+@if (Message is { } shown)
+{
+    <div class="fg-alert @(shown.Error ? "fg-alert-danger" : "fg-alert-ok")" role="status">@shown.Text</div>
+}
+
+<div class="fg-table-wrap">
+    <table class="fg-table">
+        <thead>
+            <tr>
+                <th>User</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Last sign-in</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var user in users)
+            {
+                var manageable = user.Key != actor?.Key && actor is not null && AccountService.CanManage(actor, user.Role);
+                <tr class="@(user.IsDisabled ? "is-inactive" : "")">
+                    <td>
+                        <strong>@user.UserName</strong>
+                        @if (!string.IsNullOrEmpty(user.DisplayName) || !string.IsNullOrEmpty(user.Email))
+                        {
+                            <div class="fg-small fg-muted">@user.DisplayName @(string.IsNullOrEmpty(user.Email) ? "" : $"<{user.Email}>")</div>
+                        }
+                    </td>
+                    <td>
+                        @if (manageable)
+                        {
+                            <form method="post" action="/admin/users/@user.Key/role" class="fg-row fg-inline-form">
+                                <AntiforgeryToken />
+                                <select name="role" aria-label="Role of @user.UserName" data-autosubmit>
+                                    @foreach (var role in AssignableRoles)
+                                    {
+                                        <option value="@role" selected="@(user.Role == role)">@FiGet.Web.Components.Pages.Account.Profile.RoleName(role)</option>
+                                    }
+                                </select>
+                                <noscript><button type="submit" class="fg-btn fg-btn-sm">Set</button></noscript>
+                            </form>
+                        }
+                        else
+                        {
+                            <span class="fg-badge">@FiGet.Web.Components.Pages.Account.Profile.RoleName(user.Role)</span>
+                        }
+                    </td>
+                    <td>
+                        @if (user.IsDisabled)
+                        {
+                            <span class="fg-badge fg-badge-danger">Disabled</span>
+                        }
+                        else if (user.LockedUntilUtc > now)
+                        {
+                            <span class="fg-badge fg-badge-warn">Locked</span>
+                        }
+                        else if (user.MustChangePassword)
+                        {
+                            <span class="fg-badge fg-badge-info">New password pending</span>
+                        }
+                        else
+                        {
+                            <span class="fg-badge fg-badge-plain">Active</span>
+                        }
+                    </td>
+                    <td class="fg-num">@(user.LastSignInUtc?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? Display.None)</td>
+                    <td class="fg-cell-actions">
+                        @if (manageable)
+                        {
+                            <details class="fg-more fg-row-actions">
+                                <summary>Manage</summary>
+                                <div class="fg-stack">
+                                    <form method="post" action="/admin/users/@user.Key/password" class="fg-row">
+                                        <AntiforgeryToken />
+                                        <input type="password" name="password" autocomplete="new-password" minlength="@AccountService.MinimumPasswordLength" required
+                                               placeholder="New password" aria-label="New password for @user.UserName" />
+                                        <button type="submit" class="fg-btn fg-btn-sm">Reset password</button>
+                                    </form>
+                                    <div class="fg-row">
+                                        <form method="post" action="/admin/users/@user.Key/@(user.IsDisabled ? "enable" : "disable")">
+                                            <AntiforgeryToken />
+                                            <button type="submit" class="fg-btn fg-btn-sm">@(user.IsDisabled ? "Enable" : "Disable")</button>
+                                        </form>
+                                        <form method="post" action="/admin/users/@user.Key/delete">
+                                            <AntiforgeryToken />
+                                            <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Delete</button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </details>
+                        }
+                        else if (user.Key == actor?.Key)
+                        {
+                            <a class="fg-btn fg-btn-sm" href="/account/profile">Your profile</a>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<h2>Create a user</h2>
+<div class="fg-panel">
+    <EditForm Model="NewUser!" FormName="create-user" OnValidSubmit="CreateAsync" method="post" class="fg-form">
+        <DataAnnotationsValidator />
+        <div class="fg-field">
+            <label for="user-name">User name</label>
+            <InputText id="user-name" @bind-Value="NewUser!.UserName" autocomplete="off" placeholder="for example: jdoe" />
+            <ValidationMessage For="() => NewUser!.UserName" />
+        </div>
+        <div class="fg-field">
+            <label for="user-display">Display name</label>
+            <InputText id="user-display" @bind-Value="NewUser!.DisplayName" />
+        </div>
+        <div class="fg-field">
+            <label for="user-email">Email</label>
+            <InputText id="user-email" type="email" @bind-Value="NewUser!.Email" />
+        </div>
+        <div class="fg-field">
+            <label for="user-role">Role</label>
+            <InputSelect id="user-role" @bind-Value="NewUser!.Role">
+                @foreach (var role in AssignableRoles)
+                {
+                    <option value="@role">@FiGet.Web.Components.Pages.Account.Profile.RoleName(role)</option>
+                }
+            </InputSelect>
+        </div>
+        <div class="fg-field">
+            <label for="user-password">First password (at least @AccountService.MinimumPasswordLength characters; they choose their own at first sign-in)</label>
+            <InputText id="user-password" type="password" autocomplete="new-password" @bind-Value="NewUser!.Password" />
+            <ValidationMessage For="() => NewUser!.Password" />
+        </div>
+        @if (error is not null)
+        {
+            <p class="fg-error">@error</p>
+        }
+        <button type="submit" class="fg-btn fg-btn-primary">Create user</button>
+    </EditForm>
+</div>
+
+@code {
+    private IReadOnlyList<User> users = [];
+    private AccountActor? actor;
+    private string? error;
+    private DateTime now = DateTime.UtcNow;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "create-user")]
+    private UserForm? NewUser { get; set; }
+
+    [SupplyParameterFromQuery(Name = "done")]
+    private string? Done { get; set; }
+
+    /// <summary>The roles this admin may hand out: a super admin all three, an admin only the user role.</summary>
+    private IEnumerable<UserRole> AssignableRoles =>
+        Enum.GetValues<UserRole>().Where(r => actor is not null && AccountService.CanManage(actor, r));
+
+    /// <summary>What a row action did, from a fixed set of codes.</summary>
+    private (string Text, bool Error)? Message => Done switch
+    {
+        "role" => ("Role changed.", false),
+        "password" => ("Password reset. They choose a new one at their next sign-in.", false),
+        "disable" => ("Account disabled and signed out.", false),
+        "enable" => ("Account enabled.", false),
+        "delete" => ("Account deleted.", false),
+        "forbidden" => ("That account, or that role, is not yours to change.", true),
+        "last-superadmin" => ("That would leave no enabled super admin.", true),
+        "short-password" => ($"Use at least {AccountService.MinimumPasswordLength} characters.", true),
+        "not-found" => ("That account no longer exists.", true),
+        _ => null,
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        NewUser ??= new();
+        actor = FiGetApp.Actor(HttpContext.User);
+        users = await Users.ListAsync(HttpContext.RequestAborted);
+    }
+
+    private async Task CreateAsync()
+    {
+        var (outcome, user) = await Accounts.CreateAsync(actor!, NewUser!.UserName, NewUser.DisplayName, NewUser.Email, NewUser.Role, NewUser.Password, HttpContext.RequestAborted);
+        error = outcome switch
+        {
+            AccountOutcome.Done => null,
+            AccountOutcome.NameTaken => "That user name is taken.",
+            AccountOutcome.InvalidName => "Use letters, digits, dot, dash, underscore or @, starting with a letter or digit (at most 64).",
+            AccountOutcome.PasswordTooShort => $"Use at least {AccountService.MinimumPasswordLength} characters for the first password.",
+            AccountOutcome.Forbidden => "You cannot create an account with that role.",
+            _ => "The account could not be created.",
+        };
+
+        if (user is not null)
+        {
+            Audit.Record(HttpContext, "user.create", user.UserName, $"role={user.Role}");
+            NewUser = new();
+            users = await Users.ListAsync(HttpContext.RequestAborted);
+        }
+    }
+
+    private sealed class UserForm
+    {
+        [Required(ErrorMessage = "Enter a user name.")]
+        public string UserName { get; set; } = "";
+
+        public string DisplayName { get; set; } = "";
+
+        public string Email { get; set; } = "";
+
+        public UserRole Role { get; set; } = UserRole.User;
+
+        [Required(ErrorMessage = "Enter a first password.")]
+        public string Password { get; set; } = "";
+    }
+}

@@ -9,8 +9,8 @@
     managed under /admin/assets, a package feed under /admin/feeds.
 
     The same links are rendered twice: as a column beside the page on a wide screen, and as a menu that opens
-    from a bar on a narrow one. A <details> element, not a script, because these pages are static SSR for most
-    of their life and the menu has to open before - or without - the interactive runtime.
+    from a bar on a narrow one. A <details> element, not a script, because every page is statically rendered and
+    the menu has to open with no script at all.
 *@
 @inherits LayoutComponentBase
 @layout MainLayout
@@ -69,6 +69,7 @@
                 [
                     new("Feeds", "/admin/feeds"),
                     new("Assets", "/admin/assets"),
+                    new("Users", "/admin/users"),
                     new("Tokens", "/admin/tokens"),
                     new("Appearance", "/admin/appearance"),
                 ]),

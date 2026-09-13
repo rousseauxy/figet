@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Claims;
 using FiGet.Application.Assets;
+using FiGet.Application.Accounts;
 using FiGet.Application.Connectors;
 using FiGet.Application.Packages;
 using FiGet.Application.Ports;
@@ -47,7 +48,21 @@ namespace FiGet.Web;
 public static class FiGetApp
 {
     public const string AdminPolicy = "Admin";
-    public const string TokenKeyClaim = "figet:token";
+    public const string SuperAdminPolicy = "SuperAdmin";
+
+    /// <summary>The signed-in account's key.</summary>
+    public const string UserKeyClaim = "figet:user";
+
+    /// <summary>The account's security stamp when the cookie was issued; a different stamp now ends the session.</summary>
+    public const string StampClaim = "figet:stamp";
+
+    /// <summary>Role claim values. A super admin carries "admin" too, so every admin check also admits them.</summary>
+    public const string AdminRole = "admin";
+    public const string SuperAdminRole = "superadmin";
+    public const string UserRoleClaim = "user";
+
+    /// <summary>Set on a request whose account must choose a new password before it can do anything else.</summary>
+    private const string MustChangePasswordItem = "figet:must-change-password";
 
     public static void ConfigureServices(WebApplicationBuilder builder)
     {
@@ -95,6 +110,7 @@ public static class FiGetApp
         });
         services.AddHostedService<AssetUploadCleanupService>();
         services.AddScoped<AccessTokenService>();
+        services.AddScoped<AccountService>();
 
         // Proxy feeds. The client is a singleton because NuGet's repositories cache resources and
         // connections inside themselves; the service is scoped because it writes through the request's
@@ -139,7 +155,8 @@ public static class FiGetApp
                 cookie.Events.OnValidatePrincipal = ValidateCookieAsync;
             });
         services.AddAuthorizationBuilder()
-            .AddPolicy(AdminPolicy, policy => policy.RequireAuthenticatedUser().RequireClaim(ClaimTypes.Role, "admin"));
+            .AddPolicy(AdminPolicy, policy => policy.RequireAuthenticatedUser().RequireClaim(ClaimTypes.Role, AdminRole))
+            .AddPolicy(SuperAdminPolicy, policy => policy.RequireAuthenticatedUser().RequireClaim(ClaimTypes.Role, SuperAdminRole));
         services.AddCascadingAuthenticationState();
         services.AddAntiforgery();
 
@@ -227,6 +244,24 @@ public static class FiGetApp
         app.UseRouting();
 
         app.UseAuthentication();
+
+        // An account that must choose a new password - the first administrator, or after a reset - reaches nothing
+        // else in the browser until it has. Protocol paths are not pages and are not affected: they authenticate
+        // with keys, never with this cookie.
+        app.Use(async (context, next) =>
+        {
+            if (context.Items.ContainsKey(MustChangePasswordItem)
+                && !IsProtocolPath(context.Request.Path)
+                && !context.Request.Path.StartsWithSegments("/account", StringComparison.OrdinalIgnoreCase)
+                && !Path.HasExtension(context.Request.Path.Value))
+            {
+                context.Response.Redirect("/account/password");
+                return;
+            }
+
+            await next(context);
+        });
+
         app.UseAuthorization();
         app.UseAntiforgery();
 
@@ -324,6 +359,7 @@ public static class FiGetApp
             logger.LogInformation("No feeds configured; created feed 'default'.");
         }
 
+        // A service token for automation, when configured. It no longer signs anyone in to the web UI.
         var tokens = services.GetRequiredService<AccessTokenService>();
         if (!string.IsNullOrWhiteSpace(options.Auth.BootstrapAdminToken))
         {
@@ -336,13 +372,69 @@ public static class FiGetApp
                 // Another replica registered it at the same moment.
             }
         }
-        else if (!await services.GetRequiredService<IAccessTokenStore>().AnyActiveAdminAsync(time.GetUtcNow().UtcDateTime, CancellationToken.None))
+
+        var accounts = services.GetRequiredService<AccountService>();
+        if (await accounts.EnsureFirstAdminAsync(CancellationToken.None))
         {
-            var created = await tokens.CreateAsync("bootstrap", TokenScopes.Admin, feedKey: null, expiresUtc: null, CancellationToken.None);
             logger.LogWarning(
-                "No admin token existed, so one was generated. It is shown only this once; store it now: {BootstrapAdminToken}",
-                created.Secret);
+                "No account existed, so the first administrator was created: user name '{UserName}', password '{UserName}'. A new password is required at the first sign-in.",
+                AccountService.FirstAdminUserName,
+                AccountService.FirstAdminUserName);
         }
+
+        var recovery = options.Auth.Recovery;
+        if (!string.IsNullOrWhiteSpace(recovery.UserName) && !string.IsNullOrEmpty(recovery.Password))
+        {
+            await accounts.RecoverAsync(recovery.UserName, recovery.Password, CancellationToken.None);
+            services.GetRequiredService<AuditLog>().Record(null, "account.recover", recovery.UserName);
+            logger.LogWarning(
+                "Account '{UserName}' was recovered from configuration: enabled, unlocked, super admin, new password required at sign-in. Remove FiGet:Auth:Recovery from the configuration now; this runs on every start while it is set.",
+                recovery.UserName);
+        }
+    }
+
+    /// <summary>
+    /// Issues the sign-in cookie for an account. The roles are claims, a super admin carrying the admin role too, and the
+    /// security stamp goes with them so a later change to the account ends this session.
+    /// </summary>
+    public static Task SignInUserAsync(HttpContext http, User user)
+    {
+        ArgumentNullException.ThrowIfNull(http);
+        ArgumentNullException.ThrowIfNull(user);
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.Name, user.UserName),
+            new(UserKeyClaim, user.Key.ToString(CultureInfo.InvariantCulture)),
+            new(StampClaim, user.SecurityStamp),
+            new(ClaimTypes.Role, UserRoleClaim),
+        };
+
+        if (user.Role >= UserRole.Admin)
+        {
+            claims.Add(new Claim(ClaimTypes.Role, AdminRole));
+        }
+
+        if (user.Role == UserRole.SuperAdmin)
+        {
+            claims.Add(new Claim(ClaimTypes.Role, SuperAdminRole));
+        }
+
+        return http.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme)));
+    }
+
+    /// <summary>The signed-in account as the account rules see it, or null when nobody is signed in.</summary>
+    public static AccountActor? Actor(ClaimsPrincipal user)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        if (!int.TryParse(user.FindFirst(UserKeyClaim)?.Value, out var key))
+        {
+            return null;
+        }
+
+        var role = user.IsInRole(SuperAdminRole) ? UserRole.SuperAdmin : user.IsInRole(AdminRole) ? UserRole.Admin : UserRole.User;
+        return new AccountActor(key, role);
     }
 
     private static void MapAccountEndpoints(this WebApplication app)
@@ -724,6 +816,52 @@ public static class FiGetApp
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
         });
 
+        // Account row actions on the users page. The rules - who may change whom, and never the last super admin -
+        // are AccountService's; these only translate its outcome into a fixed code for the page to show.
+        admin.MapPost("/users/{key:int}/{action}", async (
+            int key,
+            string action,
+            HttpContext http,
+            AccountService accounts,
+            IUserStore users,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var actor = Actor(http.User);
+            var target = await users.FindAsync(key, cancellationToken);
+            if (actor is null || target is null)
+            {
+                return Results.Redirect("/admin/users?done=not-found");
+            }
+
+            var outcome = action switch
+            {
+                "role" when Enum.TryParse<UserRole>(form["role"].ToString(), out var role) && Enum.IsDefined(role)
+                    => await accounts.SetRoleAsync(actor, key, role, cancellationToken),
+                "password" => await accounts.ResetPasswordAsync(actor, key, form["password"].ToString(), cancellationToken),
+                "disable" => await accounts.SetDisabledAsync(actor, key, disabled: true, cancellationToken),
+                "enable" => await accounts.SetDisabledAsync(actor, key, disabled: false, cancellationToken),
+                "delete" => await accounts.DeleteAsync(actor, key, cancellationToken),
+                _ => AccountOutcome.NotFound,
+            };
+
+            if (outcome == AccountOutcome.Done)
+            {
+                audit.Record(http, "user." + action, target.UserName, action == "role" ? $"role={form["role"]}" : null);
+            }
+
+            var code = outcome switch
+            {
+                AccountOutcome.Done => action,
+                AccountOutcome.Forbidden => "forbidden",
+                AccountOutcome.LastSuperAdmin => "last-superadmin",
+                AccountOutcome.PasswordTooShort => "short-password",
+                _ => "not-found",
+            };
+            return Results.Redirect("/admin/users?done=" + code);
+        });
+
         admin.MapPost("/feeds/{feed}/upstreams/move", async (
             string feed,
             HttpContext http,
@@ -810,17 +948,30 @@ public static class FiGetApp
             ? Results.Redirect(returnUrl)
             : Results.Redirect(fallback);
 
+    /// <summary>
+    /// Every request with a sign-in cookie: the account must still exist, be enabled, and carry the security stamp the
+    /// cookie was issued with. A password, role or disabled change moves the stamp, so the session ends here on its next
+    /// request - not hours later when the cookie would have expired. A cookie from before accounts existed has no
+    /// account key and is refused the same way.
+    /// </summary>
     private static async Task ValidateCookieAsync(CookieValidatePrincipalContext context)
     {
-        var claim = context.Principal?.FindFirst(TokenKeyClaim)?.Value;
-        var store = context.HttpContext.RequestServices.GetRequiredService<IAccessTokenStore>();
-        var time = context.HttpContext.RequestServices.GetRequiredService<TimeProvider>();
-        var token = int.TryParse(claim, out var key) ? await store.FindAsync(key, context.HttpContext.RequestAborted) : null;
-        var now = time.GetUtcNow().UtcDateTime;
-        if (token is null || token.RevokedUtc is not null || (token.ExpiresUtc is not null && token.ExpiresUtc <= now) || !token.Scopes.HasFlag(TokenScopes.Admin))
+        var principal = context.Principal;
+        var users = context.HttpContext.RequestServices.GetRequiredService<IUserStore>();
+        var user = int.TryParse(principal?.FindFirst(UserKeyClaim)?.Value, out var key)
+            ? await users.FindAsync(key, context.HttpContext.RequestAborted)
+            : null;
+
+        if (user is null || user.IsDisabled || user.SecurityStamp != principal!.FindFirst(StampClaim)?.Value)
         {
             context.RejectPrincipal();
             await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            return;
+        }
+
+        if (user.MustChangePassword)
+        {
+            context.HttpContext.Items[MustChangePasswordItem] = true;
         }
     }
 

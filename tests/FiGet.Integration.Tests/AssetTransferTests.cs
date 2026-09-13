@@ -241,7 +241,7 @@ public abstract partial class AssetTransferTests
         HttpAssert.Status(HttpStatusCode.Created, await admin.PostAsync($"endpoints/files/dir/{folder}", null));
 
         using var browser = CreateBrowser();
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(browser, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(browser));
         var page = await HttpAssert.SuccessBodyAsync(await browser.GetAsync($"assets/files?path={folder}"));
         var token = WebUtility.HtmlDecode(UploadToken().Match(page).Groups["value"].Value);
 
@@ -303,21 +303,9 @@ public abstract partial class AssetTransferTests
     private HttpClient CreateBrowser() =>
         new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = true, CookieContainer = new CookieContainer() }) { BaseAddress = server.BaseAddress };
 
-    private static async Task<HttpResponseMessage> SignInAsync(HttpClient client, string token)
-    {
-        var form = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/account/login"));
-        var fields = HiddenInput().Matches(form).ToDictionary(m => WebUtility.HtmlDecode(m.Groups["name"].Value), m => WebUtility.HtmlDecode(m.Groups["value"].Value));
-        var tokenField = TokenInputName().Match(form);
-        fields[WebUtility.HtmlDecode(tokenField.Groups["name"].Value)] = token;
-        using var content = new FormUrlEncodedContent(fields);
-        return await client.PostAsync("/account/login", content);
-    }
-
     [GeneratedRegex("<input[^>]*type=\"hidden\"[^>]*name=\"(?<name>[^\"]+)\"[^>]*value=\"(?<value>[^\"]*)\"", RegexOptions.CultureInvariant)]
     private static partial Regex HiddenInput();
 
-    [GeneratedRegex("<input[^>]*id=\"token\"[^>]*name=\"(?<name>[^\"]+)\"|<input[^>]*name=\"(?<name>[^\"]+)\"[^>]*id=\"token\"", RegexOptions.CultureInvariant)]
-    private static partial Regex TokenInputName();
 
     [GeneratedRegex("data-asset-upload.*?name=\"__RequestVerificationToken\"[^>]*value=\"(?<value>[^\"]+)\"", RegexOptions.Singleline | RegexOptions.CultureInvariant)]
     private static partial Regex UploadToken();

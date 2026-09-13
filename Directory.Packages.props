@@ -15,7 +15,8 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.12" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
-    <!-- The grid on the signed-in feed view. Only the admin side is interactive. -->
+    <!-- Only for PasswordHasher: the hashing, not the rest of Identity. -->
+    <PackageVersion Include="Microsoft.Extensions.Identity.Core" Version="10.0.12" />
     <PackageVersion Include="xunit.v3" Version="4.0.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
     <!-- Theme packs are YAML, the same version as the sibling application, so a pack moves unchanged. -->

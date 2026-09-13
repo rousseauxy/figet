@@ -26,7 +26,7 @@
                     markup - the same trap the theme toggle fell into. Opening is the browser's job;
                     app.js only closes it again on a click elsewhere.
                 *@
-                <AuthorizeView Policy="@FiGetApp.AdminPolicy">
+                <AuthorizeView>
                     <Authorized>
                         <details class="fg-nav-dropdown" data-nav-menu>
                             <summary>
@@ -34,8 +34,13 @@
                                 <span class="fg-nav-dropdown-caret" aria-hidden="true">&#9662;</span>
                             </summary>
                             <div class="fg-nav-dropdown-menu">
-                                <a href="/admin/feeds">Admin</a>
-                                <a href="/admin/tokens">Tokens</a>
+                                <a href="/account/profile">Profile</a>
+                                @if (context.User.IsInRole(FiGetApp.AdminRole))
+                                {
+                                    <a href="/admin/feeds">Admin</a>
+                                    <a href="/admin/users">Users</a>
+                                    <a href="/admin/tokens">Tokens</a>
+                                }
                                 <hr />
                                 @* A POST, because a GET sign-out is reachable from any page a reader visits. *@
                                 <form method="post" action="/account/logout">

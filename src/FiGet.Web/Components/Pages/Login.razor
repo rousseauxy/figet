@@ -1,13 +1,16 @@
 @page "/account/login"
+@page "/account/login/local"
 @attribute [AllowAnonymous]
 @using System.ComponentModel.DataAnnotations
-@using System.Security.Claims
-@using FiGet.Application.Tokens
-@using Microsoft.AspNetCore.Authentication
-@using Microsoft.AspNetCore.Authentication.Cookies
-@inject AccessTokenService Tokens
+@using FiGet.Application.Accounts
+@inject AccountService Accounts
 @inject NavigationManager Navigation
 @inject FiGet.Http.AuditLog Audit
+
+@*
+    Two addresses, one form. /account/login/local is the fallback that always shows the local form, whatever sign-in
+    providers are configured later; today both show it.
+*@
 
 <PageTitle>Sign in · FiGet</PageTitle>
 
@@ -15,16 +18,17 @@
     <div class="fg-card">
         <div class="fg-card-header">Sign in</div>
         <div class="fg-card-body">
-            <p class="fg-muted fg-small">
-                Paste an admin token. Sign-in with an identity provider arrives in a later release.
-            </p>
-
             <EditForm Model="Input!" FormName="login" OnValidSubmit="SignInAsync" method="post" class="fg-form">
                 <DataAnnotationsValidator />
                 <div class="fg-field">
-                    <label for="token">Admin token</label>
-                    <InputText id="token" type="password" autocomplete="off" @bind-Value="Input!.Token" />
-                    <ValidationMessage For="() => Input!.Token" />
+                    <label for="username">User name</label>
+                    <InputText id="username" autocomplete="username" @bind-Value="Input!.UserName" />
+                    <ValidationMessage For="() => Input!.UserName" />
+                </div>
+                <div class="fg-field">
+                    <label for="password">Password</label>
+                    <InputText id="password" type="password" autocomplete="current-password" @bind-Value="Input!.Password" />
+                    <ValidationMessage For="() => Input!.Password" />
                 </div>
                 @if (error is not null)
                 {
@@ -45,32 +49,42 @@
     [SupplyParameterFromForm(FormName = "login")]
     private LoginInput? Input { get; set; }
 
-    protected override void OnInitialized() => Input ??= new();
-
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
 
+    protected override void OnInitialized() => Input ??= new();
+
     private async Task SignInAsync()
     {
-        var token = await Tokens.ValidateAsync(Input!.Token, HttpContext.RequestAborted);
-        if (token is null || !token.IsAdmin)
+        var result = await Accounts.SignInAsync(Input!.UserName, Input.Password, HttpContext.RequestAborted);
+        switch (result.Status)
         {
-            // Recorded without the secret, obviously - what matters is that somebody tried and from where.
-            // A client still presenting a revoked key is invisible otherwise.
-            Audit.Record(HttpContext, "signin.refused", token?.Name ?? "unknown token");
-            error = "That token is not a valid admin token.";
-            return;
+            case SignInStatus.Success:
+                break;
+            case SignInStatus.LockedOut:
+                Audit.Record(HttpContext, "signin.locked", Input.UserName);
+                error = $"Too many failed attempts. Try again in {AccountService.LockoutDuration.TotalMinutes:0} minutes.";
+                return;
+            case SignInStatus.Disabled:
+                Audit.Record(HttpContext, "signin.disabled", Input.UserName);
+                error = "This account is disabled.";
+                return;
+            default:
+                // Recorded without the password, obviously - what matters is that somebody tried, as whom, and from where.
+                Audit.Record(HttpContext, "signin.refused", Input.UserName);
+                error = "The user name or password is not right.";
+                return;
         }
 
-        var identity = new ClaimsIdentity(
-            [
-                new Claim(ClaimTypes.Name, token.Name),
-                new Claim(ClaimTypes.Role, "admin"),
-                new Claim(FiGetApp.TokenKeyClaim, token.Key.ToString(CultureInfo.InvariantCulture)),
-            ],
-            CookieAuthenticationDefaults.AuthenticationScheme);
-        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
-        Audit.Record(HttpContext, "signin", token.Name);
+        var user = result.User!;
+        await FiGetApp.SignInUserAsync(HttpContext, user);
+        Audit.Record(HttpContext, "signin", user.UserName);
+
+        if (user.MustChangePassword)
+        {
+            Navigation.NavigateTo("/account/password");
+            return;
+        }
 
         var target = !string.IsNullOrEmpty(ReturnUrl) && ReturnUrl.StartsWith('/') && !ReturnUrl.StartsWith("//", StringComparison.Ordinal)
             ? ReturnUrl
@@ -80,7 +94,10 @@
 
     private sealed class LoginInput
     {
-        [Required(ErrorMessage = "Enter a token.")]
-        public string Token { get; set; } = "";
+        [Required(ErrorMessage = "Enter your user name.")]
+        public string UserName { get; set; } = "";
+
+        [Required(ErrorMessage = "Enter your password.")]
+        public string Password { get; set; } = "";
     }
 }

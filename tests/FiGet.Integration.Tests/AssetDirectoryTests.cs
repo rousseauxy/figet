@@ -429,7 +429,7 @@ public abstract partial class AssetDirectoryTests
     public async Task The_admin_area_has_its_own_tab_for_asset_directories()
     {
         using var browser = CreateBrowser();
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(browser, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(browser));
 
         var feeds = await HttpAssert.SuccessBodyAsync(await browser.GetAsync("admin/feeds"));
         Assert.Contains("href=\"/admin/feeds/public\"", feeds, StringComparison.Ordinal);
@@ -456,7 +456,7 @@ public abstract partial class AssetDirectoryTests
     {
         var folder = Unique();
         using var browser = CreateBrowser();
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(browser, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(browser));
 
         // The API itself takes tokens only. A cookie is sent by the browser on its own, from any page.
         HttpAssert.Status(HttpStatusCode.Unauthorized, await browser.PostAsync($"endpoints/files/dir/{folder}", null));
@@ -504,7 +504,7 @@ public abstract partial class AssetDirectoryTests
     {
         var folder = Unique();
         using var browser = CreateBrowser();
-        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(browser, FiGetServerFixture.AdminToken));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(browser));
 
         using var forged = new FormUrlEncodedContent(new Dictionary<string, string> { ["parent"] = "", ["name"] = folder });
         using var response = await browser.PostAsync("admin/assets/files/folders", forged);
@@ -532,28 +532,9 @@ public abstract partial class AssetDirectoryTests
     private HttpClient CreateBrowser() =>
         new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = true, CookieContainer = new CookieContainer() }) { BaseAddress = server.BaseAddress };
 
-    private static async Task<HttpResponseMessage> SignInAsync(HttpClient client, string token)
-    {
-        var form = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/account/login"));
-        var fields = new Dictionary<string, string>();
-        foreach (Match hidden in HiddenInput().Matches(form))
-        {
-            fields[WebUtility.HtmlDecode(hidden.Groups["name"].Value)] = WebUtility.HtmlDecode(hidden.Groups["value"].Value);
-        }
-
-        var tokenField = TokenInputName().Match(form);
-        Assert.True(tokenField.Success, "The login form has no token input.");
-        fields[WebUtility.HtmlDecode(tokenField.Groups["name"].Value)] = token;
-
-        using var content = new FormUrlEncodedContent(fields);
-        return await client.PostAsync("/account/login", content);
-    }
-
     [GeneratedRegex("<input[^>]*type=\"hidden\"[^>]*name=\"(?<name>[^\"]+)\"[^>]*value=\"(?<value>[^\"]*)\"", RegexOptions.CultureInvariant)]
     private static partial Regex HiddenInput();
 
-    [GeneratedRegex("<input[^>]*id=\"token\"[^>]*name=\"(?<name>[^\"]+)\"|<input[^>]*name=\"(?<name>[^\"]+)\"[^>]*id=\"token\"", RegexOptions.CultureInvariant)]
-    private static partial Regex TokenInputName();
 
     [GeneratedRegex("data-asset-upload.*?name=\"__RequestVerificationToken\"[^>]*value=\"(?<value>[^\"]+)\"", RegexOptions.Singleline | RegexOptions.CultureInvariant)]
     private static partial Regex UploadToken();

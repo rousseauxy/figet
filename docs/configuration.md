@@ -83,7 +83,14 @@ the rare rule a token cannot express.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `BootstrapAdminToken` | empty | A secret registered as an admin token on start. When empty and no active admin token exists, FiGet generates one and writes it to the log once. On clusters, set it from a secret so all replicas agree. |
+| `BootstrapAdminToken` | empty | A secret registered on start as a service token with admin scope, for automation that must work before anyone has signed in. It does not sign in to the web UI: people use accounts. On clusters, set it from a secret so all replicas agree. |
+| `Recovery:UserName` | empty | With `Recovery:Password`: on start, this account is created if missing, enabled, unlocked, made super admin, given that password, and required to choose a new one at sign-in. For when nobody can sign in any more. The log warns on every start while it is set; remove it afterwards. |
+| `Recovery:Password` | empty | The one-time password for `Recovery:UserName`. From a secret, never a committed file. |
+
+When no account exists, FiGet creates the first administrator on start: user name `admin`, password `admin`, role
+super admin, and a new password required at the first sign-in before any page works. Sign in and replace it straight
+away on an instance anyone else can reach. Five wrong passwords lock an account for fifteen minutes. Accounts,
+roles and what is still to come are described in `docs/auth-plan.md`.
 
 ## FiGet:Limits
 
