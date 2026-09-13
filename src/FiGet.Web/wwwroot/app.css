@@ -1075,3 +1075,43 @@ legend {
 }
 .fg-error-user-label { font-weight: 600; margin-bottom: 0.2rem; }
 .fg-error-actions { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; margin-top: 1.2rem !important; }
+
+/* ── Tooltips ───────────────────────────────────────────────────── */
+/* Drawn by app.js from each element's title. Dark in both themes, like the top bar, so it reads as chrome
+   laid over the page rather than as part of it. */
+.fg-tooltip {
+  position: absolute;
+  z-index: 1100;
+  max-width: 18rem;
+  padding: 0.3rem 0.55rem;
+  background: var(--chrome);
+  color: var(--chrome-text);
+  border: 1px solid var(--chrome-border);
+  border-radius: var(--r-1);
+  box-shadow: var(--shadow-2);
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.fg-tooltip.fg-tooltip-on { opacity: 1; transform: none; }
+.fg-tooltip::after {
+  content: "";
+  position: absolute;
+  left: var(--fg-tooltip-arrow, 50%);
+  top: 100%;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--chrome);
+  border-right: 1px solid var(--chrome-border);
+  border-bottom: 1px solid var(--chrome-border);
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.fg-tooltip-below::after { top: 0; transform: translate(-50%, -50%) rotate(225deg); }
+@media (prefers-reduced-motion: reduce) {
+  .fg-tooltip { transition: none; transform: none; }
+}

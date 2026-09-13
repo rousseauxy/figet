@@ -3,6 +3,157 @@
 (function () {
     "use strict";
 
+    // ── Tooltips ─────────────────────────────────────────────────────────────────────────────────
+    // Every title attribute becomes a tooltip drawn in the page's own style, instead of the browser's plain box.
+    // Nothing in the markup changes: while an element is pointed at or focused its title is moved aside, so the
+    // browser does not show its own tooltip on top, and it is put back afterwards. One element in <body>,
+    // positioned from the target's rectangle, so a table that scrolls sideways cannot clip it.
+
+    var tooltip = (function () {
+        var tip = null;
+        var target = null;
+        var timer = 0;
+
+        // Until when a message from say() is kept up. Copying without the clipboard API focuses and selects a
+        // hidden textarea, and the focus change and the scroll that follows would take the "Copied" straight down.
+        var holdUntil = 0;
+
+        function hideUnlessHeld() {
+            if (Date.now() >= holdUntil) {
+                hide();
+            }
+        }
+
+        function element() {
+            if (!tip) {
+                tip = document.createElement("div");
+                tip.className = "fg-tooltip";
+                tip.setAttribute("role", "tooltip");
+                tip.hidden = true;
+                document.body.appendChild(tip);
+            }
+
+            return tip;
+        }
+
+        function place() {
+            if (!target || !tip || tip.hidden) {
+                return;
+            }
+
+            var rect = target.getBoundingClientRect();
+            var box = tip.getBoundingClientRect();
+            var gap = 8;
+            var above = rect.top - box.height - gap >= 0;
+            var top = above ? rect.top - box.height - gap : rect.bottom + gap;
+            var left = rect.left + rect.width / 2 - box.width / 2;
+            left = Math.max(6, Math.min(left, document.documentElement.clientWidth - box.width - 6));
+
+            tip.classList.toggle("fg-tooltip-below", !above);
+            tip.style.top = (top + window.scrollY) + "px";
+            tip.style.left = (left + window.scrollX) + "px";
+            tip.style.setProperty("--fg-tooltip-arrow", (rect.left + rect.width / 2 - left) + "px");
+        }
+
+        function show(el, text) {
+            var node = element();
+            node.textContent = text;
+            node.hidden = false;
+            place();
+            node.classList.add("fg-tooltip-on");
+        }
+
+        function hide() {
+            window.clearTimeout(timer);
+            if (target && target.hasAttribute("data-fg-title")) {
+                target.setAttribute("title", target.getAttribute("data-fg-title"));
+                target.removeAttribute("data-fg-title");
+                target.removeAttribute("aria-describedby");
+            }
+
+            target = null;
+            if (tip) {
+                tip.classList.remove("fg-tooltip-on");
+                tip.hidden = true;
+            }
+        }
+
+        function enter(el, delay) {
+            if (el === target) {
+                return;
+            }
+
+            hide();
+            var text = el.getAttribute("title");
+            if (!text) {
+                return;
+            }
+
+            target = el;
+            el.setAttribute("data-fg-title", text);
+            el.removeAttribute("title");
+            timer = window.setTimeout(function () {
+                if (target === el) {
+                    show(el, text);
+                }
+            }, delay);
+        }
+
+        document.addEventListener("mouseover", function (event) {
+            var el = event.target.closest ? event.target.closest("[title]") : null;
+            if (el) {
+                enter(el, 250);
+            } else if (target && !target.contains(event.target)) {
+                hide();
+            }
+        });
+
+        document.addEventListener("focusin", function (event) {
+            var el = event.target.closest ? event.target.closest("[title]") : null;
+            if (el && el.matches(":focus-visible")) {
+                enter(el, 0);
+            }
+        });
+
+        // Leaving the window from inside the element fires no mouseover anywhere else.
+        document.addEventListener("mouseout", function (event) {
+            if (!event.relatedTarget) {
+                hide();
+            }
+        });
+        document.addEventListener("focusout", hideUnlessHeld);
+        document.addEventListener("keydown", function (event) {
+            if (event.key === "Escape") {
+                hide();
+            }
+        });
+        window.addEventListener("scroll", hideUnlessHeld, true);
+        window.addEventListener("resize", hideUnlessHeld);
+
+        return {
+            // Shows a message on an element for a moment, or goes back to its own title when text is null.
+            say: function (el, text) {
+                var own = el.getAttribute("data-fg-title") || el.getAttribute("title") || "";
+                if (text === null) {
+                    if (target === el && tip && !tip.hidden) {
+                        tip.textContent = own;
+                        place();
+                    }
+
+                    return;
+                }
+
+                if (target !== el) {
+                    enter(el, 0);
+                }
+
+                window.clearTimeout(timer);
+                holdUntil = Date.now() + 600;
+                show(el, text);
+            },
+        };
+    })();
+
     // ── Copy to clipboard ────────────────────────────────────────────────────────────────────────
     // navigator.clipboard exists only in a secure context, and an instance reached over http:// on a
     // LAN is not one, hence the textarea fallback.
@@ -26,25 +177,23 @@
     }
 
     // The button is an icon; its word is hidden and only shown when copying failed. The outcome also goes into
-    // the title and the accessible name for as long as it is shown, so a screen reader hears it too.
+    // the tooltip and the accessible name for as long as it is shown, so a screen reader hears it too.
     function flash(button, copied) {
         var label = button.getAttribute("data-label") || button.textContent;
         var name = button.getAttribute("data-name") || button.getAttribute("aria-label") || "";
-        var title = button.getAttribute("data-title") || button.getAttribute("title") || "";
         button.setAttribute("data-label", label);
         button.setAttribute("data-name", name);
-        button.setAttribute("data-title", title);
 
         var outcome = copied ? "Copied" : "Press Ctrl+C";
         button.textContent = outcome;
         button.setAttribute("aria-label", outcome);
-        button.setAttribute("title", outcome);
         button.classList.add(copied ? "copied" : "copy-failed");
+        tooltip.say(button, outcome);
         window.setTimeout(function () {
             button.textContent = label;
             button.setAttribute("aria-label", name);
-            button.setAttribute("title", title);
             button.classList.remove("copied", "copy-failed");
+            tooltip.say(button, null);
         }, copied ? 1200 : 2500);
     }
 
