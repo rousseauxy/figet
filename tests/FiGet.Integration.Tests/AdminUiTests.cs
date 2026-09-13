@@ -242,6 +242,33 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         Assert.Equal(FiGet.Domain.Entities.FeedKind.Assets, (await FindFeedAsync(name))!.Kind);
     }
 
+    /// <summary>
+    /// A pull posts back to the page it came from with what it did, as counts the page reads back - including when
+    /// nothing could be pulled, which is the answer a reader most needs to see.
+    /// </summary>
+    [Fact]
+    public async Task A_pull_returns_to_its_page_with_the_counts()
+    {
+        using var client = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/feeds"));
+        var fields = HiddenFields(FormBlock(page, "create-feed"));
+        fields.Remove("_handler");
+        fields["id"] = "No.Such.Package";
+        fields["version"] = "1.0.0";
+        fields["returnUrl"] = "/feeds/public?q=something";
+
+        using var content = new FormUrlEncodedContent(fields);
+        var response = await client.PostAsync("/admin/feeds/public/pull", content);
+
+        HttpAssert.Status(HttpStatusCode.Redirect, response);
+        Assert.Equal("/feeds/public?q=something&pulled=0&present=0&missing=1", response.Headers.Location!.ToString());
+
+        var shown = await HttpAssert.SuccessBodyAsync(await client.GetAsync(response.Headers.Location));
+        Assert.Contains("No upstream of this feed could serve that package.", shown, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_feed_is_deleted_only_when_its_name_is_typed_exactly()
     {
