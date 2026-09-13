@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text.Encodings.Web;
+using Microsoft.AspNetCore.Components;
 
 namespace FiGet.Web.Components.Shared;
 
@@ -19,6 +21,22 @@ public static class Display
     };
 
     public static string Count(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// A package id that may break after its dots. Ids are long and unspaced -
+    /// <c>Microsoft.Entra.CertificateBasedAuthentication</c> - so in a narrow column they broke at any
+    /// character, mid-word: "Microsoft.Entra.A / pplications". A break opportunity after each dot lets the
+    /// browser wrap at the natural seams, and fall back to breaking anywhere only when one segment is itself
+    /// too long for the column.
+    ///
+    /// Returned as markup, which bypasses Razor's own encoding, so the id is encoded here first: it comes
+    /// from whoever pushed the package and is never to be trusted as markup. Encoding never produces a dot,
+    /// so a break inserted after encoding can never land inside an entity.
+    /// </summary>
+    public static MarkupString BreakableId(string? id) =>
+        string.IsNullOrEmpty(id)
+            ? new MarkupString(string.Empty)
+            : new MarkupString(HtmlEncoder.Default.Encode(id).Replace(".", ".<wbr>", StringComparison.Ordinal));
 
     /// <summary>A UTC timestamp, or the empty marker when there is nothing to show.</summary>
     public static string Date(DateTime? value, string empty = None) =>

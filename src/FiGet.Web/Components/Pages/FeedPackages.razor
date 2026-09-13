@@ -104,7 +104,7 @@ else
                            every version the upstreams report and describes them, which is the whole point
                            of a proxy feed. Leaving those rows as plain text made the one case a proxy
                            exists for the one case you could not click. *@
-                        <td><a href="/feeds/@feed.Name/packages/@row.Id">@row.Id</a></td>
+                        <td><a href="/feeds/@feed.Name/packages/@row.Id">@Display.BreakableId(row.Id)</a></td>
                         <td class="fg-num">@row.Latest</td>
                         <td class="fg-num">@(row.Versions > 0 ? row.Versions.ToString(CultureInfo.InvariantCulture) : Display.None)</td>
                         <td><span class="fg-badge @SourceBadge(row.Source)">@row.Source</span></td>

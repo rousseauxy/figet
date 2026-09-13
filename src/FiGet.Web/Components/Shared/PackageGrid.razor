@@ -60,7 +60,7 @@
 <div class="fg-table-wrap">
     <QuickGrid TGridItem="Row" ItemsProvider="provider" Class="fg-table" @ref="grid">
         <TemplateColumn Title="Package" Context="row">
-            <a href="/feeds/@FeedName/packages/@row.Id">@row.Id</a>
+            <a href="/feeds/@FeedName/packages/@row.Id">@Display.BreakableId(row.Id)</a>
         </TemplateColumn>
         <TemplateColumn Title="Latest" Context="row">
             <span class="fg-num">@row.Latest</span>

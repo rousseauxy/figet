@@ -51,7 +51,7 @@ else
                     {
                         var id = row.Package?.Id ?? "";
                         <tr class="is-inactive">
-                            <td><a href="/feeds/@feed.Name/packages/@id">@id</a></td>
+                            <td><a href="/feeds/@feed.Name/packages/@id">@Display.BreakableId(id)</a></td>
                             <td class="fg-num">@row.NormalizedVersion</td>
                             <td><span class="fg-badge @(row.Origin == PackageOrigin.Pushed ? "fg-badge-accent" : "fg-badge-info")">@(row.Origin == PackageOrigin.Pushed ? "Local" : "Cached")</span></td>
                             <td class="fg-num">@Display.Date(row.LastUpdatedUtc)</td>

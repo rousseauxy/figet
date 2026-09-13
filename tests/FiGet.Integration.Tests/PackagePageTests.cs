@@ -1,4 +1,8 @@
+using System.Net;
+using System.Net.Http.Headers;
 using FiGet.Integration.Tests.Infrastructure;
+using FiGet.Testing;
+using FiGet.Web.Components.Shared;
 
 namespace FiGet.Integration.Tests;
 
@@ -47,5 +51,61 @@ public sealed class PackagePageTests(ProxyServerFixture server) : IClassFixture<
             await client.GetAsync($"feeds/proxy/packages/{id}?tab=versions&per=9999"));
 
         Assert.Contains("1 to 50 of 60 versions", page, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A package id breaks after its dots rather than mid-word. Ids are long and unspaced, so in a narrow
+    /// column they used to wrap at any character - "Microsoft.Entra.A / pplications" - which reads badly on
+    /// a phone. Searched for by id rather than browsed, so the row cannot land on a later page when other
+    /// tests share the feed.
+    /// </summary>
+    [Fact]
+    public async Task A_long_package_id_may_break_after_its_dots()
+    {
+        var id = FiGetServerFixture.UniqueId("Page.Wrap.Dotted");
+        using (var package = TestPackages.Create(id, "1.0.0"))
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("public", package));
+        }
+
+        using var client = server.CreateClient();
+        var page = await HttpAssert.SuccessBodyAsync(
+            await client.GetAsync($"feeds/public?q={Uri.EscapeDataString(id)}"));
+
+        Assert.Contains("Page.<wbr>Wrap.<wbr>Dotted.<wbr>", page, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The id is encoded before its breaks are inserted. The helper returns markup, which bypasses Razor's
+    /// own encoding, and an id comes from whoever pushed the package. A valid id cannot hold angle brackets,
+    /// but a helper that emits markup must be safe without leaning on validation somewhere else.
+    ///
+    /// Asserted as a property rather than an exact string, so it does not care whether the encoder writes
+    /// an entity as a name or a number: once the inserted breaks are taken out, no angle bracket may remain.
+    /// </summary>
+    [Fact]
+    public void An_id_is_encoded_before_its_breaks_are_inserted()
+    {
+        var rendered = Display.BreakableId("a.<script>alert(1)</script>.b").Value;
+
+        Assert.Contains("a.<wbr>", rendered, StringComparison.Ordinal);
+        var withoutBreaks = rendered.Replace("<wbr>", string.Empty, StringComparison.Ordinal);
+        Assert.DoesNotContain("<", withoutBreaks, StringComparison.Ordinal);
+        Assert.DoesNotContain(">", withoutBreaks, StringComparison.Ordinal);
+    }
+
+    private async Task<HttpResponseMessage> PushAsync(string feed, Stream package)
+    {
+        using var client = server.CreateClient();
+        using var content = new MultipartFormDataContent();
+        using var file = new StreamContent(package);
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        content.Add(file, "package", "package.nupkg");
+
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"nuget/{feed}/") { Content = content };
+        request.Headers.Add("X-NuGet-ApiKey", FiGetServerFixture.AdminToken);
+        var response = await client.SendAsync(request);
+        await response.Content.LoadIntoBufferAsync();
+        return response;
     }
 }

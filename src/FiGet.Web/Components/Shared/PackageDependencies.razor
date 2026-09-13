@@ -33,7 +33,7 @@ else
                         @foreach (var dependency in group.Where(d => d.Id is not null).OrderBy(d => d.Ordinal))
                         {
                             <tr>
-                                <td><a href="/feeds/@FeedName/packages/@dependency.Id">@dependency.Id</a></td>
+                                <td><a href="/feeds/@FeedName/packages/@dependency.Id">@Display.BreakableId(dependency.Id)</a></td>
                                 <td class="fg-num">@(string.IsNullOrWhiteSpace(dependency.VersionRange) ? "any" : dependency.VersionRange)</td>
                             </tr>
                         }
