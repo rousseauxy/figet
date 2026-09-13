@@ -2612,3 +2612,25 @@ feed's alternate name (in other case) are refused, and so is an invalid name; re
 and a change of case adds none; a renamed asset directory serves its file by both names and redirects to
 `/admin/assets/`; a removed alternate name answers 404. Falsified: with the alternate-name lookup broken, four of the
 six fail.
+
+## Editing an upstream - 2026-09-13
+
+Asked by the tester right after the rename: a mistyped upstream name or a gallery's new address meant removing the
+upstream and adding it again, which also sent it to the bottom of the priority order. Each upstream on a feed's settings
+page now has an **Edit** disclosure with the same fields as adding one - name, URL, protocol, allowed and denied ids,
+credential reference - plus **Ask this upstream**, the `Enabled` flag the connector always honoured but no page could
+set (a disabled upstream shows a badge in the list).
+
+- **Its place in the order is kept.**
+- **A different URL, protocol or credential drops what was stored about the old source** - the stored version lists and
+  descriptions for that upstream, and this replica's in-memory descriptions - so the feed answers from the new source at
+  once instead of serving the old one's lists until they age out. Packages already cached stay, as on removal.
+- The NuGet client's repository is keyed by URL and credential reference, so an edited credential takes effect without a
+  restart.
+- The name stays unique within the feed, case-insensitively; an empty name or URL is refused. The add and edit forms
+  share one component and one form reader.
+- Audited as `upstream.update` under the new name, with `was=` the old name and every value.
+
+Tests: `UpstreamEditTests` - pointed at another source, the upstream answers with that source's versions straight away
+and keeps its place; another upstream's name (in other case) and an empty URL are refused and change nothing; a disabled
+upstream is not asked and the page marks it. Falsified: with the stored lists not dropped, the first test fails.

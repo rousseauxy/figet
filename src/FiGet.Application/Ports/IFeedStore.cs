@@ -19,6 +19,16 @@ public enum FeedNameChange
     Unchanged,
 }
 
+/// <summary>What became of a change to an upstream.</summary>
+public enum UpstreamChange
+{
+    Done,
+    NotFound,
+
+    /// <summary>Another upstream of the same feed has the name.</summary>
+    NameTaken,
+}
+
 public interface IFeedStore
 {
     /// <summary>The feed with this name, or with this as one of its alternate names. Case-insensitive.</summary>
@@ -82,6 +92,14 @@ public interface IFeedStore
     /// curated feed again. Returns false when the upstream no longer exists.
     /// </summary>
     Task<bool> RemoveUpstreamAsync(int feedKey, int upstreamKey, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Changes an upstream in place - name, URL, protocol, id patterns, credential reference, whether it is asked - keeping
+    /// its place in the order. <paramref name="changed"/> carries the upstream's key and every new value. A different URL,
+    /// protocol or credential makes what was stored about the old source wrong, so the version lists and descriptions cached
+    /// from it are dropped and fetched again; packages already cached stay, as they do when an upstream is removed.
+    /// </summary>
+    Task<UpstreamChange> UpdateUpstreamAsync(int feedKey, FeedUpstream changed, CancellationToken cancellationToken);
 
     /// <summary>
     /// Moves one upstream a place up (towards first) or down in the feed's priority order. The first upstream in

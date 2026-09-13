@@ -85,5 +85,18 @@ public sealed class UpstreamMetadataCache(int maxPackages = UpstreamMetadataCach
     /// </summary>
     public void Forget(int upstreamKey, string idLower) => entries.TryRemove(Key(upstreamKey, idLower), out _);
 
-    private static string Key(int upstreamKey, string idLower) => upstreamKey + "|" + idLower;
+    /// <summary>
+    /// Forgets everything remembered from one upstream, when it now points somewhere else. This replica only; another one
+    /// holds its copy until the entries age out, which is minutes, and they only ever describe versions.
+    /// </summary>
+    public void ForgetUpstream(int upstreamKey)
+    {
+        var prefix = upstreamKey.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|";
+        foreach (var key in entries.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList())
+        {
+            entries.TryRemove(key, out _);
+        }
+    }
+
+    private static string Key(int upstreamKey, string idLower) => upstreamKey.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" + idLower;
 }

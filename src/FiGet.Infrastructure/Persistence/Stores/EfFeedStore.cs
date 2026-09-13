@@ -297,6 +297,52 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         return true;
     }
 
+    public async Task<UpstreamChange> UpdateUpstreamAsync(int feedKey, FeedUpstream changed, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(changed);
+        var upstreams = await db.FeedUpstreams.Where(u => u.FeedKey == feedKey).ToListAsync(cancellationToken);
+        var upstream = upstreams.Find(u => u.Key == changed.Key);
+        if (upstream is null)
+        {
+            return UpstreamChange.NotFound;
+        }
+
+        if (upstreams.Exists(u => u.Key != changed.Key && u.Name.Equals(changed.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return UpstreamChange.NameTaken;
+        }
+
+        var sourceChanged = upstream.Url != changed.Url || upstream.Kind != changed.Kind || upstream.CredentialRef != changed.CredentialRef;
+        upstream.Name = changed.Name;
+        upstream.Url = changed.Url;
+        upstream.Kind = changed.Kind;
+        upstream.Allow = changed.Allow;
+        upstream.Deny = changed.Deny;
+        upstream.CredentialRef = changed.CredentialRef;
+        upstream.Enabled = changed.Enabled;
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            db.ChangeTracker.Clear();
+            return UpstreamChange.NameTaken;
+        }
+
+        if (sourceChanged)
+        {
+            await db.CachedUpstreamIndexes.Where(c => c.FeedUpstreamKey == changed.Key).ExecuteDeleteAsync(cancellationToken);
+            await db.CachedUpstreamDescriptions.Where(c => c.FeedUpstreamKey == changed.Key).ExecuteDeleteAsync(cancellationToken);
+            await EfUpstreamDescriptionStore.SweepOrphanedTagSetsAsync(db, cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return UpstreamChange.Done;
+    }
+
     public async Task<bool> MoveUpstreamAsync(int feedKey, int upstreamKey, bool up, CancellationToken cancellationToken)
     {
         var upstreams = await db.FeedUpstreams

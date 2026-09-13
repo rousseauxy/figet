@@ -128,8 +128,12 @@ else
         </dl>
     </section>
 
-    <section class="fg-panel">
+    <section class="fg-panel" id="upstreams">
         <h2>Upstreams</h2>
+        @if (UpstreamMessage is { } upstreamMessage)
+        {
+            <div class="@(upstreamMessage.IsError ? "fg-alert fg-alert-danger" : "fg-alert fg-alert-ok")" role="status">@upstreamMessage.Text</div>
+        }
         @if (feed.Upstreams.Count == 0)
         {
             <p class="fg-muted fg-small">
@@ -170,7 +174,13 @@ else
                                         }
                                     </div>
                                 </td>
-                                <td>@upstream.Name</td>
+                                <td>
+                                    @upstream.Name
+                                    @if (!upstream.Enabled)
+                                    {
+                                        <span class="fg-badge fg-badge-plain" title="Not asked until it is enabled again">disabled</span>
+                                    }
+                                </td>
                                 <td><span class="fg-badge">@upstream.Kind</span></td>
                                 <td><code>@upstream.Url</code></td>
                                 <td class="fg-cell-actions">
@@ -186,6 +196,22 @@ else
                     </tbody>
                 </table>
             </div>
+            @foreach (var upstream in feed.Upstreams.OrderBy(u => u.Ordinal))
+            {
+                <details class="fg-more">
+                    <summary>Edit @upstream.Name</summary>
+                    <form method="post" action="/admin/feeds/@feed.Name/upstreams/update" class="fg-form">
+                        <AntiforgeryToken />
+                        <input type="hidden" name="key" value="@upstream.Key" />
+                        <UpstreamFields Upstream="upstream" Prefix="@($"upstream-{upstream.Key}")" />
+                        <p class="fg-muted fg-small">
+                            A new URL, protocol or credential drops the version lists stored from the old source, and they are
+                            fetched again from the new one. Packages already cached stay.
+                        </p>
+                        <button type="submit" class="fg-btn fg-btn-primary">Save upstream</button>
+                    </form>
+                </details>
+            }
             <p class="fg-muted fg-small">
                 The first upstream that holds a package id serves it; upstreams further down are not asked about
                 that id, so two different packages that share a name are never mixed. Removing an upstream keeps the
@@ -200,39 +226,7 @@ else
             <form method="post" action="/admin/feeds/@feed.Name/upstreams/add" class="fg-form">
                 <AntiforgeryToken />
                 <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-
-                <div class="fg-field">
-                    <label for="upstream-name">Name</label>
-                    <input id="upstream-name" name="name" required placeholder="for example: powershellgallery" />
-                </div>
-
-                <div class="fg-field">
-                    <label for="upstream-url">URL</label>
-                    <input id="upstream-url" name="url" required placeholder="https://www.powershellgallery.com/api/v2" />
-                </div>
-
-                <div class="fg-field">
-                    <label for="upstream-kind">Protocol</label>
-                    <select id="upstream-kind" name="kind">
-                        <option value="V3">v3 service index (ends in index.json)</option>
-                        <option value="V2">v2 feed root (the PowerShell Gallery)</option>
-                    </select>
-                </div>
-
-                <div class="fg-field">
-                    <label for="upstream-allow">Only these package ids (one regular expression per line, empty allows all)</label>
-                    <textarea id="upstream-allow" name="allow" rows="2"></textarea>
-                </div>
-
-                <div class="fg-field">
-                    <label for="upstream-deny">Never these package ids (one regular expression per line)</label>
-                    <textarea id="upstream-deny" name="deny" rows="2"></textarea>
-                </div>
-
-                <div class="fg-field">
-                    <label for="upstream-credential">Environment variable holding the API key, if the upstream needs one</label>
-                    <input id="upstream-credential" name="credentialRef" placeholder="for example: FIGET_UPSTREAM_KEY" />
-                </div>
+                <UpstreamFields />
 
                 <button type="submit" class="fg-btn fg-btn-primary">Add upstream</button>
             </form>
@@ -551,6 +545,19 @@ else
     private IReadOnlyList<User> userChoices = [];
     private IReadOnlyList<GroupSummary> groupChoices = [];
     private IReadOnlyList<FeedAlias> aliases = [];
+
+    /// <summary>What the last upstream edit did, carried on the redirect back here.</summary>
+    [SupplyParameterFromQuery(Name = "upstream")]
+    private string? UpstreamResult { get; set; }
+
+    private (string Text, bool IsError)? UpstreamMessage => UpstreamResult switch
+    {
+        "saved" => ("Upstream saved.", false),
+        "taken" => ("Another upstream of this feed already has that name.", true),
+        "invalid" => ("An upstream needs a name and a URL.", true),
+        "gone" => ("That upstream no longer exists.", true),
+        _ => null,
+    };
 
     /// <summary>What the last rename or alternate-name change did, carried on the redirect back here.</summary>
     [SupplyParameterFromQuery(Name = "naming")]

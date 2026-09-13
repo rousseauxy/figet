@@ -240,7 +240,8 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
     }
 
     private SourceRepository Repository(FeedUpstream upstream) =>
-        repositories.GetOrAdd(upstream.Key.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" + upstream.Url, _ =>
+        // Keyed by what the repository is built from, so an upstream edited to another URL or credential gets a new one.
+        repositories.GetOrAdd(upstream.Key.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" + upstream.Url + "|" + upstream.CredentialRef, _ =>
         {
             var source = new PackageSource(upstream.Url, "figet-upstream-" + upstream.Key.ToString(System.Globalization.CultureInfo.InvariantCulture))
             {

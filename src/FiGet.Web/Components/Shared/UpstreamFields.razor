@@ -1,0 +1,51 @@
+@* The fields of an upstream, for adding one and for editing one: the same names, so the endpoints read both alike. *@
+@using FiGet.Domain.Entities
+
+<div class="fg-field">
+    <label for="@(Prefix)-name">Name</label>
+    <input id="@(Prefix)-name" name="name" required maxlength="64" value="@Upstream?.Name" placeholder="for example: powershellgallery" />
+</div>
+
+<div class="fg-field">
+    <label for="@(Prefix)-url">URL</label>
+    <input id="@(Prefix)-url" name="url" required maxlength="2048" value="@Upstream?.Url" placeholder="https://www.powershellgallery.com/api/v2" />
+</div>
+
+<div class="fg-field">
+    <label for="@(Prefix)-kind">Protocol</label>
+    <select id="@(Prefix)-kind" name="kind">
+        <option value="V3" selected="@(Upstream?.Kind != UpstreamKind.V2)">v3 service index (ends in index.json)</option>
+        <option value="V2" selected="@(Upstream?.Kind == UpstreamKind.V2)">v2 feed root (the PowerShell Gallery)</option>
+    </select>
+</div>
+
+<div class="fg-field">
+    <label for="@(Prefix)-allow">Only these package ids (one regular expression per line, empty allows all)</label>
+    <textarea id="@(Prefix)-allow" name="allow" rows="2">@Upstream?.Allow</textarea>
+</div>
+
+<div class="fg-field">
+    <label for="@(Prefix)-deny">Never these package ids (one regular expression per line)</label>
+    <textarea id="@(Prefix)-deny" name="deny" rows="2">@Upstream?.Deny</textarea>
+</div>
+
+<div class="fg-field">
+    <label for="@(Prefix)-credential">Environment variable holding the API key, if the upstream needs one</label>
+    <input id="@(Prefix)-credential" name="credentialRef" maxlength="128" value="@Upstream?.CredentialRef" placeholder="for example: FIGET_UPSTREAM_KEY" />
+</div>
+
+@if (Upstream is not null)
+{
+    @* Only when editing: a new upstream is always asked, and a checkbox missing from a post reads as unticked. *@
+    <label class="fg-check"><input type="checkbox" name="enabled" value="true" checked="@Upstream.Enabled" /> Ask this upstream (untick to stop using it for a while, during an outage)</label>
+}
+
+@code {
+    /// <summary>The upstream being edited, or null for the add form.</summary>
+    [Parameter]
+    public FeedUpstream? Upstream { get; set; }
+
+    /// <summary>Makes the element ids unique when several of these forms are on one page.</summary>
+    [Parameter]
+    public string Prefix { get; set; } = "upstream";
+}

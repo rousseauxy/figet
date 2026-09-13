@@ -622,28 +622,13 @@ public static class FiGetApp
         {
             var form = await http.Request.ReadFormAsync(cancellationToken);
             var target = await feeds.FindAsync(feed, cancellationToken);
-            var name = form["name"].ToString().Trim();
-            var url = form["url"].ToString().Trim();
-            if (target is not null && name.Length > 0 && url.Length > 0)
+            if (target is not null && UpstreamFromForm(form) is { } upstream)
             {
-                await feeds.AddUpstreamAsync(
-                    target.Key,
-                    new FeedUpstream
-                    {
-                        Name = name,
-                        Url = url,
-                        Kind = form["kind"].ToString().Equals("V2", StringComparison.OrdinalIgnoreCase) ? UpstreamKind.V2 : UpstreamKind.V3,
-                        // Stored as the browser sent them: the pattern reader splits on the separator and
-                        // trims each line, so the carriage returns a textarea adds are already harmless.
-                        Allow = form["allow"].ToString().Trim(),
-                        Deny = form["deny"].ToString().Trim(),
-                        CredentialRef = form["credentialRef"].ToString().Trim() is { Length: > 0 } reference ? reference : null,
-                    },
-                    cancellationToken);
+                await feeds.AddUpstreamAsync(target.Key, upstream, cancellationToken);
 
                 // The url as well as the name: pointing a feed at a different gallery is the change worth
                 // being able to find afterwards.
-                audit.Record(http, "upstream.add", name, $"feed={feed} url={url} kind={form["kind"]}");
+                audit.Record(http, "upstream.add", upstream.Name, $"feed={feed} url={upstream.Url} kind={upstream.Kind}");
             }
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
@@ -1202,6 +1187,60 @@ public static class FiGetApp
             return NamingResult(target, target.Name, removed is null ? FeedNameChange.NotFound : FeedNameChange.Done, "alias-removed");
         });
 
+        // Changing an upstream in place, so a mistyped name or a gallery that moved does not mean removing it and adding it
+        // again at the bottom of the order.
+        manageFeed.MapPost("/feeds/{feed}/upstreams/update", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            UpstreamMetadataCache metadata,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            if (target is null)
+            {
+                return Results.NotFound();
+            }
+
+            var before = int.TryParse(form["key"].ToString(), out var upstreamKey) ? target.Upstreams.FirstOrDefault(u => u.Key == upstreamKey) : null;
+            var changed = UpstreamFromForm(form);
+            string code;
+            if (before is null)
+            {
+                code = "gone";
+            }
+            else if (changed is null)
+            {
+                code = "invalid";
+            }
+            else
+            {
+                changed.Key = before.Key;
+                changed.Enabled = form["enabled"].ToString() == "true";
+                var outcome = await feeds.UpdateUpstreamAsync(target.Key, changed, cancellationToken);
+                code = outcome switch { UpstreamChange.Done => "saved", UpstreamChange.NameTaken => "taken", _ => "gone" };
+                if (outcome == UpstreamChange.Done)
+                {
+                    if (before.Url != changed.Url || before.Kind != changed.Kind || before.CredentialRef != changed.CredentialRef)
+                    {
+                        metadata.ForgetUpstream(before.Key);
+                    }
+
+                    // Every value, and what the name was: "who pointed this feed somewhere else" is the question, and an
+                    // entry under the new name alone would not be found by someone looking for the old one.
+                    audit.Record(
+                        http,
+                        "upstream.update",
+                        changed.Name,
+                        $"feed={target.Name} was={before.Name} url={changed.Url} kind={changed.Kind} enabled={changed.Enabled} credentialRef={changed.CredentialRef ?? "-"}");
+                }
+            }
+
+            return Results.Redirect($"/admin/feeds/{Uri.EscapeDataString(target.Name)}?upstream={code}#upstreams");
+        });
+
         manageFeed.MapPost("/feeds/{feed}/upstreams/move", async (
             string feed,
             HttpContext http,
@@ -1223,6 +1262,31 @@ public static class FiGetApp
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
         });
+    }
+
+    /// <summary>
+    /// An upstream as the add and edit forms send it, or null without a name or a URL. The patterns are stored as the browser
+    /// sent them: the pattern reader splits on the separator and trims each line, so the carriage returns a textarea adds are
+    /// already harmless.
+    /// </summary>
+    private static FeedUpstream? UpstreamFromForm(IFormCollection form)
+    {
+        var name = form["name"].ToString().Trim();
+        var url = form["url"].ToString().Trim();
+        if (name.Length == 0 || url.Length == 0)
+        {
+            return null;
+        }
+
+        return new FeedUpstream
+        {
+            Name = name,
+            Url = url,
+            Kind = form["kind"].ToString().Equals("V2", StringComparison.OrdinalIgnoreCase) ? UpstreamKind.V2 : UpstreamKind.V3,
+            Allow = form["allow"].ToString().Trim(),
+            Deny = form["deny"].ToString().Trim(),
+            CredentialRef = form["credentialRef"].ToString().Trim() is { Length: > 0 } reference ? reference : null,
+        };
     }
 
     /// <summary>Back to the name panel of a feed's settings page - by its current name - with a code saying what happened.</summary>
