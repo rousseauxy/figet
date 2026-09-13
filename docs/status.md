@@ -2482,3 +2482,28 @@ package page both show the stable one and hide the nightly, and with the switch 
 overview's link carries the switch. With the overview's upstream merge removed, it fails.
 
 Suites: unit 132/0; integration 361/0 on SQLite and on SQL Server.
+
+## An upstream holding only unlisted versions no longer owns the id - 2026-09-13
+
+Reported by the tester: DscTestModule, which exists on the PowerShell Test Gallery, was not found through a proxy feed
+with the PowerShell Gallery first and the test gallery second. Find-PSResource said "not found", Find-Module failed with
+an `ArgumentNullException` inside PackageManagement, and the package page showed nothing but "2 unlisted versions hidden".
+
+The logs and stored catalogue showed why: the PowerShell Gallery holds DscTestModule 2.5.0 and 2.6.0, both unlisted (so
+its own search shows nothing), and "the first upstream that holds an id owns it" gave it the id, so the test gallery,
+with nine listed versions, was never asked. A pull cached 2.5.0 from the PowerShell Gallery and the next refresh
+unlisted it again. PowerShellGet 2.2.5 crashes rather than reporting "not found" when every entry it gets is unlisted.
+
+- **Ownership now needs a listed version**: the first upstream offering a version it has not unlisted owns the id; one
+  holding only unlisted versions owns it only when no upstream offers it, so a package hidden everywhere behaves as
+  before. Listedness comes from what the upstream described, else what is remembered, else "listed" (not told is not
+  withdrawn). An upstream that cannot be asked, with nothing remembered, still leaves the id undecided.
+- **One decision for listing and fetching**: the listing walks only the owner `DecideOwnerAsync` chose, reusing the
+  catalogues it read. Reading a just-stored catalogue a second time loaded older stored descriptions that count every
+  version as listed and re-listed a hidden version; the existing restart test caught that.
+
+Tests: `ProxyFeedTests` - an id whose first upstream holds only unlisted versions is listed and fetched from the second;
+an id hidden everywhere stays with the first. With ownership back to "any version", the first fails.
+`RateLimitTests` refills one token a minute now: at one a second a slow machine let a sixth request through.
+
+Suites: unit 132/0; integration 363/0 on SQLite and on SQL Server.

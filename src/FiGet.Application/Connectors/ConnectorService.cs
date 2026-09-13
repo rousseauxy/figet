@@ -61,16 +61,26 @@ public sealed class ConnectorService(
         var casedId = "";
         var authoritative = false;
 
-        foreach (var upstream in feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal))
-        {
-            if (!Allows(upstream, idLower))
-            {
-                continue;
-            }
+        // Who serves the id is decided once, by the same rule the cache fill uses (OwnerAsync), so a client can never list
+        // one upstream's package and download another's. No owner and not undecided: every upstream was asked and none
+        // holds the id, and walking them all still tells the reconciliation below that the answer was authoritative.
+        var (ownership, read) = await DecideOwnerAsync(feed, idLower, versionsOnly, cancellationToken);
+        IEnumerable<FeedUpstream> asked = ownership.Owner is { } owner
+            ? [owner]
+            : ownership.Undecided
+                ? []
+                : feed.Upstreams.Where(u => u.Enabled && Allows(u, idLower)).OrderBy(u => u.Ordinal);
 
-            // One call for both: the versions and what the upstream says about them, so an uncached
-            // version is listed with its real description, authors and tags instead of blanks.
-            var (catalog, answered, cached) = await CatalogAsync(upstream, idLower, cancellationToken, versionsOnly);
+        foreach (var upstream in asked)
+        {
+
+            // One read for both: the versions and what the upstream says about them, so an uncached version is listed with
+            // its real description, authors and tags instead of blanks. The read the ownership decision made, not a second
+            // one: a second read of a catalogue just stored without descriptions would load older stored descriptions that
+            // count every version as listed, and re-list a version the upstream hides.
+            var (catalog, answered, cached) = read.TryGetValue(upstream.Key, out var earlier)
+                ? earlier
+                : await CatalogAsync(upstream, idLower, cancellationToken, versionsOnly);
             authoritative |= answered;
             var described = ByVersion(catalog.Described);
 
@@ -135,15 +145,6 @@ public sealed class ConnectorService(
                     row));
             }
 
-            // The first upstream that holds the id owns it; the ones after it are not asked. Merging them put two
-            // different packages that happen to share a name into one version list, where the higher version won.
-            // An upstream that could not be asked and has nothing remembered stops the walk too: whether it holds
-            // the id is unknown, and serving a lower upstream's package in the meantime would cache that package
-            // here for good.
-            if (catalog.Versions.Count > 0 || (!answered && cached is null))
-            {
-                break;
-            }
         }
 
         // Only when an upstream actually answered: an outage must never look like a mass withdrawal.
@@ -567,9 +568,25 @@ public sealed class ConnectorService(
     /// and lists at least one version of it. Undecided when an upstream ahead of any owner could not be asked and
     /// has nothing remembered, because then nobody can say it does not hold the id.
     /// </summary>
-    public async Task<UpstreamOwnership> OwnerAsync(Feed feed, string idLower, CancellationToken cancellationToken)
+    public async Task<UpstreamOwnership> OwnerAsync(Feed feed, string idLower, CancellationToken cancellationToken, bool versionsOnly = false) =>
+        (await DecideOwnerAsync(feed, idLower, versionsOnly, cancellationToken)).Ownership;
+
+    /// <summary>The ownership decision, with every catalogue read to make it, so a caller that lists can reuse them.</summary>
+    private async Task<(UpstreamOwnership Ownership, Dictionary<int, (UpstreamCatalog Catalog, bool Answered, CachedUpstreamCatalog? Cached)> Read)> DecideOwnerAsync(
+        Feed feed,
+        string idLower,
+        bool versionsOnly,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(feed);
+        var read = new Dictionary<int, (UpstreamCatalog Catalog, bool Answered, CachedUpstreamCatalog? Cached)>();
+
+        // The first upstream in priority order that offers the id owns it: holds a version it has not unlisted. One that
+        // holds only unlisted versions does not - a gallery keeps withdrawn packages under their name, invisible to its
+        // own search, and letting that shadow a lower upstream's real package made the id unfindable (DscTestModule: two
+        // unlisted versions on the PowerShell Gallery, the package itself on another gallery). Such an upstream owns the
+        // id only when no upstream offers it at all, so a package hidden everywhere still behaves as before.
+        FeedUpstream? holdsOnlyUnlisted = null;
         foreach (var upstream in feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal))
         {
             if (!Allows(upstream, idLower))
@@ -577,19 +594,49 @@ public sealed class ConnectorService(
                 continue;
             }
 
-            var (catalog, answered, cached) = await CatalogAsync(upstream, idLower, cancellationToken);
-            if (catalog.Versions.Count > 0)
+            var (catalog, answered, cached) = await CatalogAsync(upstream, idLower, cancellationToken, versionsOnly);
+            read[upstream.Key] = (catalog, answered, cached);
+            if (OffersListedVersion(catalog, cached))
             {
-                return new UpstreamOwnership(upstream, Undecided: false);
+                return (new UpstreamOwnership(upstream, Undecided: false), read);
             }
 
-            if (!answered && cached is null)
+            if (catalog.Versions.Count > 0)
             {
-                return new UpstreamOwnership(null, Undecided: true);
+                holdsOnlyUnlisted ??= upstream;
+            }
+            else if (!answered && cached is null)
+            {
+                // Whether it holds the id is unknown, and serving a lower upstream's package in the meantime would cache
+                // that package here for good.
+                return (new UpstreamOwnership(null, Undecided: true), read);
             }
         }
 
-        return new UpstreamOwnership(null, Undecided: false);
+        return (new UpstreamOwnership(holdsOnlyUnlisted, Undecided: false), read);
+    }
+
+    /// <summary>
+    /// Whether an upstream's answer includes a version it still lists. What it described decides; failing that, what is
+    /// remembered about its unlisted versions; with neither, a version counts as listed, because "not told" must not read
+    /// as "withdrawn".
+    /// </summary>
+    private static bool OffersListedVersion(UpstreamCatalog catalog, CachedUpstreamCatalog? remembered)
+    {
+        var described = ByVersion(catalog.Described);
+        foreach (var version in catalog.Versions)
+        {
+            var normalized = version.Version.ToNormalizedString();
+            var listed = described.TryGetValue(normalized, out var metadata)
+                ? metadata.Listed
+                : remembered?.Unlisted?.Contains(normalized) != true;
+            if (listed)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

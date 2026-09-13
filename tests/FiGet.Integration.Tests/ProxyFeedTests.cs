@@ -445,6 +445,40 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/layered/package/{id}/1.0.0"));
     }
 
+    /// <summary>
+    /// An upstream holding only unlisted versions of an id does not own it: a gallery keeps withdrawn packages under their
+    /// name, and that must not hide a lower upstream's real package (DscTestModule, 2026-09-13). Listing and download both
+    /// follow the upstream that offers it.
+    /// </summary>
+    [Fact]
+    public async Task An_upstream_holding_only_unlisted_versions_does_not_own_the_id()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Hidden");
+        AddUpstreamUnlisted(id, "2.5.0");
+        AddUpstreamUnlisted(id, "2.6.0");
+        AddSecondUpstream(id, "1.0.0");
+        AddSecondUpstream(id, "2.5.0");
+
+        var entries = await FindAsync("layered", id);
+        Assert.Equal(["1.0.0", "2.5.0"], entries.Select(e => Property(e, "Version")).ToArray());
+
+        var before = server.SecondUpstream.DownloadCalls;
+        using var client = server.CreateClient();
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/layered/package/{id}/2.5.0"));
+        Assert.True(server.SecondUpstream.DownloadCalls > before, "2.5.0 was not fetched from the upstream that offers the id.");
+    }
+
+    /// <summary>A package hidden on every upstream stays with the first that holds it, as before.</summary>
+    [Fact]
+    public async Task An_id_hidden_everywhere_stays_with_the_first_upstream_holding_it()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.HiddenEverywhere");
+        AddUpstreamUnlisted(id, "2.5.0");
+
+        var entries = await FindAsync("layered", id);
+        Assert.Equal(["2.5.0"], entries.Select(e => Property(e, "Version")).ToArray());
+    }
+
     [Fact]
     public async Task An_id_only_a_lower_upstream_holds_is_served_from_it()
     {

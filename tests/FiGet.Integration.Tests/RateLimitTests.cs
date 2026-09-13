@@ -10,7 +10,8 @@ public sealed class RateLimitServerFixture() : FiGetServerFixture(TestDatabase.S
     protected override void Configure(IWebHostBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
-        builder.UseSetting("FiGet:RateLimits:AnonymousRequestsPerMinute", "60");
+        // One a minute: the burst of five is then all there is for the length of the test, however slow the machine.
+        builder.UseSetting("FiGet:RateLimits:AnonymousRequestsPerMinute", "1");
         builder.UseSetting("FiGet:RateLimits:AnonymousBurst", "5");
         builder.UseSetting("FiGet:RateLimits:SignInAttemptsPerMinute", "3");
     }
