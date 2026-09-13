@@ -726,6 +726,13 @@ legend {
 }
 .fg-facts dd { margin: 0; overflow-wrap: anywhere; font-size: 0.85rem; }
 
+/* On a phone a URL beside its label gets a third of the width and breaks every twenty characters; under its
+   label it gets all of it. Only lists that hold a URL: a short fact reads better on one line. */
+@media (max-width: 600px) {
+  .fg-facts:has(.fg-url) { grid-template-columns: minmax(0, 1fr); gap: 0.15rem; }
+  .fg-facts:has(.fg-url) dd + dt { margin-top: 0.5rem; }
+}
+
 /* ── Copyable URL ───────────────────────────────────────────────── */
 .fg-url { display: flex; align-items: center; gap: 0.4rem; min-width: 0; }
 .fg-url code { overflow-wrap: anywhere; font-size: 0.78rem; }
@@ -750,6 +757,11 @@ legend {
 .fg-copy:hover { background: var(--hover); color: var(--text); }
 .fg-copy.copied { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
 
+/* A command with its copy button beside it; the button sits at the top so a wrapped command keeps it in reach. */
+.fg-snippet { display: flex; align-items: flex-start; gap: 0.4rem; margin: 0 0 0.5rem; }
+.fg-snippet pre { flex: 1; min-width: 0; margin: 0; }
+.fg-snippet .fg-copy { margin-top: 0.55rem; }
+
 /* ── The signed-in menu ─────────────────────────────────────────── */
 /* A <details>, not a scripted popover: this bar is rendered by static SSR on every page, including the
    anonymous ones that load no framework, so opening has to work with no script at all. */
@@ -757,11 +769,6 @@ legend {
 
 .fg-nav-dropdown > summary {
   list-style: none;
-/* A command with its copy button beside it; the button sits at the top so a wrapped command keeps it in reach. */
-.fg-snippet { display: flex; align-items: flex-start; gap: 0.4rem; margin: 0 0 0.5rem; }
-.fg-snippet pre { flex: 1; min-width: 0; margin: 0; }
-.fg-snippet .fg-copy { margin-top: 0.55rem; }
-
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -863,20 +870,74 @@ legend {
 .fg-admin-nav-link:hover { color: var(--text); background: var(--hover); text-decoration: none; }
 .fg-admin-nav-link.active { color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
 
-/* Narrow screens have no room for a column: the groups lie down into a strip,
-   headings and all, rather than hiding behind a control that has to be opened. */
+/* Panels stacked in the admin body, one per section: without a gap their borders touched and read as one
+   box with a seam. The facts under a settings form get a rule, so the Save button ends the form instead of
+   sitting on top of the first fact. */
+.fg-admin-body .fg-panel + .fg-panel { margin-top: 1rem; }
+.fg-admin-body h2 + .fg-panel { margin-top: 0.5rem; }
+.fg-panel .fg-form + .fg-facts {
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+
+/* The phone menu: hidden on a wide screen, where the column above does the job. */
+.fg-admin-menu { display: none; }
+
+/* Narrow screens have no room for a column. The strip that replaced it ran to two rows of two groups side by
+   side, a third of the screen before the page began; a bar that opens into the same links costs one line. */
 @media (max-width: 900px) {
   .fg-admin-shell { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
-  .fg-admin-nav {
-    position: static;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 0.8rem;
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    padding: 0 0 0.8rem;
-  }
+  .fg-admin-nav { display: none; }
   .fg-panel-grid { grid-template-columns: minmax(0, 1fr); }
+
+  .fg-admin-menu {
+    display: block;
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-2);
+  }
+  .fg-admin-menu > summary {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.6rem 0.9rem;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    min-height: 2.75rem; /* a thumb, not a cursor */
+  }
+  .fg-admin-menu > summary::-webkit-details-marker { display: none; }
+  .fg-admin-menu-icon { font-size: 1.05rem; line-height: 1; color: var(--text-2); }
+  .fg-admin-menu-label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .fg-admin-menu-current {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .fg-admin-menu-caret { margin-left: auto; font-size: 0.7rem; color: var(--text-3); transition: transform 0.15s ease; }
+  .fg-admin-menu[open] > summary { border-bottom: 1px solid var(--border); }
+  .fg-admin-menu[open] .fg-admin-menu-caret { transform: rotate(180deg); }
+
+  .fg-admin-menu-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 0.8rem 0.6rem 0.9rem;
+  }
+  .fg-admin-menu-panel .fg-admin-nav-title { padding-left: 0.6rem; }
+  .fg-admin-menu-panel .fg-admin-nav-link { padding: 0.6rem 0.6rem; font-size: 0.92rem; }
 }
 
 /* The grid's cells, matched to every other table's. QuickGrid styles its own cells with scoped

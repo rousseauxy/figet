@@ -1,4 +1,5 @@
 @page "/admin/feeds/{Name}"
+@page "/admin/assets/{Name}"
 @attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
 @layout AdminLayout
 @using System.ComponentModel.DataAnnotations
@@ -198,18 +199,18 @@ else
     }
 
     <section class="fg-panel fg-panel-danger">
-        <h2>Delete this feed</h2>
+        <h2>Delete this @Noun</h2>
         <p class="fg-muted fg-small">
-            Removes the feed with its @versionCount.ToString("N0", CultureInfo.InvariantCulture)
-            @(IsAssets ? "file(s)" : "package version(s), their files,") and any token scoped to this feed.
+            Removes the @Noun with its @versionCount.ToString("N0", CultureInfo.InvariantCulture)
+            @(IsAssets ? "file(s)" : "package version(s), their files,") and any token scoped to it.
             This cannot be undone.
         </p>
         <EditForm Model="Confirm!" FormName="delete-feed" OnValidSubmit="DeleteAsync" method="post" class="fg-form">
             <div class="fg-field">
-                <label for="confirm-name">Type the feed name to confirm</label>
+                <label for="confirm-name">Type the @Noun name to confirm</label>
                 <InputText id="confirm-name" @bind-Value="Confirm!.Name" autocomplete="off" placeholder="@feed.Name" />
             </div>
-            <button type="submit" class="fg-btn fg-btn-danger">Delete feed</button>
+            <button type="submit" class="fg-btn fg-btn-danger">Delete @Noun</button>
         </EditForm>
     </section>
 }
@@ -240,6 +241,8 @@ else
     private string V3Url => $"{FeedUrl}/v3/index.json";
 
     private bool IsAssets => feed?.Kind == FeedKind.Assets;
+
+    private string Noun => IsAssets ? "directory" : "feed";
 
     private string AssetContentUrl => $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(feed!.Name)}/content/";
 
@@ -306,7 +309,7 @@ else
         await Storage.DeleteFeedAsync(feed.NameLower, HttpContext.RequestAborted);
         await AssetStorage.DeleteFeedAsync(feed.NameLower, HttpContext.RequestAborted);
         await Feeds.DeleteAsync(feed.Key, HttpContext.RequestAborted);
-        Navigation.NavigateTo("/admin/feeds", forceLoad: false);
+        Navigation.NavigateTo(IsAssets ? "/admin/assets" : "/admin/feeds", forceLoad: false);
     }
 
     private sealed class SettingsForm

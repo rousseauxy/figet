@@ -215,6 +215,33 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         }
     }
 
+    /// <summary>
+    /// Asset directories have their own admin tab, and are created there: the feeds tab no longer offers files,
+    /// and the directory tab does not ask package questions.
+    /// </summary>
+    [Fact]
+    public async Task An_asset_directory_is_created_from_its_own_tab()
+    {
+        using var client = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(client, FiGetServerFixture.AdminToken));
+        var name = "dir-" + Guid.NewGuid().ToString("N")[..8];
+
+        var feeds = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/feeds"));
+        Assert.DoesNotContain("asset directory", FormBlock(feeds, "create-feed"), StringComparison.OrdinalIgnoreCase);
+
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/assets"));
+        var form = FormBlock(page, "create-feed");
+        Assert.DoesNotContain("Delete behaviour", form, StringComparison.Ordinal);
+        var fields = HiddenFields(form);
+        fields[FieldName(form, "feed-name")] = name;
+
+        using var content = new FormUrlEncodedContent(fields);
+        var created = await HttpAssert.SuccessBodyAsync(await client.PostAsync("/admin/assets", content));
+        Assert.Contains($"Asset directory &#x27;{name}&#x27; created.", created, StringComparison.Ordinal);
+        Assert.Contains($"href=\"/admin/assets/{name}\"", created, StringComparison.Ordinal);
+        Assert.Equal(FiGet.Domain.Entities.FeedKind.Assets, (await FindFeedAsync(name))!.Kind);
+    }
+
     [Fact]
     public async Task A_feed_is_deleted_only_when_its_name_is_typed_exactly()
     {

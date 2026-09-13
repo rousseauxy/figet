@@ -5,7 +5,12 @@
 
     Which feed is being managed is read from the URL rather than passed in. A layout cannot take parameters
     from the page it wraps, and the alternative - a cascading value every admin page has to remember to set
-    - fails silently on the one page that forgets.
+    - fails silently on the one page that forgets. The URL also says what kind it is: an asset directory is
+    managed under /admin/assets, a package feed under /admin/feeds.
+
+    The same links are rendered twice: as a column beside the page on a wide screen, and as a menu that opens
+    from a bar on a narrow one. A <details> element, not a script, because these pages are static SSR for most
+    of their life and the menu has to open before - or without - the interactive runtime.
 *@
 @inherits LayoutComponentBase
 @layout MainLayout
@@ -13,23 +18,23 @@
 
 <div class="fg-admin-shell">
     <nav class="fg-admin-nav" aria-label="Admin">
-        <div class="fg-admin-nav-group">
-            <span class="fg-admin-nav-title">Manage</span>
-            <a class="fg-admin-nav-link @Active("/admin/feeds")" href="/admin/feeds">Feeds</a>
-            <a class="fg-admin-nav-link @Active("/admin/tokens")" href="/admin/tokens">Tokens</a>
-            <a class="fg-admin-nav-link @Active("/admin/appearance")" href="/admin/appearance">Appearance</a>
-        </div>
-
-        @if (FeedName is { Length: > 0 } feed)
-        {
-            <div class="fg-admin-nav-group">
-                <span class="fg-admin-nav-title">@feed</span>
-                <a class="fg-admin-nav-link @Active($"/admin/feeds/{feed}")" href="/admin/feeds/@feed">Settings</a>
-                <a class="fg-admin-nav-link @Active($"/admin/feeds/{feed}/unlisted")" href="/admin/feeds/@feed/unlisted">Unlisted versions</a>
-                <a class="fg-admin-nav-link" href="/feeds/@feed">View as a reader</a>
-            </div>
-        }
+        @Links
     </nav>
+
+    <details class="fg-admin-menu">
+        <summary>
+            <span class="fg-admin-menu-icon" aria-hidden="true">☰</span>
+            <span class="fg-admin-menu-label">Admin</span>
+            @if (CurrentLabel is { } label)
+            {
+                <span class="fg-admin-menu-current">@label</span>
+            }
+            <span class="fg-admin-menu-caret" aria-hidden="true">▾</span>
+        </summary>
+        <nav class="fg-admin-menu-panel" aria-label="Admin">
+            @Links
+        </nav>
+    </details>
 
     <div class="fg-admin-body">
         @Body
@@ -37,25 +42,90 @@
 </div>
 
 @code {
+    private RenderFragment Links => @<text>
+        @foreach (var group in Groups)
+        {
+            <div class="fg-admin-nav-group">
+                <span class="fg-admin-nav-title">@group.Title</span>
+                @foreach (var link in group.Links)
+                {
+                    <a class="fg-admin-nav-link @(IsActive(link) ? "active" : "")" href="@link.Href" aria-current="@(IsActive(link) ? "page" : null)">@link.Label</a>
+                }
+            </div>
+        }
+    </text>;
+
+    private sealed record NavLink(string Label, string Href, bool Highlights = true);
+
+    private sealed record NavGroup(string Title, IReadOnlyList<NavLink> Links);
+
+    private IReadOnlyList<NavGroup> Groups
+    {
+        get
+        {
+            var groups = new List<NavGroup>
+            {
+                new("Manage",
+                [
+                    new("Feeds", "/admin/feeds"),
+                    new("Assets", "/admin/assets"),
+                    new("Tokens", "/admin/tokens"),
+                    new("Appearance", "/admin/appearance"),
+                ]),
+            };
+
+            if (Managed is { } managed)
+            {
+                var name = Uri.EscapeDataString(managed.Name);
+                groups.Add(managed.IsAssets
+                    ? new NavGroup(managed.Name,
+                    [
+                        new("Settings", $"/admin/assets/{name}"),
+                        new("Browse files", $"/assets/{name}", Highlights: false),
+                    ])
+                    : new NavGroup(managed.Name,
+                    [
+                        new("Settings", $"/admin/feeds/{name}"),
+                        new("Unlisted versions", $"/admin/feeds/{name}/unlisted"),
+                        new("View as a reader", $"/feeds/{name}", Highlights: false),
+                    ]));
+            }
+
+            return groups;
+        }
+    }
+
     /// <summary>The path alone, without the query, and without a trailing slash to compare against.</summary>
     private string CurrentPath =>
         "/" + Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].Trim('/');
 
-    /// <summary>The feed under management, when the URL names one.</summary>
-    private string? FeedName
+    /// <summary>The feed or asset directory under management, when the URL names one.</summary>
+    private (string Name, bool IsAssets)? Managed
     {
         get
         {
             var parts = CurrentPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            return parts.Length >= 3
-                && parts[0].Equals("admin", StringComparison.OrdinalIgnoreCase)
-                && parts[1].Equals("feeds", StringComparison.OrdinalIgnoreCase)
-                    ? Uri.UnescapeDataString(parts[2])
-                    : null;
+            if (parts.Length < 3 || !parts[0].Equals("admin", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return parts[1].ToLowerInvariant() switch
+            {
+                "feeds" => (Uri.UnescapeDataString(parts[2]), false),
+                "assets" => (Uri.UnescapeDataString(parts[2]), true),
+                _ => null,
+            };
         }
     }
 
     /// <summary>Exact match, so "Feeds" does not stay lit while a single feed is being edited.</summary>
-    private string Active(string path) =>
-        string.Equals(CurrentPath, path, StringComparison.OrdinalIgnoreCase) ? "active" : "";
+    private bool IsActive(NavLink link) =>
+        link.Highlights && string.Equals(CurrentPath, link.Href.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Where the menu bar says you are, so a closed menu still answers that.</summary>
+    private string? CurrentLabel =>
+        Groups.SelectMany(g => g.Links.Select(l => (Group: g, Link: l))).FirstOrDefault(x => IsActive(x.Link)) is { Link: not null } hit
+            ? hit.Group.Title == "Manage" ? hit.Link.Label : $"{hit.Group.Title} · {hit.Link.Label}"
+            : null;
 }

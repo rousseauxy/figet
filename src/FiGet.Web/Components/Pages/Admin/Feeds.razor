@@ -1,4 +1,5 @@
 @page "/admin/feeds"
+@page "/admin/assets"
 @attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
 @layout AdminLayout
 @using System.ComponentModel.DataAnnotations
@@ -7,14 +8,51 @@
 @inject FiGet.Http.AuditLog Audit
 @inject TimeProvider Time
 
-<PageTitle>Feeds · admin · FiGet</PageTitle>
+@*
+    Two tabs from one page: package feeds under /admin/feeds, asset directories under /admin/assets. They were one
+    list, and a directory of files sat between package feeds with half its columns empty. What the two share - a
+    name, who may read, a settings page - is most of this page, so two copies would only give the create form two
+    places to drift apart.
+*@
+<PageTitle>@(IsAssets ? "Assets" : "Feeds") · admin · FiGet</PageTitle>
 
-<h1>Feeds</h1>
-<p class="fg-lede">Every feed on this server, including the ones a reader cannot see.</p>
+<h1>@(IsAssets ? "Asset directories" : "Feeds")</h1>
+<p class="fg-lede">
+    @(IsAssets
+        ? "Every asset directory on this server, including the ones a reader cannot see."
+        : "Every package feed on this server, including the ones a reader cannot see.")
+</p>
 
 @if (feeds.Count == 0)
 {
-    <p class="fg-empty">No feeds yet. Create the first one below.</p>
+    <p class="fg-empty">@(IsAssets ? "No asset directories yet." : "No feeds yet.") Create the first one below.</p>
+}
+else if (IsAssets)
+{
+    <div class="fg-table-wrap">
+        <table class="fg-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Read</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var directory in feeds)
+                {
+                    <tr>
+                        <td><a href="/admin/assets/@directory.Name">@directory.Name</a></td>
+                        <td>@(directory.AnonymousRead ? "Anonymous" : "Token")</td>
+                        <td class="fg-cell-actions">
+                            <a class="fg-btn fg-btn-sm" href="/assets/@directory.Name">Browse</a>
+                            <a class="fg-btn fg-btn-sm" href="/admin/assets/@directory.Name">Settings</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 }
 else
 {
@@ -38,8 +76,8 @@ else
                         <td><a href="/admin/feeds/@feed.Name">@feed.Name</a></td>
                         <td><span class="fg-badge">@Display.Kind(feed.Kind)</span></td>
                         <td>@(feed.AnonymousRead ? "Anonymous" : "Token")</td>
-                        <td>@(feed.Kind == FeedKind.Assets ? Display.None : feed.AllowOverwrite ? "Overwrite" : "Reject (409)")</td>
-                        <td>@(feed.Kind == FeedKind.Assets ? Display.None : feed.DeletionBehavior.ToString())</td>
+                        <td>@(feed.AllowOverwrite ? "Overwrite" : "Reject (409)")</td>
+                        <td>@feed.DeletionBehavior.ToString()</td>
                         <td class="fg-num">@(feed.Upstreams.Count == 0 ? Display.None : feed.Upstreams.Count.ToString(CultureInfo.InvariantCulture))</td>
                         <td class="fg-cell-actions">
                             <a class="fg-btn fg-btn-sm" href="/admin/feeds/@feed.Name">Settings</a>
@@ -51,40 +89,36 @@ else
     </div>
 }
 
-<h2>Create a feed or asset directory</h2>
+<h2>@(IsAssets ? "Create an asset directory" : "Create a feed")</h2>
 <div class="fg-panel">
     <EditForm Model="NewFeed!" FormName="create-feed" OnValidSubmit="CreateAsync" method="post" class="fg-form">
         <DataAnnotationsValidator />
         <div class="fg-field">
             <label for="feed-name">Name</label>
-            <InputText id="feed-name" @bind-Value="NewFeed!.Name" placeholder="for example: modules" />
+            <InputText id="feed-name" @bind-Value="NewFeed!.Name" placeholder="@(IsAssets ? "for example: installers" : "for example: modules")" />
             <ValidationMessage For="() => NewFeed!.Name" />
         </div>
 
-        <div class="fg-field">
-            <label for="feed-kind">What it holds</label>
-            <InputSelect id="feed-kind" @bind-Value="NewFeed!.Kind">
-                <option value="@FeedKind.Curated">Packages (NuGet and PowerShell modules)</option>
-                <option value="@FeedKind.Assets">Files (an asset directory, downloaded by URL)</option>
-            </InputSelect>
-        </div>
-
         <label class="fg-check"><InputCheckbox @bind-Value="NewFeed!.AnonymousRead" /> Anyone can read without a token</label>
-        <label class="fg-check"><InputCheckbox @bind-Value="NewFeed!.AllowOverwrite" /> Pushing an existing version replaces it (packages only)</label>
 
-        <div class="fg-field">
-            <label for="feed-delete">Delete behaviour (packages only)</label>
-            <InputSelect id="feed-delete" @bind-Value="NewFeed!.DeletionBehavior">
-                <option value="@PackageDeletionBehavior.Unlist">Unlist (recommended)</option>
-                <option value="@PackageDeletionBehavior.HardDelete">Hard delete</option>
-            </InputSelect>
-        </div>
+        @if (!IsAssets)
+        {
+            <label class="fg-check"><InputCheckbox @bind-Value="NewFeed!.AllowOverwrite" /> Pushing an existing version replaces it</label>
+
+            <div class="fg-field">
+                <label for="feed-delete">Delete behaviour</label>
+                <InputSelect id="feed-delete" @bind-Value="NewFeed!.DeletionBehavior">
+                    <option value="@PackageDeletionBehavior.Unlist">Unlist (recommended)</option>
+                    <option value="@PackageDeletionBehavior.HardDelete">Hard delete</option>
+                </InputSelect>
+            </div>
+        }
 
         @if (message is not null)
         {
             <p class="@(messageIsError ? "fg-error" : "fg-ok")">@message</p>
         }
-        <button type="submit" class="fg-btn fg-btn-primary">Create feed</button>
+        <button type="submit" class="fg-btn fg-btn-primary">@(IsAssets ? "Create directory" : "Create feed")</button>
     </EditForm>
 </div>
 
@@ -99,11 +133,17 @@ else
     [SupplyParameterFromForm(FormName = "create-feed")]
     private FeedForm? NewFeed { get; set; }
 
+    /// <summary>Which tab this is, from the address it was reached by.</summary>
+    private bool IsAssets => HttpContext.Request.Path.StartsWithSegments("/admin/assets", StringComparison.OrdinalIgnoreCase);
+
+    private FeedKind Kind => IsAssets ? FeedKind.Assets : FeedKind.Curated;
+
     protected override void OnInitialized() => NewFeed ??= new();
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
-    private async Task LoadAsync() => feeds = await FeedStore.ListAsync(HttpContext.RequestAborted);
+    private async Task LoadAsync() =>
+        feeds = [.. (await FeedStore.ListAsync(HttpContext.RequestAborted)).Where(f => (f.Kind == FeedKind.Assets) == IsAssets)];
 
     private async Task CreateAsync()
     {
@@ -113,17 +153,17 @@ else
             return;
         }
 
+        // Only the two a person chooses between, one per tab: a proxy feed is what a package feed becomes when it
+        // gains an upstream, not something created as such. The package-only settings mean nothing to a directory.
         var created = await FeedStore.CreateAsync(
             new Feed
             {
                 Name = NewFeed!.Name,
                 NameLower = NewFeed!.Name.ToLowerInvariant(),
-                // Only the two a person chooses between: a proxy feed is what a package feed becomes when
-                // it gains an upstream, not something created as such.
-                Kind = NewFeed!.Kind == FeedKind.Assets ? FeedKind.Assets : FeedKind.Curated,
+                Kind = Kind,
                 AnonymousRead = NewFeed!.AnonymousRead,
-                AllowOverwrite = NewFeed!.AllowOverwrite,
-                DeletionBehavior = NewFeed!.DeletionBehavior,
+                AllowOverwrite = !IsAssets && NewFeed!.AllowOverwrite,
+                DeletionBehavior = IsAssets ? PackageDeletionBehavior.Unlist : NewFeed!.DeletionBehavior,
                 CreatedUtc = Time.GetUtcNow().UtcDateTime,
             },
             HttpContext.RequestAborted);
@@ -134,10 +174,14 @@ else
                 HttpContext,
                 "feed.create",
                 NewFeed!.Name,
-                $"kind={NewFeed!.Kind} anonymousRead={NewFeed!.AnonymousRead} allowOverwrite={NewFeed!.AllowOverwrite} onDelete={NewFeed!.DeletionBehavior}");
+                $"kind={Kind} anonymousRead={NewFeed!.AnonymousRead} allowOverwrite={NewFeed!.AllowOverwrite} onDelete={NewFeed!.DeletionBehavior}");
         }
 
-        (message, messageIsError) = created ? ($"Feed '{NewFeed!.Name}' created.", false) : ($"A feed named '{NewFeed!.Name}' already exists.", true);
+        // Feeds and directories share one set of names, so the refusal cannot say which of the two holds it
+        // without looking; it names both rather than send someone to the wrong tab.
+        (message, messageIsError) = created
+            ? ($"{(IsAssets ? "Asset directory" : "Feed")} '{NewFeed!.Name}' created.", false)
+            : ($"The name '{NewFeed!.Name}' is already taken by a feed or an asset directory.", true);
         await LoadAsync();
         if (created)
         {
@@ -149,8 +193,6 @@ else
     {
         [Required(ErrorMessage = "Enter a name.")]
         public string Name { get; set; } = "";
-
-        public FeedKind Kind { get; set; } = FeedKind.Curated;
 
         public bool AnonymousRead { get; set; }
 

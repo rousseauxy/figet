@@ -421,6 +421,36 @@ public abstract partial class AssetDirectoryTests
         HttpAssert.Status(HttpStatusCode.NotFound, await anonymous.GetAsync("assets/public"));
     }
 
+    /// <summary>
+    /// The admin area splits the same way: package feeds on one tab, asset directories on their own, each
+    /// directory managed under /admin/assets with links that fit a directory rather than a feed.
+    /// </summary>
+    [Fact]
+    public async Task The_admin_area_has_its_own_tab_for_asset_directories()
+    {
+        using var browser = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await SignInAsync(browser, FiGetServerFixture.AdminToken));
+
+        var feeds = await HttpAssert.SuccessBodyAsync(await browser.GetAsync("admin/feeds"));
+        Assert.Contains("href=\"/admin/feeds/public\"", feeds, StringComparison.Ordinal);
+        Assert.DoesNotContain("href=\"/admin/feeds/files\"", feeds, StringComparison.Ordinal);
+        Assert.Contains("href=\"/admin/assets\"", feeds, StringComparison.Ordinal);
+
+        var assets = await HttpAssert.SuccessBodyAsync(await browser.GetAsync("admin/assets"));
+        Assert.Contains("href=\"/admin/assets/files\"", assets, StringComparison.Ordinal);
+        Assert.DoesNotContain("href=\"/admin/feeds/public\"", assets, StringComparison.Ordinal);
+        Assert.Contains("Create an asset directory", assets, StringComparison.Ordinal);
+
+        var settings = await HttpAssert.SuccessBodyAsync(await browser.GetAsync("admin/assets/files"));
+        Assert.Contains("Delete this directory", settings, StringComparison.Ordinal);
+        Assert.Contains("href=\"/assets/files\"", settings, StringComparison.Ordinal);
+        Assert.DoesNotContain("/unlisted\"", settings, StringComparison.Ordinal);
+
+        // One set of links, twice: the side column for a wide screen and the menu that opens on a phone.
+        Assert.Contains("fg-admin-menu", settings, StringComparison.Ordinal);
+        Assert.Contains("<details class=\"fg-admin-menu\"", settings, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task An_admin_uploads_from_the_page_and_replaces_only_when_asked()
     {
