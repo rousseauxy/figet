@@ -63,12 +63,17 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.Property<int>("Scopes")
                         .HasColumnType("int");
 
+                    b.Property<int?>("UserKey")
+                        .HasColumnType("int");
+
                     b.HasKey("Key");
 
                     b.HasIndex("FeedKey");
 
                     b.HasIndex("Hash")
                         .IsUnique();
+
+                    b.HasIndex("UserKey");
 
                     b.ToTable("AccessTokens", (string)null);
                 });
@@ -873,7 +878,14 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                         .HasForeignKey("FeedKey")
                         .OnDelete(DeleteBehavior.Cascade);
 
+                    b.HasOne("FiGet.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserKey")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.Navigation("Feed");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("FiGet.Domain.Entities.AssetItem", b =>

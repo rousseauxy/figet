@@ -526,7 +526,7 @@ public abstract partial class AssetDirectoryTests
     {
         await using var scope = server.Services.CreateAsyncScope();
         var tokens = scope.ServiceProvider.GetRequiredService<FiGet.Application.Tokens.AccessTokenService>();
-        return (await tokens.CreateAsync("assets-" + scopes, scopes, null, null, CancellationToken.None)).Secret;
+        return (await tokens.CreateServiceTokenAsync(FiGetServerFixture.SuperAdminActor, "assets-" + scopes, scopes, null, null, CancellationToken.None)).Created!.Secret;
     }
 
     private HttpClient CreateBrowser() =>

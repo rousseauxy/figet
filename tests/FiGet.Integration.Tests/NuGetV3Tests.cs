@@ -513,7 +513,7 @@ public abstract class NuGetV3Tests
         }
 
         var tokens = (FiGet.Application.Tokens.AccessTokenService)services.GetService(typeof(FiGet.Application.Tokens.AccessTokenService))!;
-        return (await tokens.CreateAsync("test-" + scopes, scopes, feedKey, null, CancellationToken.None)).Secret;
+        return (await tokens.CreateServiceTokenAsync(FiGetServerFixture.SuperAdminActor, "test-" + scopes, scopes, feedKey, null, CancellationToken.None)).Created!.Secret;
     }
 
     private static string PortablePdbKey(byte[] pdb)

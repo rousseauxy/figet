@@ -18,7 +18,7 @@ owner on 2026-09-13; the questions and answers are recorded under "Decisions". B
 | First OIDC sign-in | **Never matched automatically.** A provider identity with no link creates a new user with role *user*. Joining it to an existing account is done from that account's profile page. |
 | Provider groups | **Optional mapping per provider.** A provider names its groups claim; a FiGet group can be linked to a group of a provider. Membership from a linked group is refreshed at every sign-in with that provider. Provider groups never grant a role. |
 | Sign-in page with SSO enabled | **A super admin setting**: either provider buttons with a "sign in with a local account" link, or provider buttons only. `/account/login/local` always works either way. |
-| Personal API keys | **Act as their owner, optionally narrower**: never more than the user's current permissions (which follow group and role changes immediately), can be limited to some feeds and to read-only, and stop working when the user is disabled or deleted. |
+| Personal API keys | **Act as their owner, optionally narrower**: never more than the user's current permissions (which follow group and role changes immediately), can be limited to one feed (as service tokens are; one key per feed for more) and to read-only, and stop working when the user is disabled or deleted. |
 
 ## Added to the owner's outline
 
@@ -97,7 +97,7 @@ Each phase ships on its own: migrations for both providers, tests on both databa
    profile page with password change, token sign-in removed, audit entries to the console as today.
 2. **Groups and per-feed permissions.** Done 2026-09-13. Groups page, an Access section on each feed's settings, effective-permission
    evaluation in protocol requests and browsing pages, tests for every level.
-3. **API keys.** Personal keys on the profile page, service tokens restricted to admins, the ceiling rule.
+3. **API keys.** Done 2026-09-13. Personal keys on the profile page, service tokens restricted to admins, the ceiling rule.
 4. **OpenID Connect.** Providers page, runtime schemes, sign-in page modes and the local fallback, account creation,
    connect and disconnect on the profile page, group mapping. Verified against a real Authentik provider.
 5. **Audit log.** Table, admin page with filters, retention and pruning; the console lines stay.

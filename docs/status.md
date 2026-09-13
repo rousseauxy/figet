@@ -2278,3 +2278,27 @@ admins, deletes taking grants with them). With group grants ignored and the endp
 Read tests fail. Walked through on a local instance: group created, member added, a user and a group granted on a feed.
 
 Suites: unit 107/0; integration 305/0 on SQLite and on SQL Server.
+
+## Accounts, phase 3: personal API keys - 2026-09-13
+
+- **Personal keys** (`AccessTokens.UserKey`): made and revoked by their owner under **API keys** on the profile page,
+  with access Read or Read and publish, all feeds or one, and an optional expiry. The key's settings are limits, not
+  grants: at every request `AccessTokenService.AllowsAsync` takes the lower of them and the owner's level on the feed
+  from `FeedAccessService`, so a removed grant or a left group applies at once. A key whose owner is disabled validates
+  as no key at all; deleting the account deletes its keys. The request log names a key as `owner/name`.
+- **The ceiling rule** is in `AccessTokenService`, not on a page: a personal key cannot carry the admin scope, and one
+  limited to a feed is refused when the owner cannot already do that there. A service token needs an admin, and the
+  admin scope a super admin; the admin tokens page offers that checkbox to super admins only.
+- **Tokens page** lists service tokens and, separately, everyone's personal keys with their owner, so an admin can
+  revoke a leaked one.
+- **Menus**: the admin navigation has an **Authentication** section (Users, Groups, Tokens) next to Manage (Feeds,
+  Assets, Appearance); the account menu is Profile, Admin and Sign out.
+
+Tests in `FeedPermissionTests.Keys.cs` on both providers: a publish key follows its owner's grant up and down; a
+read-only, one-feed key of an admin stays within its limits; a disabled or deleted owner ends the key; the ceiling for
+personal keys and service tokens; the profile page creating a key that reads a private feed, a stranger unable to
+revoke it, and revoking it through the page. With the owner check, the ceiling, the disabled check and the key deletion
+each disabled in turn, the matching test fails (deletion also trips the foreign key). Walked through on a local
+instance: forced password change, two keys created, both listed on the tokens page.
+
+Suites: unit 107/0; integration 315/0 on SQLite and on SQL Server.

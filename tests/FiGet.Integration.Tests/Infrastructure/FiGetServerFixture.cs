@@ -37,6 +37,9 @@ public abstract class FiGetServerFixture : IAsyncLifetime
 
     public const string AdminPassword = "figet-test-password-0123";
 
+    /// <summary>Creates service tokens in tests. Creating one asks who does it; only the role matters for a service token.</summary>
+    public static readonly FiGet.Application.Accounts.AccountActor SuperAdminActor = new(0, FiGet.Domain.Entities.UserRole.SuperAdmin);
+
     private readonly string root = Path.Combine(Path.GetTempPath(), "figet-it-" + Guid.NewGuid().ToString("N"));
     private WebApplicationFactory<Program>? factory;
     private string? sqlServerDatabase;

@@ -210,6 +210,6 @@ public abstract class PackageManagementTests
     {
         await using var scope = server.Services.CreateAsyncScope();
         var tokens = scope.ServiceProvider.GetRequiredService<FiGet.Application.Tokens.AccessTokenService>();
-        return (await tokens.CreateAsync("mgmt-" + scopes, scopes, null, null, CancellationToken.None)).Secret;
+        return (await tokens.CreateServiceTokenAsync(FiGetServerFixture.SuperAdminActor, "mgmt-" + scopes, scopes, null, null, CancellationToken.None)).Created!.Secret;
     }
 }

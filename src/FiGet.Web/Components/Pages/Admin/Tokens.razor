@@ -11,6 +11,11 @@
 
 <PageTitle>Tokens · FiGet</PageTitle>
 
+@*
+    Service tokens belong to nobody: automation that must keep working when a person leaves. Personal keys are made by
+    their owners on the profile page and listed here so an admin can revoke one; they act as their owner and never more.
+*@
+
 <h1>Tokens</h1>
 <p class="fg-lede">
     Clients send a token as <code>X-NuGet-ApiKey</code> (push), or as the password of Basic authentication
@@ -28,57 +33,121 @@
     </div>
 }
 
-<div class="fg-table-wrap">
-    <table class="fg-table">
-        <thead>
-            <tr>
-                <th>Name</th>
-                <th>Prefix</th>
-                <th>Scopes</th>
-                <th>Feed</th>
-                <th>Created</th>
-                <th>Last used</th>
-                <th>Expires</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var token in tokens)
-            {
-                var active = token.RevokedUtc is null && (token.ExpiresUtc is null || token.ExpiresUtc > now);
-                <tr class="@(active ? "" : "is-inactive")">
-                    <td>@token.Name</td>
-                    <td><code>@token.Prefix…</code></td>
-                    <td><span class="fg-badge">@token.Scopes</span></td>
-                    <td>@(token.Feed?.Name ?? "All feeds")</td>
-                    <td class="fg-num">@Date(token.CreatedUtc)</td>
-                    <td class="fg-num">@Date(token.LastUsedUtc)</td>
-                    <td>
-                        @if (token.RevokedUtc is not null)
-                        {
-                            <span class="fg-badge fg-badge-danger">Revoked</span>
-                        }
-                        else
-                        {
-                            <span class="fg-num">@Date(token.ExpiresUtc, "Never")</span>
-                        }
-                    </td>
-                    <td class="fg-cell-actions">
-                        @if (token.RevokedUtc is null)
-                        {
-                            <form method="post" @formname="@($"revoke-{token.Key}")" @onsubmit="() => RevokeAsync(token.Key)">
-                                <AntiforgeryToken />
-                                <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Revoke</button>
-                            </form>
-                        }
-                    </td>
+<h2>Service tokens</h2>
+@if (!tokens.Any(t => t.UserKey is null))
+{
+    <p class="fg-empty">No service tokens. Make one below for automation that should not depend on a person.</p>
+}
+else
+{
+    <div class="fg-table-wrap">
+        <table class="fg-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Prefix</th>
+                    <th>Scopes</th>
+                    <th>Feed</th>
+                    <th>Created</th>
+                    <th>Last used</th>
+                    <th>Expires</th>
+                    <th></th>
                 </tr>
-            }
-        </tbody>
-    </table>
-</div>
+            </thead>
+            <tbody>
+                @foreach (var token in tokens.Where(t => t.UserKey is null))
+                {
+                    var active = token.RevokedUtc is null && (token.ExpiresUtc is null || token.ExpiresUtc > now);
+                    <tr class="@(active ? "" : "is-inactive")">
+                        <td>@token.Name</td>
+                        <td><code>@token.Prefix…</code></td>
+                        <td><span class="fg-badge">@token.Scopes</span></td>
+                        <td>@(token.Feed?.Name ?? "All feeds")</td>
+                        <td class="fg-num">@Date(token.CreatedUtc)</td>
+                        <td class="fg-num">@Date(token.LastUsedUtc)</td>
+                        <td>
+                            @if (token.RevokedUtc is not null)
+                            {
+                                <span class="fg-badge fg-badge-danger">Revoked</span>
+                            }
+                            else
+                            {
+                                <span class="fg-num">@Date(token.ExpiresUtc, "Never")</span>
+                            }
+                        </td>
+                        <td class="fg-cell-actions">
+                            @if (token.RevokedUtc is null)
+                            {
+                                <form method="post" @formname="@($"revoke-{token.Key}")" @onsubmit="() => RevokeAsync(token.Key)">
+                                    <AntiforgeryToken />
+                                    <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Revoke</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
 
-<h2>Create a token</h2>
+<h2>Personal keys</h2>
+@if (!tokens.Any(t => t.UserKey is not null))
+{
+    <p class="fg-empty">Nobody has made a personal key yet. Each account makes its own on its profile page.</p>
+}
+else
+{
+    <div class="fg-table-wrap">
+        <table class="fg-table">
+            <thead>
+                <tr>
+                    <th>Owner</th>
+                    <th>Name</th>
+                    <th>Prefix</th>
+                    <th>Limited to</th>
+                    <th>Last used</th>
+                    <th>Expires</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var token in tokens.Where(t => t.UserKey is not null))
+                {
+                    var active = token.RevokedUtc is null && (token.ExpiresUtc is null || token.ExpiresUtc > now);
+                    <tr class="@(active ? "" : "is-inactive")">
+                        <td><a href="/admin/users/@token.UserKey">@(token.User?.UserName ?? "?")</a></td>
+                        <td>@token.Name</td>
+                        <td><code>@token.Prefix…</code></td>
+                        <td>@PersonalKeyLimits(token)</td>
+                        <td class="fg-num">@Date(token.LastUsedUtc)</td>
+                        <td>
+                            @if (token.RevokedUtc is not null)
+                            {
+                                <span class="fg-badge fg-badge-danger">Revoked</span>
+                            }
+                            else
+                            {
+                                <span class="fg-num">@Date(token.ExpiresUtc, "Never")</span>
+                            }
+                        </td>
+                        <td class="fg-cell-actions">
+                            @if (token.RevokedUtc is null)
+                            {
+                                <form method="post" @formname="@($"revoke-{token.Key}")" @onsubmit="() => RevokeAsync(token.Key)">
+                                    <AntiforgeryToken />
+                                    <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Revoke</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+<h2>Create a service token</h2>
 <div class="fg-panel">
     <EditForm Model="NewToken!" FormName="create-token" OnValidSubmit="CreateAsync" method="post" class="fg-form">
         <DataAnnotationsValidator />
@@ -93,7 +162,10 @@
             <label class="fg-check"><InputCheckbox @bind-Value="NewToken!.Read" /> Read</label>
             <label class="fg-check"><InputCheckbox @bind-Value="NewToken!.Push" /> Push (includes read)</label>
             <label class="fg-check"><InputCheckbox @bind-Value="NewToken!.Delete" /> Delete and relist (includes read)</label>
-            <label class="fg-check"><InputCheckbox @bind-Value="NewToken!.Admin" /> Admin (everything, including this page)</label>
+            @if (IsSuperAdmin)
+            {
+                <label class="fg-check"><InputCheckbox @bind-Value="NewToken!.Admin" /> Admin (every scope on every feed)</label>
+            }
         </fieldset>
 
         <div class="fg-field">
@@ -116,7 +188,7 @@
         {
             <p class="fg-error">@error</p>
         }
-        <button type="submit" class="fg-btn fg-btn-primary">Create token</button>
+        <button type="submit" class="fg-btn fg-btn-primary">Create service token</button>
     </EditForm>
 </div>
 
@@ -168,7 +240,16 @@
         }
 
         DateTime? expires = NewToken!.ExpiresInDays is > 0 ? now.AddDays(NewToken!.ExpiresInDays.Value) : null;
-        created = await TokenService.CreateAsync(NewToken!.Name.Trim(), scopes, feedKey, expires, HttpContext.RequestAborted);
+        var result = await TokenService.CreateServiceTokenAsync(FiGetApp.Actor(HttpContext.User)!, NewToken!.Name, scopes, feedKey, expires, HttpContext.RequestAborted);
+        if (result.Created is null)
+        {
+            error = result.Status == TokenCreateStatus.AboveYourRights
+                ? "Only a super admin creates a token with the admin scope."
+                : "Enter a name and choose at least one scope.";
+            return;
+        }
+
+        created = result.Created;
         Audit.Record(
             HttpContext,
             "token.create",
@@ -187,6 +268,11 @@
         Audit.Record(HttpContext, "token.revoke", revoked?.Name ?? key.ToString(CultureInfo.InvariantCulture));
         tokens = await Store.ListAsync(HttpContext.RequestAborted);
     }
+
+    private bool IsSuperAdmin => HttpContext.User.IsInRole(FiGetApp.SuperAdminRole);
+
+    private static string PersonalKeyLimits(AccessToken token) =>
+        (token.Scopes.HasFlag(TokenScopes.Push) ? "Read and publish" : "Read") + " · " + (token.Feed?.Name ?? "all feeds");
 
     private static string Date(DateTime? value, string empty = "—") =>
         value is null ? empty : value.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);

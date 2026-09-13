@@ -399,7 +399,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
     {
         await using var scope = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.CreateAsyncScope(server.Services);
         var tokens = (FiGet.Application.Tokens.AccessTokenService)scope.ServiceProvider.GetService(typeof(FiGet.Application.Tokens.AccessTokenService))!;
-        return (await tokens.CreateAsync("ui-push", FiGet.Domain.Entities.TokenScopes.Push, null, null, CancellationToken.None)).Secret;
+        return (await tokens.CreateServiceTokenAsync(FiGetServerFixture.SuperAdminActor, "ui-push", FiGet.Domain.Entities.TokenScopes.Push, null, null, CancellationToken.None)).Created!.Secret;
     }
 
     [GeneratedRegex("<input[^>]*type=\"hidden\"[^>]*name=\"(?<name>[^\"]+)\"[^>]*value=\"(?<value>[^\"]*)\"", RegexOptions.CultureInvariant)]

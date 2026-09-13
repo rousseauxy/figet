@@ -53,6 +53,7 @@ public static class FeedAccess
 
         var tokens = http.RequestServices.GetRequiredService<AccessTokenService>();
         ValidatedToken? best = null;
+        var tokenAllows = false;
         foreach (var secret in RequestCredentials.Candidates(http.Request))
         {
             var token = await tokens.ValidateAsync(secret, cancellationToken);
@@ -62,15 +63,17 @@ public static class FeedAccess
             }
 
             best ??= token;
-            if (token.Allows(required, feed.Key))
+
+            // For a personal key this also asks what its owner may do on the feed now.
+            if (await tokens.AllowsAsync(token, required, feed, cancellationToken))
             {
                 best = token;
+                tokenAllows = true;
                 break;
             }
         }
 
-        var allowed = required == TokenScopes.Read && feed.AnonymousRead
-            || (best is not null && best.Allows(required, feed.Key));
+        var allowed = tokenAllows || (required == TokenScopes.Read && feed.AnonymousRead);
 
         // A signed-in browser - a download link on a package page - reads with its account's level. Reading only: a
         // cookie is sent with any request the browser makes, so it must never be what lets a push or a delete through.
@@ -83,7 +86,7 @@ public static class FeedAccess
         {
             if (best is not null)
             {
-                http.Items[TokenNameItem] = best.Name;
+                http.Items[TokenNameItem] = best.LogName;
             }
 
             return (new FeedRequest(feed, best), null);

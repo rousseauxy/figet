@@ -1,13 +1,23 @@
 @page "/account/profile"
 @attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
 @using FiGet.Application.Accounts
+@using FiGet.Application.Tokens
 @inject AccountService Accounts
 @inject IUserStore Users
+@inject AccessTokenService TokenService
+@inject IAccessTokenStore TokenStore
+@inject IFeedStore Feeds
+@inject FeedAccessService Access
+@inject TimeProvider Time
 @inject FiGet.Http.AuditLog Audit
 
 @*
-    The signed-in account's own page. Sign-in providers to connect, and personal API keys, arrive here in later phases
-    of docs/auth-plan.md.
+    The signed-in account's own page: profile, password and personal API keys. Sign-in providers to connect arrive here
+    in phase 4 of docs/auth-plan.md.
+
+    A personal key acts as its owner: its access and feed are limits, and at every use it does the lower of those and
+    what the account may do then. So the feed list offers only feeds the account can read.
 *@
 
 <PageTitle>Profile · FiGet</PageTitle>
@@ -57,9 +67,121 @@
     }
 </section>
 
+<section class="fg-panel" id="keys">
+    <h2>API keys</h2>
+    <p class="fg-muted fg-small">
+        For NuGet and PowerShell clients: send a key as <code>X-NuGet-ApiKey</code>, or as the password of Basic
+        authentication. A key does what your account may do, never more, and stops working when your access changes or
+        your account is disabled. It is shown once, when it is created.
+    </p>
+
+    @if (createdKey is not null)
+    {
+        <div class="fg-secret" role="status">
+            <p><strong>Key “@createdKey.Token.Name” created.</strong> Copy it now; it will not be shown again.</p>
+            <div class="fg-url">
+                <pre><code>@createdKey.Secret</code></pre>
+                <button type="button" class="fg-copy" data-copy="@createdKey.Secret" title="Copy this key" aria-label="Copy the new key">Copy</button>
+            </div>
+        </div>
+    }
+
+    @if (keys.Count > 0)
+    {
+        <div class="fg-table-wrap">
+            <table class="fg-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Prefix</th>
+                        <th>Access</th>
+                        <th>Feed</th>
+                        <th>Last used</th>
+                        <th>Expires</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var key in keys)
+                    {
+                        var active = key.RevokedUtc is null && (key.ExpiresUtc is null || key.ExpiresUtc > now);
+                        <tr class="@(active ? "" : "is-inactive")">
+                            <td>@key.Name</td>
+                            <td><code>@key.Prefix…</code></td>
+                            <td>@(key.Scopes.HasFlag(TokenScopes.Push) ? "Read and publish" : "Read")</td>
+                            <td>@(key.Feed?.Name ?? "All feeds")</td>
+                            <td class="fg-num">@Date(key.LastUsedUtc)</td>
+                            <td>
+                                @if (key.RevokedUtc is not null)
+                                {
+                                    <span class="fg-badge fg-badge-danger">Revoked</span>
+                                }
+                                else
+                                {
+                                    <span class="fg-num">@Date(key.ExpiresUtc, "Never")</span>
+                                }
+                            </td>
+                            <td class="fg-cell-actions">
+                                @if (key.RevokedUtc is null)
+                                {
+                                    <form method="post" @formname="@($"revoke-key-{key.Key}")" @onsubmit="() => RevokeKeyAsync(key.Key)">
+                                        <AntiforgeryToken />
+                                        <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Revoke</button>
+                                    </form>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <h3>New key</h3>
+    <EditForm Model="NewKey!" FormName="create-key" OnValidSubmit="CreateKeyAsync" method="post" class="fg-form">
+        <DataAnnotationsValidator />
+        <div class="fg-field">
+            <label for="key-name">Name</label>
+            <InputText id="key-name" @bind-Value="NewKey!.Name" maxlength="128" placeholder="for example: laptop" />
+            <ValidationMessage For="() => NewKey!.Name" />
+        </div>
+        <div class="fg-field">
+            <label for="key-access">Access</label>
+            <InputSelect id="key-access" @bind-Value="NewKey!.Access">
+                <option value="@KeyInput.ReadAccess">Read</option>
+                <option value="@KeyInput.PublishAccess">Read and publish</option>
+            </InputSelect>
+        </div>
+        <div class="fg-field">
+            <label for="key-feed">Feed</label>
+            <InputSelect id="key-feed" @bind-Value="NewKey!.FeedName">
+                <option value="">All feeds</option>
+                @foreach (var feed in readableFeeds)
+                {
+                    <option value="@feed.Name">@feed.Name@(feed.Kind == FeedKind.Assets ? " (asset directory)" : "")</option>
+                }
+            </InputSelect>
+        </div>
+        <div class="fg-field">
+            <label for="key-expiry">Expires after (days, empty for never)</label>
+            <InputNumber id="key-expiry" @bind-Value="NewKey!.ExpiresInDays" min="1" />
+        </div>
+        @if (keyError is not null)
+        {
+            <p class="fg-error">@keyError</p>
+        }
+        <button type="submit" class="fg-btn fg-btn-primary">Create key</button>
+    </EditForm>
+</section>
+
 @code {
     private User? user;
     private string? message;
+    private IReadOnlyList<AccessToken> keys = [];
+    private IReadOnlyList<Feed> readableFeeds = [];
+    private CreatedToken? createdKey;
+    private string? keyError;
+    private DateTime now;
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
@@ -67,11 +189,15 @@
     [SupplyParameterFromForm(FormName = "profile")]
     private ProfileInput? Input { get; set; }
 
+    [SupplyParameterFromForm(FormName = "create-key")]
+    private KeyInput? NewKey { get; set; }
+
     [SupplyParameterFromQuery(Name = "saved")]
     private string? Saved { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
+        NewKey ??= new();
         await LoadAsync();
         Input ??= new ProfileInput { DisplayName = user?.DisplayName ?? "", Email = user?.Email ?? "" };
         if (Saved == "password")
@@ -84,6 +210,16 @@
     {
         var actor = FiGetApp.Actor(HttpContext.User);
         user = actor is null ? null : await Users.FindAsync(actor.Key, HttpContext.RequestAborted);
+        if (actor is null)
+        {
+            return;
+        }
+
+        now = Time.GetUtcNow().UtcDateTime;
+        keys = await TokenStore.ListOwnedAsync(actor.Key, HttpContext.RequestAborted);
+        var feeds = await Feeds.ListAsync(HttpContext.RequestAborted);
+        var levels = await Access.LevelsAsync(feeds, actor, HttpContext.RequestAborted);
+        readableFeeds = feeds.Where(f => levels.GetValueOrDefault(f.Key) >= FeedAccessLevel.Read).OrderBy(f => f.NameLower).ToList();
     }
 
     private async Task SaveAsync()
@@ -94,12 +230,75 @@
         await LoadAsync();
     }
 
+    private async Task CreateKeyAsync()
+    {
+        var actor = FiGetApp.Actor(HttpContext.User)!;
+        var scopes = NewKey!.Access == KeyInput.PublishAccess ? TokenScopes.Push | TokenScopes.Delete : TokenScopes.Read;
+        Feed? feed = null;
+        if (!string.IsNullOrEmpty(NewKey.FeedName) && (feed = await Feeds.FindAsync(NewKey.FeedName, HttpContext.RequestAborted)) is null)
+        {
+            keyError = "That feed does not exist.";
+            return;
+        }
+
+        DateTime? expires = NewKey.ExpiresInDays is > 0 ? Time.GetUtcNow().UtcDateTime.AddDays(NewKey.ExpiresInDays.Value) : null;
+        var result = await TokenService.CreatePersonalKeyAsync(actor, NewKey.Name, scopes, feed, expires, HttpContext.RequestAborted);
+        if (result.Created is null)
+        {
+            keyError = result.Status == TokenCreateStatus.AboveYourRights
+                ? $"Your account cannot {(scopes.HasFlag(TokenScopes.Push) ? "publish to" : "read")} that feed, so a key for it cannot either."
+                : "Enter a name.";
+            return;
+        }
+
+        createdKey = result.Created;
+        Audit.Record(
+            HttpContext,
+            "key.create",
+            $"{user!.UserName}/{result.Created.Token.Name}",
+            $"scopes={scopes} feed={feed?.Name ?? "all"} expires={(expires is null ? "never" : expires.Value.ToString("u", CultureInfo.InvariantCulture))}");
+        NewKey = new();
+        await LoadAsync();
+    }
+
+    private async Task RevokeKeyAsync(int key)
+    {
+        var actor = FiGetApp.Actor(HttpContext.User)!;
+        var revoked = keys.FirstOrDefault(k => k.Key == key);
+        if (await TokenService.RevokeOwnAsync(actor, key, HttpContext.RequestAborted))
+        {
+            Audit.Record(HttpContext, "key.revoke", $"{user!.UserName}/{revoked?.Name ?? key.ToString(CultureInfo.InvariantCulture)}");
+            message = "Key revoked.";
+        }
+
+        await LoadAsync();
+    }
+
+    private static string Date(DateTime? value, string empty = "—") =>
+        value is null ? empty : value.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+
     public static string RoleName(UserRole role) => role switch
     {
         UserRole.SuperAdmin => "Super admin",
         UserRole.Admin => "Admin",
         _ => "User",
     };
+
+    private sealed class KeyInput
+    {
+        public const string ReadAccess = "read";
+        public const string PublishAccess = "publish";
+
+        [Required(ErrorMessage = "Enter a name.")]
+        [StringLength(128)]
+        public string Name { get; set; } = "";
+
+        public string Access { get; set; } = ReadAccess;
+
+        public string FeedName { get; set; } = "";
+
+        public int? ExpiresInDays { get; set; }
+    }
 
     private sealed class ProfileInput
     {

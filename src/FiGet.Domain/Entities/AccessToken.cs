@@ -1,7 +1,7 @@
 namespace FiGet.Domain.Entities;
 
 /// <summary>
-/// An API key or personal access token. Only the SHA-256 hash of the secret is stored; the secret is
+/// An API key: a service token, or a personal key that belongs to an account. Only the SHA-256 hash of the secret is stored; the secret is
 /// shown once, at creation.
 /// </summary>
 public sealed class AccessToken
@@ -20,6 +20,14 @@ public sealed class AccessToken
     public int? FeedKey { get; set; }
 
     public Feed? Feed { get; set; }
+
+    /// <summary>
+    /// The account a personal key belongs to. Null for a service token, which an admin manages and which belongs to nobody.
+    /// A personal key never does more than its owner may do at the moment it is used.
+    /// </summary>
+    public int? UserKey { get; set; }
+
+    public User? User { get; set; }
 
     public TokenScopes Scopes { get; set; }
 

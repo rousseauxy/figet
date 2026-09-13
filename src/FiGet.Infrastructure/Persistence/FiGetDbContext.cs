@@ -267,6 +267,9 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.HasIndex(x => x.Hash).IsUnique();
             e.Property(x => x.Scopes).HasConversion<int>();
             e.HasOne(x => x.Feed).WithMany().HasForeignKey(x => x.FeedKey).OnDelete(DeleteBehavior.Cascade);
+
+            // Deleted by EfUserStore together with the account, as its grants and memberships are.
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserKey).OnDelete(DeleteBehavior.NoAction);
         });
     }
 
