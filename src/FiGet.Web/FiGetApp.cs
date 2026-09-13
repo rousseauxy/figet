@@ -118,6 +118,7 @@ public static class FiGetApp
         services.AddSingleton<IUpstreamRefreshQueue>(sp => sp.GetRequiredService<UpstreamRefreshQueue>());
         services.AddHostedService<UpstreamRefreshService>();
         services.AddScoped<ConnectorService>();
+        services.AddScoped<DependencyPuller>();
 
         services.AddDataProtection()
             .SetApplicationName("FiGet")
@@ -388,24 +389,31 @@ public static class FiGetApp
         // AmbiguousMatchException, which surfaces as a 500 rather than as anything that names the cause.
         admin.MapGet("", () => Results.Redirect("/admin/feeds"));
 
-        // Fetch a package an upstream has but this feed has not cached yet.
+        // Fetch a package an upstream has but this feed has not cached yet, with everything it depends on: the
+        // machine a pull is for has no internet, and a meta-module without its sub-modules does not install.
         admin.MapPost("/feeds/{feed}/pull", async (
             string feed,
             HttpContext http,
             IFeedStore feeds,
-            ConnectorService connector,
+            DependencyPuller puller,
             AuditLog audit,
             CancellationToken cancellationToken) =>
         {
             var form = await http.Request.ReadFormAsync(cancellationToken);
             var target = await feeds.FindAsync(feed, cancellationToken);
+            var returnUrl = form["returnUrl"].ToString();
             if (target is not null && NuGetVersion.TryParse(form["version"].ToString(), out var version))
             {
-                await connector.EnsureCachedAsync(target, form["id"].ToString(), version, cancellationToken);
-                audit.Record(http, "package.pull", form["id"].ToString(), $"feed={feed} version={version.ToNormalizedString()}");
+                var report = await puller.PullAsync(target, form["id"].ToString(), version, cancellationToken);
+                audit.Record(
+                    http,
+                    "package.pull",
+                    form["id"].ToString(),
+                    $"feed={feed} version={version.ToNormalizedString()} fetched={report.Fetched.Count} present={report.AlreadyHere.Count} unavailable={report.Unavailable.Count} capped={report.StoppedAtLimit}");
+                returnUrl = WithPullResult(returnUrl, report);
             }
 
-            return Back(form["returnUrl"].ToString(), $"/feeds/{Uri.EscapeDataString(feed)}");
+            return Back(returnUrl, $"/feeds/{Uri.EscapeDataString(feed)}");
         });
 
         admin.MapPost("/feeds/{feed}/upstreams/add", async (
@@ -735,6 +743,31 @@ public static class FiGetApp
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
         });
+    }
+
+    /// <summary>A return address with what a pull did, as counts, replacing what an earlier pull left there.</summary>
+    private static string WithPullResult(string returnUrl, PullReport report)
+    {
+        if (string.IsNullOrWhiteSpace(returnUrl))
+        {
+            return returnUrl;
+        }
+
+        string[] ours = ["pulled=", "present=", "missing=", "capped="];
+        var query = returnUrl.IndexOf('?', StringComparison.Ordinal);
+        var path = query < 0 ? returnUrl : returnUrl[..query];
+        var pairs = query < 0
+            ? []
+            : returnUrl[(query + 1)..].Split('&', StringSplitOptions.RemoveEmptyEntries).Where(p => !ours.Any(o => p.StartsWith(o, StringComparison.Ordinal))).ToList();
+        pairs.Add("pulled=" + report.Fetched.Count.ToString(CultureInfo.InvariantCulture));
+        pairs.Add("present=" + report.AlreadyHere.Count.ToString(CultureInfo.InvariantCulture));
+        pairs.Add("missing=" + report.Unavailable.Count.ToString(CultureInfo.InvariantCulture));
+        if (report.StoppedAtLimit)
+        {
+            pairs.Add("capped=1");
+        }
+
+        return path + "?" + string.Join('&', pairs);
     }
 
     /// <summary>A return address with the outcome of a fetch added, replacing one left by an earlier fetch.</summary>

@@ -512,6 +512,116 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         }
     }
 
+    /// <summary>
+    /// A pull caches what the package depends on, so the machine it is for can install it. Resolved the way a client
+    /// resolves: the lowest version a range allows, stable unless the range starts at a prerelease, and a dependency of a
+    /// dependency too.
+    /// </summary>
+    [Fact]
+    public async Task A_pull_caches_the_dependency_closure_at_the_versions_a_client_would_pick()
+    {
+        var meta = FiGetServerFixture.UniqueId("Pull.Meta");
+        var sub = FiGetServerFixture.UniqueId("Pull.Sub");
+        var ranged = FiGetServerFixture.UniqueId("Pull.Ranged");
+        var leaf = FiGetServerFixture.UniqueId("Pull.Leaf");
+
+        AddUpstreamPackage(meta, "1.0.0", b => { b.AddDependency("any", sub, "[1.0.0]"); b.AddDependency("any", ranged, "2.0.0"); });
+        AddUpstreamPackage(sub, "1.0.0", b => b.AddDependency("any", leaf, "1.0.0"));
+        AddUpstreamPackage(sub, "1.1.0");
+        AddUpstreamPackage(ranged, "2.0.0");
+        AddUpstreamPackage(ranged, "2.1.0");
+        AddUpstreamPackage(ranged, "3.0.0-beta1");
+        AddUpstreamPackage(leaf, "1.0.0");
+        AddUpstreamPackage(leaf, "1.5.0");
+
+        var report = await PullAsync(meta, "1.0.0");
+
+        Assert.Equal(4, report.Fetched.Count);
+        Assert.Empty(report.Unavailable);
+        Assert.False(report.StoppedAtLimit);
+        Assert.Equal(1, await CountAsync(meta, PackageOrigin.Cached));
+        Assert.Equal(["1.0.0"], await CachedVersionsAsync(sub));
+        Assert.Equal(["2.0.0"], await CachedVersionsAsync(ranged));
+        Assert.Equal(["1.0.0"], await CachedVersionsAsync(leaf));
+    }
+
+    /// <summary>A package cached on its own earlier is exactly what this repairs: pulling it again fetches what it needs.</summary>
+    [Fact]
+    public async Task Pulling_a_package_already_here_still_fetches_its_dependencies()
+    {
+        var meta = FiGetServerFixture.UniqueId("Pull.Again");
+        var sub = FiGetServerFixture.UniqueId("Pull.AgainSub");
+        AddUpstreamPackage(meta, "1.0.0", b => b.AddDependency("any", sub, "[1.0.0]"));
+        AddUpstreamPackage(sub, "1.0.0");
+
+        using var client = server.CreateClient();
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{meta}/1.0.0"));
+        Assert.Empty(await CachedVersionsAsync(sub));
+
+        var report = await PullAsync(meta, "1.0.0");
+
+        Assert.Equal([$"{meta} 1.0.0"], report.AlreadyHere);
+        Assert.Equal([$"{sub} 1.0.0"], report.Fetched);
+    }
+
+    [Fact]
+    public async Task A_dependency_no_upstream_has_is_reported_and_the_rest_is_still_pulled()
+    {
+        var meta = FiGetServerFixture.UniqueId("Pull.Gap");
+        var present = FiGetServerFixture.UniqueId("Pull.GapHere");
+        var absent = FiGetServerFixture.UniqueId("Pull.GapGone");
+        AddUpstreamPackage(meta, "1.0.0", b => { b.AddDependency("any", present, "1.0.0"); b.AddDependency("any", absent, "[4.0.0]"); });
+        AddUpstreamPackage(present, "1.0.0");
+
+        var report = await PullAsync(meta, "1.0.0");
+
+        Assert.Equal(2, report.Fetched.Count);
+        Assert.Single(report.Unavailable, u => u.StartsWith(absent, StringComparison.Ordinal));
+        Assert.False(report.Failed);
+    }
+
+    /// <summary>The page reports a pull from counts in its address, and nothing else from there.</summary>
+    [Fact]
+    public async Task The_feed_page_reports_a_pull_from_counts_only()
+    {
+        using var client = server.CreateClient();
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("feeds/proxy?pulled=38&present=1&missing=2&capped=1"));
+        Assert.Contains("38 fetched, 1 already here, 2 unavailable", page, StringComparison.Ordinal);
+        Assert.Contains("Stopped at the limit", page, StringComparison.Ordinal);
+
+        // A link edited by hand is no pull at all - not text on the page, and not a failed page either.
+        var crafted = await HttpAssert.SuccessBodyAsync(await client.GetAsync("feeds/proxy?pulled=%3Cb%3Ehello%3C%2Fb%3E&present=x"));
+        Assert.DoesNotContain("<b>hello", crafted, StringComparison.Ordinal);
+        Assert.DoesNotContain("fetched,", crafted, StringComparison.Ordinal);
+        Assert.DoesNotContain("already here", crafted, StringComparison.Ordinal);
+    }
+
+    private async Task<PullReport> PullAsync(string id, string version)
+    {
+        await using var scope = server.Services.CreateAsyncScope();
+        var feed = await scope.ServiceProvider.GetRequiredService<IFeedStore>().FindAsync("proxy", TestContext.Current.CancellationToken);
+        var puller = scope.ServiceProvider.GetRequiredService<DependencyPuller>();
+        return await puller.PullAsync(feed!, id, NuGet.Versioning.NuGetVersion.Parse(version), TestContext.Current.CancellationToken);
+    }
+
+    private async Task<string[]> CachedVersionsAsync(string id)
+    {
+        await using var scope = server.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<FiGetDbContext>();
+        var idLower = id.ToLowerInvariant();
+        return await db.PackageVersions
+            .Where(v => v.Package!.IdLower == idLower && v.Package.Feed!.NameLower == "proxy")
+            .Select(v => v.NormalizedVersion)
+            .OrderBy(v => v)
+            .ToArrayAsync(TestContext.Current.CancellationToken);
+    }
+
+    private void AddUpstreamPackage(string id, string version, Action<NuGet.Packaging.PackageBuilder>? configure = null)
+    {
+        using var package = TestPackages.Create(id, version, configure);
+        server.Upstream.Add(id, version, package.ToArray());
+    }
+
     private void AddSecondUpstream(string id, string version)
     {
         using var package = TestPackages.Create(id, version);

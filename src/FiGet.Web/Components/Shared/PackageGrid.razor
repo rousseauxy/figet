@@ -306,7 +306,7 @@
         {
             await using var scope = Scopes.CreateAsyncScope();
             var feeds = scope.ServiceProvider.GetRequiredService<IFeedStore>();
-            var connector = scope.ServiceProvider.GetRequiredService<ConnectorService>();
+            var puller = scope.ServiceProvider.GetRequiredService<DependencyPuller>();
 
             var feed = await feeds.FindAsync(FeedName, CancellationToken.None);
             if (feed is null || !NuGetVersion.TryParse(row.Latest, out var version))
@@ -315,10 +315,22 @@
                 return;
             }
 
-            var pulled = await connector.EnsureCachedAsync(feed, row.Id, version, CancellationToken.None);
-            (message, failed) = pulled is null
-                ? ($"No upstream of {FeedName} could serve {row.Id} {row.Latest}.", true)
-                : ($"Pulled {row.Id} {row.Latest} into {FeedName}.", false);
+            var report = await puller.PullAsync(feed, row.Id, version, CancellationToken.None);
+            if (report.Failed)
+            {
+                (message, failed) = ($"No upstream of {FeedName} could serve {row.Id} {row.Latest}.", true);
+            }
+            else
+            {
+                var text = $"Pulled {row.Id} {row.Latest} into {FeedName} with its dependencies: {report.Fetched.Count} fetched, {report.AlreadyHere.Count} already here";
+                if (report.Unavailable.Count > 0)
+                {
+                    text += $", {report.Unavailable.Count} unavailable ({string.Join(", ", report.Unavailable.Take(5))}{(report.Unavailable.Count > 5 ? ", ..." : "")})";
+                }
+
+                text += report.StoppedAtLimit ? $". Stopped at the limit of {DependencyPuller.MaxPackages} packages or {DependencyPuller.MaxDepth} levels." : ".";
+                (message, failed) = (text, report.Unavailable.Count > 0);
+            }
         }
         finally
         {

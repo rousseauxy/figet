@@ -1,0 +1,58 @@
+@*
+    What the last pull did, after the post redirected back. Read from the address as counts only - never text from
+    the address bar - so nobody can craft a link that makes this page say something else.
+*@
+@using FiGet.Application.Connectors
+
+@if (Pulled is not null)
+{
+    <div class="fg-alert @(Failed ? "fg-alert-danger" : "fg-alert-ok")" role="status">
+        @if (Failed)
+        {
+            <text>No upstream of this feed could serve that package.</text>
+        }
+        else
+        {
+            <text>Pulled with its dependencies: @Count(Pulled.Value, "fetched"), @Count(Present ?? 0, "already here")</text>
+            @if (Missing > 0)
+            {
+                <text>, @Count(Missing.Value, "unavailable")</text>
+            }
+            <text>.</text>
+            @if (Capped == 1)
+            {
+                <text> Stopped at the limit of @DependencyPuller.MaxPackages packages or @DependencyPuller.MaxDepth levels; pull a dependency on its own to go further.</text>
+            }
+        }
+    </div>
+}
+
+@code {
+    // Strings, parsed here: bound as numbers, a hand-edited link with a word in it failed the whole page with a 500.
+    [SupplyParameterFromQuery(Name = "pulled")]
+    private string? PulledText { get; set; }
+
+    [SupplyParameterFromQuery(Name = "present")]
+    private string? PresentText { get; set; }
+
+    [SupplyParameterFromQuery(Name = "missing")]
+    private string? MissingText { get; set; }
+
+    [SupplyParameterFromQuery(Name = "capped")]
+    private string? CappedText { get; set; }
+
+    private int? Pulled => Number(PulledText);
+
+    private int? Present => Number(PresentText);
+
+    private int? Missing => Number(MissingText);
+
+    private int? Capped => Number(CappedText);
+
+    private static int? Number(string? text) =>
+        int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var value) ? value : null;
+
+    private bool Failed => Pulled == 0 && (Present ?? 0) == 0;
+
+    private static string Count(int value, string what) => $"{value.ToString(CultureInfo.InvariantCulture)} {what}";
+}
