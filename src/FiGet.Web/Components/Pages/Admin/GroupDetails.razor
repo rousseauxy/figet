@@ -5,6 +5,7 @@
 @inject IGroupStore Groups
 @inject IUserStore Users
 @inject IOidcProviderStore Providers
+@inject IFeedPermissionStore Permissions
 @inject FiGet.Http.AuditLog Audit
 
 <PageTitle>@(group?.Name ?? "Group") · admin · FiGet</PageTitle>
@@ -75,6 +76,42 @@
             </div>
             <button type="submit" class="fg-btn fg-btn-primary">Add member</button>
         </form>
+    }
+</section>
+
+<section class="fg-panel">
+    <h2>Access</h2>
+    <p class="fg-muted fg-small">What this group's members get, and so what a change to the group affects. Grants are set on each feed's settings page.</p>
+    @if (grants.Count == 0)
+    {
+        <p class="fg-empty">No feed or asset directory grants anything to this group yet.</p>
+    }
+    else
+    {
+        <div class="fg-table-wrap">
+            <table class="fg-table">
+                <thead>
+                    <tr><th>Feed or directory</th><th>Level</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var grant in grants)
+                    {
+                        var settings = (grant.Kind == FeedKind.Assets ? "/admin/assets/" : "/admin/feeds/") + Uri.EscapeDataString(grant.FeedName);
+                        <tr>
+                            <td>
+                                <a href="@settings"><strong>@grant.FeedName</strong></a>
+                                @if (grant.Kind == FeedKind.Assets)
+                                {
+                                    <span class="fg-badge fg-badge-plain">Asset directory</span>
+                                }
+                            </td>
+                            <td><span class="fg-badge @(grant.Level == FeedAccessLevel.Manage ? "fg-badge-accent" : grant.Level == FeedAccessLevel.Publish ? "fg-badge-info" : "")">@grant.Level</span></td>
+                            <td class="fg-cell-actions"><a class="fg-btn fg-btn-sm" href="@(settings)#access">Change</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     }
 </section>
 
@@ -172,6 +209,7 @@
     private IReadOnlyList<OidcProvider> providers = [];
     private IReadOnlyList<GroupProviderLink> links = [];
     private IReadOnlySet<int> providerMembers = new HashSet<int>();
+    private IReadOnlyList<GroupFeedGrant> grants = [];
     private string? error;
     private bool saved;
 
@@ -206,6 +244,7 @@
         providerMembers = await Groups.ProviderMembersAsync(Key, HttpContext.RequestAborted);
         providers = await Providers.ListAsync(HttpContext.RequestAborted);
         links = await Groups.ProviderLinksAsync(Key, HttpContext.RequestAborted);
+        grants = await Permissions.ListForGroupAsync(Key, HttpContext.RequestAborted);
         var memberKeys = members.Select(m => m.Key).ToHashSet();
         candidates = (await Users.ListAsync(HttpContext.RequestAborted)).Where(u => !memberKeys.Contains(u.Key)).ToList();
     }

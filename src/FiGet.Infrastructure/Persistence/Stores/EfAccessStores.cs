@@ -196,6 +196,15 @@ public sealed class EfFeedPermissionStore(FiGetDbContext db) : IFeedPermissionSt
         return rows.GroupBy(r => r.FeedKey).ToDictionary(g => g.Key, g => g.Max(r => r.Level));
     }
 
+    public async Task<IReadOnlyList<GroupFeedGrant>> ListForGroupAsync(int groupKey, CancellationToken cancellationToken) =>
+        await db.FeedPermissions
+            .AsNoTracking()
+            .Where(p => p.GroupKey == groupKey)
+            .Join(db.Feeds, p => p.FeedKey, f => f.Key, (p, f) => new { f.Name, f.NameLower, f.Kind, p.Level })
+            .OrderBy(x => x.NameLower)
+            .Select(x => new GroupFeedGrant(x.Name, x.Kind, x.Level))
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<FeedGrant>> ListAsync(int feedKey, CancellationToken cancellationToken)
     {
         var users = await db.FeedPermissions

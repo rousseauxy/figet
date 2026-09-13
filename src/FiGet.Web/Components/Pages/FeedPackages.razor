@@ -112,7 +112,13 @@ else
                         <td><a href="@PackageLink(row.Id)">@Display.BreakableId(row.Id)</a></td>
                         <td class="fg-num">@row.Latest @if (row.Latest.Contains('-')) { <span class="fg-badge fg-badge-warn">prerelease</span> }</td>
                         <td class="fg-num">@(row.Versions > 0 ? row.Versions.ToString(CultureInfo.InvariantCulture) : Display.None)</td>
-                        <td><span class="fg-badge @SourceBadge(row.Source)">@row.Source</span></td>
+                        <td>
+                            <span class="fg-badge @SourceBadge(row.Source)">@row.Source</span>
+                            @if (row.Upstream.Length > 0)
+                            {
+                                <div class="fg-small fg-muted" title="The upstream this package comes from">@row.Upstream</div>
+                            }
+                        </td>
                         <td class="fg-num">@(row.Local ? Display.Count(row.Downloads) : Display.None)</td>
                         <td class="fg-num">@Display.Date(row.Published)</td>
                         <td class="fg-cell-actions">
@@ -257,8 +263,8 @@ else
 
             // The same merge the package page makes, from what is already stored about the upstream, so the version a row
             // shows is the one its page opens on: a cached old version must not read as the latest while the gallery has newer.
-            var upstream = IsProxy ? await Connector.StoredUpstreamCandidatesAsync(feed!, package, package.IdLower, HttpContext.RequestAborted) : [];
-            var list = VersionListBuilder.Build(package.Versions.Select(VersionListBuilder.ToCandidate).Concat(upstream), includeSemVer2: true);
+            var upstream = IsProxy ? await Connector.StoredUpstreamCandidatesAsync(feed!, package, package.IdLower, HttpContext.RequestAborted) : new UpstreamCandidates([], "");
+            var list = VersionListBuilder.Build(package.Versions.Select(VersionListBuilder.ToCandidate).Concat(upstream.Versions), includeSemVer2: true);
             var latest = list.Shown(IncludePrerelease)!;
             rows.Add(new Row(
                 package.Id,
@@ -267,7 +273,8 @@ else
                 pushed ? "Local" : "Cached",
                 package.Versions.Sum(v => v.Downloads),
                 package.Versions.Max(v => v.PublishedUtc),
-                Local: true));
+                Local: true,
+                Upstream: pushed ? "" : upstream.Upstream));
         }
     }
 
@@ -285,7 +292,8 @@ else
                 "Upstream",
                 hit.Downloads,
                 Published: null,
-                Local: false));
+                Local: false,
+                Upstream: hit.Upstream));
         }
 
         total = Math.Max(total, rows.Count);
@@ -348,5 +356,5 @@ else
     }
 
     /// <summary>A row of the table. Upstream-only packages have no local versions, downloads or date.</summary>
-    private sealed record Row(string Id, string Latest, int Versions, string Source, long Downloads, DateTime? Published, bool Local);
+    private sealed record Row(string Id, string Latest, int Versions, string Source, long Downloads, DateTime? Published, bool Local, string Upstream = "");
 }

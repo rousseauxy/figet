@@ -92,6 +92,25 @@ public abstract partial class FeedPermissionTests
         HttpAssert.Status(HttpStatusCode.NotFound, await browser.GetAsync($"/feeds/{feed}"));
     }
 
+    /// <summary>A group's page lists every feed that grants it something, so the effect of changing the group is visible there.</summary>
+    [Fact]
+    public async Task A_group_page_lists_the_feeds_it_has_access_to()
+    {
+        var feed = await CreateFeedAsync(FeedKind.Curated);
+        var directory = await CreateFeedAsync(FeedKind.Assets);
+        var group = await CreateGroupAsync();
+        await GrantGroupAsync(feed, group, FeedAccessLevel.Publish);
+        await GrantGroupAsync(directory, group, FeedAccessLevel.Read);
+
+        using var admin = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(admin));
+        var page = await HttpAssert.SuccessBodyAsync(await admin.GetAsync($"/admin/groups/{group}"));
+
+        Assert.Contains($"href=\"/admin/feeds/{feed}\"><strong>{feed}</strong>", page, StringComparison.Ordinal);
+        Assert.Contains($"href=\"/admin/assets/{directory}\"><strong>{directory}</strong>", page, StringComparison.Ordinal);
+        Assert.Contains(">Publish</span>", page, StringComparison.Ordinal);
+    }
+
     /// <summary>The sign-in cookie reads, but is never what lets a push through: publishing over a protocol needs a key.</summary>
     [Fact]
     public async Task A_signed_in_browser_cannot_push_with_its_cookie()

@@ -58,9 +58,11 @@ public sealed class PackagePageTests(ProxyServerFixture server) : IClassFixture<
         var overview = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"feeds/proxy?q={id}&src=cached"));
         Assert.Contains("<td class=\"fg-num\">2.0.0", overview, StringComparison.Ordinal);
         Assert.DoesNotContain("<td class=\"fg-num\">1.0.0", overview, StringComparison.Ordinal);
+        Assert.Contains("title=\"The upstream this package comes from\">stub</div>", overview, StringComparison.Ordinal);
 
         var package = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"feeds/proxy/packages/{id}"));
         Assert.Contains($"-RequiredVersion 2.0.0 ", package, StringComparison.Ordinal);
+        Assert.Contains(">from stub</span>", package, StringComparison.Ordinal);
         Assert.Contains("1 prerelease version hidden", package, StringComparison.Ordinal);
         Assert.DoesNotContain(">3.0.0-nightly.1</a>", package, StringComparison.Ordinal);
 

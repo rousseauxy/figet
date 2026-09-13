@@ -153,7 +153,7 @@ public sealed class ConnectorService(
             await ReconcileWithdrawnAsync(feed, idLower, offered, advertised, published, cancellationToken);
         }
 
-        return new UpstreamCandidates(candidates, casedId);
+        return new UpstreamCandidates(candidates, casedId, ownership.Owner?.Name ?? "");
     }
 
     /// <summary>
@@ -240,13 +240,17 @@ public sealed class ConnectorService(
     /// first upstream in priority order that holds the id owns it, as everywhere else, and an id pushed to the feed has
     /// none. A stale catalogue is still used and queued for refresh, so the next listing is current.
     /// </summary>
-    public async Task<IReadOnlyList<VersionCandidate<PackageVersion>>> StoredUpstreamCandidatesAsync(Feed feed, Package? local, string idLower, CancellationToken cancellationToken)
+    public async Task<UpstreamCandidates> StoredUpstreamCandidatesAsync(Feed feed, Package? local, string idLower, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(feed);
         if (feed.Upstreams.Count == 0 || (!feed.MergePushedIdsWithUpstreams && local?.Versions.Any(v => v.Origin == PackageOrigin.Pushed) == true))
         {
-            return [];
+            return new UpstreamCandidates([], "");
         }
+
+        // The same ownership rule as a live listing, from stored catalogues: a stored catalogue holding only unlisted
+        // versions gives way to a lower one that lists something.
+        UpstreamCandidates? holdsOnlyUnlisted = null;
 
         foreach (var upstream in feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal))
         {
@@ -266,17 +270,26 @@ public sealed class ConnectorService(
                 refreshes.Enqueue(upstream, idLower);
             }
 
-            return cached.Versions
-                .Select(v => new VersionCandidate<PackageVersion>(
-                    v.Version,
-                    cached.Unlisted?.Contains(v.Version.ToNormalizedString()) != true,
-                    v.IsSemVer2,
-                    VersionSource.Upstream,
-                    Placeholder(idLower, v)))
-                .ToList();
+            var candidates = new UpstreamCandidates(
+                cached.Versions
+                    .Select(v => new VersionCandidate<PackageVersion>(
+                        v.Version,
+                        cached.Unlisted?.Contains(v.Version.ToNormalizedString()) != true,
+                        v.IsSemVer2,
+                        VersionSource.Upstream,
+                        Placeholder(idLower, v)))
+                    .ToList(),
+                cached.Id,
+                upstream.Name);
+            if (candidates.Versions.Any(c => c.Listed))
+            {
+                return candidates;
+            }
+
+            holdsOnlyUnlisted ??= candidates;
         }
 
-        return [];
+        return holdsOnlyUnlisted ?? new UpstreamCandidates([], "");
     }
 
     public async Task<PackageVersion?> EnsureCachedAsync(Feed feed, string id, NuGetVersion version, CancellationToken cancellationToken)
@@ -429,7 +442,7 @@ public sealed class ConnectorService(
             {
                 if (Allows(upstream, hit.Id.ToLowerInvariant()) && seen.Add(hit.Id))
                 {
-                    hits.Add(hit);
+                    hits.Add(hit with { Upstream = upstream.Name });
                 }
             }
         }
@@ -817,7 +830,8 @@ public sealed record UpstreamOwnership(FeedUpstream? Owner, bool Undecided);
 /// candidates because a v3 registration URL is lower-cased by convention: without it an uncached package
 /// reads as "powershellget" until somebody downloads it and the real nuspec replaces it.
 /// </summary>
-public sealed record UpstreamCandidates(IReadOnlyList<VersionCandidate<PackageVersion>> Versions, string Id)
+/// <param name="Upstream">The name of the upstream that owns the id and served these versions; empty when none does.</param>
+public sealed record UpstreamCandidates(IReadOnlyList<VersionCandidate<PackageVersion>> Versions, string Id, string Upstream = "")
 {
     /// <summary>The upstream's spelling when there is one, otherwise whatever the caller already had.</summary>
     public string Spell(string fallback) => string.IsNullOrEmpty(Id) ? fallback : Id;

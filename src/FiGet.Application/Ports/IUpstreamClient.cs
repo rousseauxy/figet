@@ -9,7 +9,11 @@ public readonly record struct UpstreamVersion(NuGetVersion Version, bool IsSemVe
 /// <summary>
 /// One package an upstream's search returned. Enough to list it before anything has been downloaded.
 /// </summary>
-public sealed record UpstreamSearchHit(string Id, NuGetVersion Version, string Description, string Authors, string Tags, long Downloads);
+public sealed record UpstreamSearchHit(string Id, NuGetVersion Version, string Description, string Authors, string Tags, long Downloads)
+{
+    /// <summary>The name of the feed's upstream that returned it, filled in by the connector.</summary>
+    public string Upstream { get; init; } = "";
+}
 
 /// <summary>
 /// What an upstream publishes about one version, without downloading the package. The tags matter more

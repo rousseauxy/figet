@@ -53,6 +53,9 @@ public interface IGroupStore
 }
 
 /// <summary>One grant on a feed, with the name of whoever it is for.</summary>
+/// <summary>One feed a group has access to, as the group's page lists it.</summary>
+public sealed record GroupFeedGrant(string FeedName, FeedKind Kind, FeedAccessLevel Level);
+
 public sealed record FeedGrant(int Key, int FeedKey, int? UserKey, int? GroupKey, string Name, FeedAccessLevel Level);
 
 public interface IFeedPermissionStore
@@ -65,6 +68,9 @@ public interface IFeedPermissionStore
 
     /// <summary>The same for every feed the account has any grant on, keyed by feed.</summary>
     Task<IReadOnlyDictionary<int, FeedAccessLevel>> GrantedOnAllAsync(int userKey, CancellationToken cancellationToken);
+
+    /// <summary>Every feed and asset directory a group has a grant on, by name.</summary>
+    Task<IReadOnlyList<GroupFeedGrant>> ListForGroupAsync(int groupKey, CancellationToken cancellationToken);
 
     /// <summary>The grants on one feed, accounts first, then groups, each by name.</summary>
     Task<IReadOnlyList<FeedGrant>> ListAsync(int feedKey, CancellationToken cancellationToken);

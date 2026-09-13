@@ -34,6 +34,10 @@
     <h1>@displayId</h1>
     <span class="fg-version">@shown.NormalizedVersion</span>
     <span class="fg-badge @OriginBadge(latest!)">@Origin(latest!)</span>
+    @if (upstreamName.Length > 0 && Origin(latest!) != "Local")
+    {
+        <span class="fg-small fg-muted" title="The upstream this package comes from">from @upstreamName</span>
+    }
 </div>
 
 @* The same tabs as a single version, because the questions are the same ones: what is it, what does it
@@ -211,6 +215,7 @@
 
     private Feed? feed;
     private string displayId = "";
+    private string upstreamName = "";
     private PackageVersion? shown;
     private VersionListEntry<PackageVersion>? latest;
     private IReadOnlyList<VersionListEntry<PackageVersion>> versions = [];
@@ -416,6 +421,7 @@
         }
 
         displayId = package?.Id ?? upstream.Spell(Id);
+        upstreamName = upstream.Upstream;
         feedUrl = $"{PublicUrls.ClientBase(HttpContext, feed.ClientBaseUrl)}/nuget/{Uri.EscapeDataString(feed.Name)}";
         versions = [.. VersionListBuilder
             .Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream.Versions), includeSemVer2: true)

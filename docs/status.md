@@ -2507,3 +2507,18 @@ an id hidden everywhere stays with the first. With ownership back to "any versio
 `RateLimitTests` refills one token a minute now: at one a second a slow machine let a sixth request through.
 
 Suites: unit 132/0; integration 363/0 on SQLite and on SQL Server.
+
+## Where a package comes from, and where a group has access - 2026-09-13
+
+Two more from the tester:
+
+- **Which upstream**: an upstream search hit in the feed overview names the upstream that returned it, a cached package
+  names the upstream that owns its id, and a package page says "from <upstream>" next to its origin badge
+  (`UpstreamSearchHit.Upstream`, `UpstreamCandidates.Upstream`). The stored-catalogue listing follows the same ownership
+  rule as live listings, so a catalogue holding only unlisted versions gives way there too.
+- **A group's access**: the group page has an Access section listing every feed and asset directory that grants the group
+  something, with the level, linking to that feed's access panel - so the effect of changing membership is visible on the
+  group itself instead of by visiting every feed.
+
+Tests: `PackagePageTests` checks the upstream name in the overview and on the package page; `FeedPermissionTests` checks a
+group page lists a feed and an asset directory with their levels.
