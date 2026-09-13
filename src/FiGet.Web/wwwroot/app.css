@@ -742,25 +742,59 @@ legend {
    to tables, because a URL shown in a narrow panel elsewhere has no such problem and no room to spare. */
 .fg-table .fg-url { min-width: 14rem; }
 
+/* A copy button is an icon: a word beside every URL and command was noise, and read as part of what gets
+   copied. The icons are Bootstrap Icons' "copy" and "check2" (MIT licence), drawn as masks filled with
+   currentColor so every theme colours them. The word stays in the markup and in aria-label for screen readers;
+   it is shown only when copying failed and the reader has to press Ctrl+C. */
 .fg-copy {
-  background: var(--inset);
+  --fg-copy-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1z'/%3E%3C/svg%3E");
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  background: transparent;
   color: var(--text-2);
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   border-radius: var(--r-1);
-  padding: 0.1rem 0.45rem;
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0;
   cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
-.fg-copy:hover { background: var(--hover); color: var(--text); }
-.fg-copy.copied { background: var(--ok-soft); color: var(--ok); border-color: var(--ok); }
+.fg-copy::before {
+  content: "";
+  width: 1rem;
+  height: 1rem;
+  background-color: currentColor;
+  -webkit-mask: var(--fg-copy-icon) center / contain no-repeat;
+  mask: var(--fg-copy-icon) center / contain no-repeat;
+}
+.fg-copy:hover { background: var(--hover); color: var(--text); border-color: var(--border); }
+.fg-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.fg-copy.copied {
+  --fg-copy-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0'/%3E%3C/svg%3E");
+  color: var(--ok);
+  background: var(--ok-soft);
+  border-color: var(--ok);
+}
+.fg-copy.copy-failed {
+  width: auto;
+  padding: 0 0.5rem;
+  font-size: 0.72rem;
+  color: var(--warn);
+  border-color: var(--warn);
+  white-space: nowrap;
+}
+.fg-copy.copy-failed::before { display: none; }
 
-/* A command with its copy button beside it; the button sits at the top so a wrapped command keeps it in reach. */
-.fg-snippet { display: flex; align-items: flex-start; gap: 0.4rem; margin: 0 0 0.5rem; }
-.fg-snippet pre { flex: 1; min-width: 0; margin: 0; }
-.fg-snippet .fg-copy { margin-top: 0.55rem; }
+/* A command with its copy button inside the box, top right, where a reader looks for it. The command keeps
+   room on its right so a long one never runs under the button. */
+.fg-snippet { position: relative; margin: 0 0 0.5rem; }
+.fg-snippet pre { margin: 0; padding-right: 2.9rem; }
+.fg-snippet .fg-copy { position: absolute; top: 0.4rem; right: 0.4rem; }
 
 /* ── The signed-in menu ─────────────────────────────────────────── */
 /* A <details>, not a scripted popover: this bar is rendered by static SSR on every page, including the

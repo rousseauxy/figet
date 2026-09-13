@@ -25,15 +25,27 @@
         return copied;
     }
 
-    function flash(button, text) {
-        var original = button.getAttribute("data-label") || button.textContent;
-        button.setAttribute("data-label", original);
-        button.textContent = text;
-        button.classList.add("copied");
+    // The button is an icon; its word is hidden and only shown when copying failed. The outcome also goes into
+    // the title and the accessible name for as long as it is shown, so a screen reader hears it too.
+    function flash(button, copied) {
+        var label = button.getAttribute("data-label") || button.textContent;
+        var name = button.getAttribute("data-name") || button.getAttribute("aria-label") || "";
+        var title = button.getAttribute("data-title") || button.getAttribute("title") || "";
+        button.setAttribute("data-label", label);
+        button.setAttribute("data-name", name);
+        button.setAttribute("data-title", title);
+
+        var outcome = copied ? "Copied" : "Press Ctrl+C";
+        button.textContent = outcome;
+        button.setAttribute("aria-label", outcome);
+        button.setAttribute("title", outcome);
+        button.classList.add(copied ? "copied" : "copy-failed");
         window.setTimeout(function () {
-            button.textContent = original;
-            button.classList.remove("copied");
-        }, 1200);
+            button.textContent = label;
+            button.setAttribute("aria-label", name);
+            button.setAttribute("title", title);
+            button.classList.remove("copied", "copy-failed");
+        }, copied ? 1200 : 2500);
     }
 
     document.addEventListener("click", function (event) {
@@ -47,12 +59,12 @@
 
         if (window.isSecureContext && navigator.clipboard) {
             navigator.clipboard.writeText(text).then(
-                function () { flash(button, "Copied"); },
-                function () { flash(button, fallbackCopy(text) ? "Copied" : "Press Ctrl+C"); });
+                function () { flash(button, true); },
+                function () { flash(button, fallbackCopy(text)); });
             return;
         }
 
-        flash(button, fallbackCopy(text) ? "Copied" : "Press Ctrl+C");
+        flash(button, fallbackCopy(text));
     });
 
     // ── Filters that submit themselves ───────────────────────────────────────────────────────────
