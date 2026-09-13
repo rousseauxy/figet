@@ -227,6 +227,11 @@ public sealed class EfPackageStore(FiGetDbContext db) : IPackageStore
             .Where(v => v.Package!.FeedKey == feedKey && v.Package.IdLower == idLower && v.NormalizedVersionLower == normalizedVersionLower)
             .ExecuteUpdateAsync(s => s.SetProperty(v => v.Listed, listed), cancellationToken) > 0;
 
+    public async Task<bool> SetPublishedAsync(int feedKey, string idLower, string normalizedVersionLower, DateTime publishedUtc, CancellationToken cancellationToken) =>
+        await db.PackageVersions
+            .Where(v => v.Package!.FeedKey == feedKey && v.Package.IdLower == idLower && v.NormalizedVersionLower == normalizedVersionLower)
+            .ExecuteUpdateAsync(s => s.SetProperty(v => v.PublishedUtc, publishedUtc).SetProperty(v => v.LastUpdatedUtc, publishedUtc), cancellationToken) > 0;
+
     public async Task<bool> DeleteVersionAsync(int feedKey, string idLower, string normalizedVersionLower, CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);

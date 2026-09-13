@@ -41,6 +41,11 @@ public sealed class ConnectorService(
         // Versions an upstream still advertises, as opposed to still holds. Null while nothing has been
         // described - after a restart, say - because "we were not told" must not read as "withdrawn".
         HashSet<string>? advertised = null;
+
+        // When each version was published upstream, from the first upstream that says. A cached copy is stored
+        // with the date it was fetched unless something corrects it, and the version page then showed the day
+        // somebody installed it rather than the day its author published it.
+        var published = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
         var casedId = "";
         var authoritative = false;
 
@@ -78,6 +83,11 @@ public sealed class ConnectorService(
                 if (described.TryGetValue(normalized, out var metadata))
                 {
                     Describe(row, metadata);
+                    if (RealDate(metadata.Published) is { } date)
+                    {
+                        published.TryAdd(normalized, date);
+                    }
+
                     if (metadata.Listed)
                     {
                         advertised!.Add(normalized);
@@ -117,7 +127,7 @@ public sealed class ConnectorService(
         // Only when an upstream actually answered: an outage must never look like a mass withdrawal.
         if (authoritative)
         {
-            await ReconcileWithdrawnAsync(feed, idLower, offered, advertised, cancellationToken);
+            await ReconcileWithdrawnAsync(feed, idLower, offered, advertised, published, cancellationToken);
         }
 
         return new UpstreamCandidates(candidates, casedId);
@@ -142,7 +152,17 @@ public sealed class ConnectorService(
     /// and treating that as "still offered" put a hidden version back in the running for "latest" each
     /// time the container came up.
     /// </param>
-    private async Task ReconcileWithdrawnAsync(Feed feed, string idLower, HashSet<string> offered, HashSet<string>? advertised, CancellationToken cancellationToken)
+    /// <param name="published">
+    /// Publish dates the upstreams reported. A cached copy that was stored with its fetch date - every copy
+    /// cached before the fetch learnt to carry the upstream's date - takes the upstream's instead.
+    /// </param>
+    private async Task ReconcileWithdrawnAsync(
+        Feed feed,
+        string idLower,
+        HashSet<string> offered,
+        HashSet<string>? advertised,
+        IReadOnlyDictionary<string, DateTime> published,
+        CancellationToken cancellationToken)
     {
         var package = await packages.GetPackageAsync(feed.Key, idLower, includeDependencies: false, cancellationToken);
         if (package is null)
@@ -152,6 +172,14 @@ public sealed class ConnectorService(
 
         foreach (var version in package.Versions.Where(v => v.Origin == PackageOrigin.Cached))
         {
+            // Within a second: a database may round what it stores, and rewriting the row on every read over
+            // a sub-second difference would turn each listing into a write.
+            if (published.TryGetValue(version.NormalizedVersion, out var upstreamDate)
+                && Math.Abs((version.PublishedUtc - upstreamDate).TotalSeconds) >= 1)
+            {
+                await packages.SetPublishedAsync(feed.Key, idLower, version.NormalizedVersionLower, upstreamDate, cancellationToken);
+            }
+
             // Three answers, not two: withdrawn, advertised, or no news. A cold description cache used to
             // count as "still offered", so every restart re-listed a copy the gallery hides - and while it
             // was listed it could win "latest" again, which is the one thing this method exists to prevent.
@@ -223,7 +251,7 @@ public sealed class ConnectorService(
 
             await using (nupkg)
             {
-                var result = await ingestion.PushAsync(feed, nupkg, PackageOrigin.Cached, cancellationToken);
+                var result = await ingestion.PushAsync(feed, nupkg, PackageOrigin.Cached, cancellationToken, KnownPublished(upstream, idLower, version));
                 if (result.Outcome is PushOutcome.Created or PushOutcome.Replaced)
                 {
                     logger.LogInformation("Cached {Id} {Version} from upstream {Upstream}.", id, version.ToNormalizedString(), upstream.Name);
@@ -371,6 +399,24 @@ public sealed class ConnectorService(
 
         return byVersion;
     }
+
+    /// <summary>
+    /// When the upstream published this version, if the connector has heard. Only what is already in memory: a
+    /// client lists versions before it downloads one, so the description is nearly always there, and a cache fill
+    /// that misses it is corrected the next time the upstream describes the package.
+    /// </summary>
+    private DateTime? KnownPublished(FeedUpstream upstream, string idLower, NuGetVersion version)
+    {
+        var described = metadataCache.Get(upstream.Key, idLower, time.GetUtcNow().UtcDateTime, TimeSpan.MaxValue);
+        return described?.FirstOrDefault(m => m.Version == version) is { } metadata ? RealDate(metadata.Published) : null;
+    }
+
+    /// <summary>
+    /// A publish date worth storing. A gallery reports 1900-01-01 for a version it has unlisted, which is a
+    /// marker, not a date; the protocols write that marker themselves for unlisted rows.
+    /// </summary>
+    private static DateTime? RealDate(DateTime? published) =>
+        published is { Year: > 1900 } date ? DateTime.SpecifyKind(date, DateTimeKind.Utc) : null;
 
     /// <summary>Copies what the upstream published onto a placeholder row.</summary>
     private static void Describe(PackageVersion row, UpstreamMetadata metadata)

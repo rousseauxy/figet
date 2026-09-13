@@ -287,6 +287,57 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
     }
 
     /// <summary>
+    /// A cached copy reads as published when its author published it, not when somebody first installed it.
+    /// The usual order - list, then download - stores the upstream's date straight away.
+    /// </summary>
+    [Fact]
+    public async Task A_cached_copy_keeps_the_upstream_publish_date()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.PublishedDate");
+        AddUpstream(id, "1.0.0");
+        var idLower = id.ToLowerInvariant();
+
+        using var client = server.CreateClient();
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/registration/{idLower}/index.json"));
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/flatcontainer/{idLower}/1.0.0/{idLower}.1.0.0.nupkg"));
+
+        Assert.Equal(StubUpstreamPublished, await StoredPublishedAsync(idLower, "1.0.0"));
+    }
+
+    /// <summary>
+    /// A download that arrives before anything described the package - and every copy cached before this was
+    /// fixed - is stored with its fetch date, and takes the upstream's date the next time the upstream describes it.
+    /// </summary>
+    [Fact]
+    public async Task A_copy_cached_with_its_fetch_date_is_corrected_by_the_next_listing()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.PublishedLater");
+        AddUpstream(id, "1.0.0");
+        var idLower = id.ToLowerInvariant();
+
+        using var client = server.CreateClient();
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/flatcontainer/{idLower}/1.0.0/{idLower}.1.0.0.nupkg"));
+        Assert.NotEqual(StubUpstreamPublished, await StoredPublishedAsync(idLower, "1.0.0"));
+
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/registration/{idLower}/index.json"));
+        Assert.Equal(StubUpstreamPublished, await StoredPublishedAsync(idLower, "1.0.0"));
+    }
+
+    /// <summary>What <see cref="StubUpstreamClient"/> reports as every version's publish date.</summary>
+    private static readonly DateTime StubUpstreamPublished = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+    private async Task<DateTime> StoredPublishedAsync(string idLower, string version)
+    {
+        await using var scope = server.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<FiGetDbContext>();
+        var published = await db.PackageVersions
+            .Where(v => v.Package!.IdLower == idLower && v.NormalizedVersionLower == version)
+            .Select(v => v.PublishedUtc)
+            .SingleAsync();
+        return DateTime.SpecifyKind(published, DateTimeKind.Utc);
+    }
+
+    /// <summary>
     /// Find-Module with a name goes through Search(), so a proxy feed has to reach its upstreams there as
     /// well. Searching only what is cached is what made the feed look empty until someone downloaded.
     /// </summary>

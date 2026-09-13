@@ -41,9 +41,11 @@ public sealed class PackageIngestionService(
 
     /// <summary>
     /// The same, for a package that came from an upstream rather than from a client. A cached package is
-    /// identical in every way except its origin, which is what retention and cache pruning act on.
+    /// identical in every way except its origin, which is what retention and cache pruning act on - and its
+    /// publish date, when the upstream said when it published it. A nupkg does not carry one, so without it
+    /// a cached copy would read as published the moment somebody first installed it.
     /// </summary>
-    public async Task<PushResult> PushAsync(Feed feed, Stream nupkg, PackageOrigin origin, CancellationToken cancellationToken)
+    public async Task<PushResult> PushAsync(Feed feed, Stream nupkg, PackageOrigin origin, CancellationToken cancellationToken, DateTime? publishedUtc = null)
     {
         IndexedPackage indexed;
         try
@@ -69,7 +71,7 @@ public sealed class PackageIngestionService(
             return new PushResult(PushOutcome.Conflict, $"{indexed.Id} {normalized} already exists in feed '{feed.Name}'.", indexed.Id, normalized);
         }
 
-        var row = ToEntity(indexed, time.GetUtcNow().UtcDateTime, origin);
+        var row = ToEntity(indexed, publishedUtc ?? time.GetUtcNow().UtcDateTime, origin);
         if (!await store.AddVersionAsync(feed.Key, indexed.Id, row, feed.AllowOverwrite, cancellationToken))
         {
             return new PushResult(PushOutcome.Conflict, $"{indexed.Id} {normalized} already exists in feed '{feed.Name}'.", indexed.Id, normalized);
@@ -292,7 +294,7 @@ public sealed class PackageIngestionService(
     public static string? NormalizeLower(string version) =>
         NuGet.Versioning.NuGetVersion.TryParse(version, out var parsed) ? parsed.ToNormalizedString().ToLowerInvariant() : null;
 
-    private static PackageVersion ToEntity(IndexedPackage p, DateTime utcNow, PackageOrigin origin)
+    private static PackageVersion ToEntity(IndexedPackage p, DateTime publishedUtc, PackageOrigin origin)
     {
         var normalized = p.Version.ToNormalizedString();
         var tagsLower = p.Tags.ToLowerInvariant();
@@ -343,8 +345,8 @@ public sealed class PackageIngestionService(
             RequireLicenseAcceptance = p.RequireLicenseAcceptance,
             PackageTypes = packageTypes,
             PackageTypesLower = packageTypes.ToLowerInvariant(),
-            PublishedUtc = utcNow,
-            LastUpdatedUtc = utcNow,
+            PublishedUtc = publishedUtc,
+            LastUpdatedUtc = publishedUtc,
             Size = p.Size,
             Hash = p.Sha512,
             HashAlgorithm = "SHA512",

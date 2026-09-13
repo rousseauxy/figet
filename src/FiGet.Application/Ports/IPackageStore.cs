@@ -40,6 +40,9 @@ public interface IPackageStore
 
     Task<bool> SetListedAsync(int feedKey, string idLower, string normalizedVersionLower, bool listed, CancellationToken cancellationToken);
 
+    /// <summary>Sets when a version was published, for a cached copy whose upstream says so.</summary>
+    Task<bool> SetPublishedAsync(int feedKey, string idLower, string normalizedVersionLower, DateTime publishedUtc, CancellationToken cancellationToken);
+
     /// <summary>Deletes the version row with its dependencies and symbol rows; removes the package row when it was the last version.</summary>
     Task<bool> DeleteVersionAsync(int feedKey, string idLower, string normalizedVersionLower, CancellationToken cancellationToken);
 
