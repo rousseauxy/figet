@@ -1772,3 +1772,32 @@ So the search bar, header URL and result count fit. And the table fix is now con
 - the tallest row is 73 px where it was about a thousand - which needs saying, because its earlier check
 went through the same cropped window. Long ids breaking mid-word is real and unaffected: that concerns where
 text wraps, not how wide the page is.
+
+## Long package ids break after their dots - 2026-09-13
+
+In a narrow column a package id wrapped at any character, because a table's first column carries
+`overflow-wrap: anywhere` so that long ids do not push tables past their container. On a phone that read as
+"Microsoft.Entra.A / pplications".
+
+Ids now render through `Display.BreakableId`, which puts a `<wbr>` after each dot. The browser prefers those
+natural seams and falls back to breaking anywhere only when a single segment is wider than the column. At a
+true 390 px:
+
+    Microsoft.Entra. / Applications                        was  Microsoft.Entra.A / pplications
+    Microsoft.Graph. / BackupRestore
+    Microsoft.Entra. / CertificateBasedA / uthentication   one segment wider than the column: the fallback
+
+Applied wherever an id is a table's first cell: the anonymous package list, the signed-in grid, the
+dependencies table and the unlisted versions page. Not to breadcrumbs or version numbers, which are not
+narrow id columns.
+
+**The one thing that had to be right:** the helper returns markup, which bypasses Razor's own encoding, while
+an id comes from whoever pushed the package. It encodes first and inserts the breaks afterwards; encoding
+never produces a dot, so a break can never land inside an entity. A valid id cannot hold angle brackets, but
+a helper that emits markup must be safe without relying on validation somewhere else. So a test feeds it
+`a.<script>...</script>.b` and requires that, once the breaks are removed, no angle bracket remains. With the
+encoding taken out that test fails; restored, it passes.
+
+The same screenshot - taken through a 390 px iframe, not a cropped window - is also the visual confirmation
+of the correction above: the feed page's header URL wraps with its Copy button in view, the search bar and
+its filter fit, and the result count wraps onto a second line. Nothing reaches past the edge.

@@ -149,17 +149,6 @@ upstream. It is the one thing the commercial server cannot answer - its guidance
 heaviest by volume and belongs with usage statistics and cache pruning, not with an audit trail. Worth
 doing; not yet decided when.
 
-### Break long package ids after the dots
-
-Long package ids wrap at any character, so in a narrow column they break mid-word -
-"Microsoft.Entra.A / pplications". Breaking after the dots would read far better on a phone and on desktop
-alike: a `<wbr>` after each dot in the rendered id, or an equivalent.
-
-An earlier version of this entry also listed the feed page's header URL, search bar and result count as
-running off the right edge on a phone. That was a measurement artefact - headless Chrome enforces a minimum
-window width and cropped a wider layout - and at a true 390 px all three fit (docs/status.md, "Correction:
-the phone clipping outside tables was the camera, not the page").
-
 ### Add our reproduction to the PSResourceGet fix
 
 Not a change to this server. PSResourceGet chooses a download URL by substring match on the version, so a
