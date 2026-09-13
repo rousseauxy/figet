@@ -881,8 +881,10 @@ public static class FiGetApp
             var target = await feeds.FindAsync(feed, cancellationToken);
             if (target is not null && int.TryParse(form["key"].ToString(), out var upstreamKey))
             {
+                // Named before it goes: an audit entry reading "upstream 3 removed" says nothing to whoever reads it.
+                var removed = target.Upstreams.FirstOrDefault(u => u.Key == upstreamKey);
                 await feeds.RemoveUpstreamAsync(target.Key, upstreamKey, cancellationToken);
-                audit.Record(http, "upstream.remove", upstreamKey.ToString(CultureInfo.InvariantCulture), $"feed={feed}");
+                audit.Record(http, "upstream.remove", removed?.Name ?? $"upstream #{upstreamKey}", $"feed={feed}{(removed is null ? "" : " url=" + removed.Url)}");
             }
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
@@ -985,10 +987,18 @@ public static class FiGetApp
         {
             var form = await http.Request.ReadFormAsync(cancellationToken);
             var target = await feeds.FindAsync(feed, cancellationToken);
-            if (target is not null && int.TryParse(form["grant"].ToString(), out var grantKey)
-                && await permissions.RemoveAsync(target.Key, grantKey, cancellationToken))
+            if (target is not null && int.TryParse(form["grant"].ToString(), out var grantKey))
             {
-                audit.Record(http, "access.remove", grantKey.ToString(CultureInfo.InvariantCulture), $"feed={target.Name}");
+                // Who lost what, looked up before the grant is gone, in the same words access.set records.
+                var grant = (await permissions.ListAsync(target.Key, cancellationToken)).FirstOrDefault(g => g.Key == grantKey);
+                if (await permissions.RemoveAsync(target.Key, grantKey, cancellationToken))
+                {
+                    audit.Record(
+                        http,
+                        "access.remove",
+                        grant?.Name ?? $"grant #{grantKey}",
+                        grant is null ? $"feed={target.Name}" : $"feed={target.Name} {(grant.UserKey is null ? "group" : "user")} level={grant.Level}");
+                }
             }
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
@@ -1031,15 +1041,19 @@ public static class FiGetApp
                 && form["providerGroup"].ToString().Trim() is { Length: > 0 and <= 256 } providerGroup
                 && await groups.AddProviderLinkAsync(new GroupProviderLink { GroupKey = key, ProviderKey = providerKey, ProviderGroup = providerGroup }, cancellationToken))
             {
-                audit.Record(http, "group.provider.link", providerGroup, $"group={group.Name} provider={providerKey}");
+                var linkedProvider = await http.RequestServices.GetRequiredService<IOidcProviderStore>().FindAsync(providerKey, cancellationToken);
+                audit.Record(http, "group.provider.link", providerGroup, $"group={group.Name} provider={linkedProvider?.Slug ?? providerKey.ToString(CultureInfo.InvariantCulture)}");
                 done = "linked";
             }
-            else if (action == "unlink-provider"
-                && int.TryParse(form["link"].ToString(), out var linkKey)
-                && await groups.RemoveProviderLinkAsync(key, linkKey, cancellationToken))
+            else if (action == "unlink-provider" && int.TryParse(form["link"].ToString(), out var linkKey))
             {
-                audit.Record(http, "group.provider.unlink", linkKey.ToString(CultureInfo.InvariantCulture), $"group={group.Name}");
-                done = "unlinked";
+                var link = (await groups.ProviderLinksAsync(key, cancellationToken)).FirstOrDefault(l => l.Key == linkKey);
+                var provider = link is null ? null : await http.RequestServices.GetRequiredService<IOidcProviderStore>().FindAsync(link.ProviderKey, cancellationToken);
+                if (await groups.RemoveProviderLinkAsync(key, linkKey, cancellationToken))
+                {
+                    audit.Record(http, "group.provider.unlink", link?.ProviderGroup ?? $"link #{linkKey}", $"group={group.Name}{(provider is null ? "" : " provider=" + provider.Slug)}");
+                    done = "unlinked";
+                }
             }
 
             if (action == "delete" && await groups.DeleteAsync(key, cancellationToken))
@@ -1087,7 +1101,8 @@ public static class FiGetApp
                 && direction is "up" or "down"
                 && await feeds.MoveUpstreamAsync(target.Key, upstreamKey, direction == "up", cancellationToken))
             {
-                audit.Record(http, "upstream.move", upstreamKey.ToString(CultureInfo.InvariantCulture), $"feed={feed} direction={direction}");
+                var moved = target.Upstreams.FirstOrDefault(u => u.Key == upstreamKey);
+                audit.Record(http, "upstream.move", moved?.Name ?? $"upstream #{upstreamKey}", $"feed={feed} direction={direction}");
             }
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");

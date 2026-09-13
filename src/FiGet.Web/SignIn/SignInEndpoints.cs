@@ -62,6 +62,8 @@ public static class SignInEndpoints
             int key,
             HttpContext http,
             ExternalAccountService external,
+            IExternalLoginStore logins,
+            IOidcProviderStore providers,
             AuditLog audit) =>
         {
             var actor = FiGetApp.Actor(http.User);
@@ -70,10 +72,13 @@ public static class SignInEndpoints
                 return Results.Redirect("/account/profile");
             }
 
+            // Which provider, looked up before the link is gone.
+            var login = (await logins.ListForUserAsync(actor.Key, http.RequestAborted)).FirstOrDefault(l => l.Key == key);
+            var provider = login is null ? null : await providers.FindAsync(login.ProviderKey, http.RequestAborted);
             var outcome = await external.UnlinkAsync(actor.Key, key, http.RequestAborted);
             if (outcome == UnlinkStatus.Removed)
             {
-                audit.Record(http, "account.unlink", http.User.Identity?.Name ?? "", $"login={key}");
+                audit.Record(http, "account.unlink", http.User.Identity?.Name ?? "", $"provider={provider?.Slug ?? "?"}{(string.IsNullOrEmpty(login?.Email) ? "" : " as=" + login.Email)}");
             }
 
             return Results.Redirect("/account/profile?unlinked=" + (outcome == UnlinkStatus.LastWayToSignIn ? "last" : "ok"));

@@ -61,6 +61,39 @@ public abstract partial class AuditTrailTests
         Assert.DoesNotContain(group, other, StringComparison.Ordinal);
     }
 
+    /// <summary>Removing a grant is recorded under whom it was for and what level it was, not under the grant's internal number.</summary>
+    [Fact]
+    public async Task A_removed_grant_is_recorded_by_name_and_level()
+    {
+        var feed = "aud" + Guid.NewGuid().ToString("N")[..8];
+        var group = "grp" + Guid.NewGuid().ToString("N")[..8];
+        int grantKey;
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            var feeds = scope.ServiceProvider.GetRequiredService<IFeedStore>();
+            await feeds.CreateAsync(new Feed { Name = feed, NameLower = feed, CreatedUtc = DateTime.UtcNow }, CancellationToken.None);
+            var feedKey = (await feeds.FindAsync(feed, CancellationToken.None))!.Key;
+            var groups = scope.ServiceProvider.GetRequiredService<IGroupStore>();
+            await groups.AddAsync(new FiGet.Domain.Entities.Group { Name = group, NameLower = group, CreatedUtc = DateTime.UtcNow }, CancellationToken.None);
+            var groupKey = (await groups.ListAsync(CancellationToken.None)).Single(g => g.Name == group).Key;
+            var permissions = scope.ServiceProvider.GetRequiredService<IFeedPermissionStore>();
+            await permissions.SetAsync(feedKey, null, groupKey, FeedAccessLevel.Manage, CancellationToken.None);
+            grantKey = (await permissions.ListAsync(feedKey, CancellationToken.None)).Single().Key;
+        }
+
+        using var admin = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(admin));
+        var page = await HttpAssert.SuccessBodyAsync(await admin.GetAsync("/account/profile"));
+        using (var content = new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = Antiforgery(page), ["grant"] = grantKey.ToString(System.Globalization.CultureInfo.InvariantCulture) }))
+        {
+            HttpAssert.Status(HttpStatusCode.Redirect, await admin.PostAsync($"/admin/feeds/{feed}/access/remove", content));
+        }
+
+        var entry = await WaitForAsync(new AuditQuery(Action: "access.remove", Feed: feed), _ => true);
+        Assert.Equal(group, entry.Subject);
+        Assert.Contains("group level=Manage", entry.Detail, StringComparison.Ordinal);
+    }
+
     /// <summary>A push over the protocol is stored under its feed and its token, so "what went into this feed" has an answer.</summary>
     [Fact]
     public async Task A_push_is_stored_under_its_feed_and_token()

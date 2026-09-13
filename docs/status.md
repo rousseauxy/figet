@@ -2522,3 +2522,15 @@ Two more from the tester:
 
 Tests: `PackagePageTests` checks the upstream name in the overview and on the package page; `FeedPermissionTests` checks a
 group page lists a feed and an asset directory with their levels.
+
+## Audit entries name what they are about - 2026-09-13
+
+Reported by the tester: an `access.remove` entry read "1" as its subject - the grant's internal key. Five entries
+recorded a key rather than a name; each now looks the name up before the change: `access.remove` (the account or group,
+with "user"/"group" and the level it had, as `access.set` records), `upstream.remove` (the upstream's name and URL),
+`upstream.move` (its name), `group.provider.unlink` and `group.provider.link` (the provider group and the provider's
+slug), `account.unlink` (the provider's slug and the address it was linked as). Entries written before this keep their
+numbers: what they referred to is gone.
+
+Test: `AuditTrailTests` removes a group's Manage grant through the feed's access endpoint and finds the entry under the
+group's name with `group level=Manage`.
