@@ -26,6 +26,10 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
 
     public DbSet<CachedUpstreamIndex> CachedUpstreamIndexes => Set<CachedUpstreamIndex>();
 
+    public DbSet<CachedUpstreamDescription> CachedUpstreamDescriptions => Set<CachedUpstreamDescription>();
+
+    public DbSet<CachedUpstreamTagSet> CachedUpstreamTagSets => Set<CachedUpstreamTagSet>();
+
     public DbSet<AccessToken> AccessTokens => Set<AccessToken>();
 
     public DbSet<Setting> Settings => Set<Setting>();
@@ -88,6 +92,30 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.Property(x => x.Dependencies).IsRequired().HasDefaultValue("");
             e.HasIndex(x => new { x.FeedUpstreamKey, x.IdLower }).IsUnique();
             e.HasOne(x => x.FeedUpstream).WithMany().HasForeignKey(x => x.FeedUpstreamKey).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CachedUpstreamDescription>(e =>
+        {
+            e.ToTable("CachedUpstreamDescriptions");
+            e.HasKey(x => x.Key);
+            e.Property(x => x.IdLower).HasMaxLength(128);
+            e.Property(x => x.NormalizedVersion).HasMaxLength(128);
+            e.Property(x => x.Title).HasMaxLength(512);
+            e.Property(x => x.Authors).HasMaxLength(1024);
+            e.Property(x => x.ProjectUrl).HasMaxLength(2048);
+            e.Property(x => x.IconUrl).HasMaxLength(2048);
+            e.Property(x => x.LicenseUrl).HasMaxLength(2048);
+            e.Property(x => x.TagSetHash).HasMaxLength(64);
+            e.HasIndex(x => new { x.FeedUpstreamKey, x.IdLower, x.NormalizedVersion }).IsUnique();
+            e.HasIndex(x => x.TagSetHash);
+            e.HasOne(x => x.FeedUpstream).WithMany().HasForeignKey(x => x.FeedUpstreamKey).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CachedUpstreamTagSet>(e =>
+        {
+            e.ToTable("CachedUpstreamTagSets");
+            e.HasKey(x => x.Hash);
+            e.Property(x => x.Hash).HasMaxLength(64);
         });
 
         modelBuilder.Entity<Package>(e =>

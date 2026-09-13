@@ -121,6 +121,32 @@ public sealed record CachedUpstreamCatalog(
     IReadOnlySet<string>? Unlisted = null,
     IReadOnlyDictionary<string, IReadOnlyList<UpstreamDependency>>? Dependencies = null);
 
+/// <summary>
+/// The text an upstream wrote about each version of a package, kept so it survives a restart. Separate from
+/// <see cref="IUpstreamIndexStore"/> because it is display, never correctness, and because its size is a different
+/// order: it is written only for versions not stored yet, and read only when memory has nothing.
+/// </summary>
+public interface IUpstreamDescriptionStore
+{
+    /// <summary>
+    /// The stored descriptions of one package, or an empty list. <paramref name="unlisted"/> and
+    /// <paramref name="dependencies"/> come from the cached catalogue, which is where those facts are kept; null means
+    /// the catalogue has no news, and every version then reads as listed with no dependencies known.
+    /// </summary>
+    Task<IReadOnlyList<UpstreamMetadata>> LoadAsync(
+        int feedUpstreamKey,
+        string idLower,
+        IReadOnlySet<string>? unlisted,
+        IReadOnlyDictionary<string, IReadOnlyList<UpstreamDependency>>? dependencies,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Stores what was not stored yet, and forgets versions the upstream no longer describes. An empty list changes
+    /// nothing: an upstream that described nothing has not said the descriptions are gone.
+    /// </summary>
+    Task SaveAsync(int feedUpstreamKey, string idLower, IReadOnlyList<UpstreamMetadata> described, CancellationToken cancellationToken);
+}
+
 public interface IUpstreamIndexStore
 {
     /// <summary>

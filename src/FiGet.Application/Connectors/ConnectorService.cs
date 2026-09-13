@@ -17,6 +17,7 @@ namespace FiGet.Application.Connectors;
 public sealed class ConnectorService(
     IUpstreamClient client,
     IUpstreamIndexStore index,
+    IUpstreamDescriptionStore descriptions,
     IPackageStore packages,
     PackageIngestionService ingestion,
     UpstreamMetadataCache metadataCache,
@@ -647,6 +648,28 @@ public sealed class ConnectorService(
             // milliseconds beats a described one in fifteen seconds.
             var described = metadataCache.Get(upstream.Key, idLower, now, TimeSpan.MaxValue) ?? [];
 
+            // Memory is empty after every restart and after eviction; what was stored is the description a listing
+            // shows until the refresh below lands, instead of blank rows. Put back in memory under the catalogue's own
+            // age, so it reads as exactly as old as it is.
+            //
+            // The facts go with it, and they may only be read as "nothing hidden, nothing declared" because of the
+            // order things are written in: descriptions are saved right after the catalogue row's facts, in the same
+            // call, so a package with stored descriptions had its facts written too. A catalogue row the facts
+            // migration left blank has no descriptions stored, loads nothing here, and keeps its "no news" meaning.
+            if (described.Count == 0)
+            {
+                described = await descriptions.LoadAsync(
+                    upstream.Key,
+                    idLower,
+                    cached.Unlisted ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                    cached.Dependencies ?? new Dictionary<string, IReadOnlyList<UpstreamDependency>>(StringComparer.OrdinalIgnoreCase),
+                    cancellationToken);
+                if (described.Count > 0)
+                {
+                    metadataCache.Set(upstream.Key, idLower, described, cached.FetchedUtc);
+                }
+            }
+
             // Worth asking again once the list is past its window, or whenever nothing describes it -
             // which is what a restart leaves behind. Never worth waiting for: enqueue collapses
             // duplicates, so a popular package refreshes once however many readers it has.
@@ -662,6 +685,7 @@ public sealed class ConnectorService(
         {
             var catalog = await client.GetCatalogAsync(upstream, idLower, cancellationToken);
             await index.SaveAsync(upstream.Key, idLower, catalog.Id, catalog.Versions, catalog.Described, stale: false, now, cancellationToken);
+            await descriptions.SaveAsync(upstream.Key, idLower, catalog.Described, cancellationToken);
             metadataCache.Set(upstream.Key, idLower, catalog.Described, now);
             return (catalog, true, null);
         }

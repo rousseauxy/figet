@@ -82,7 +82,11 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
             .ExecuteDeleteAsync(cancellationToken);
         await db.Packages.Where(p => p.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.AccessTokens.Where(t => t.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
+        await db.CachedUpstreamDescriptions
+            .Where(d => db.FeedUpstreams.Any(u => u.Key == d.FeedUpstreamKey && u.FeedKey == key))
+            .ExecuteDeleteAsync(cancellationToken);
         await db.Feeds.Where(f => f.Key == key).ExecuteDeleteAsync(cancellationToken);
+        await EfUpstreamDescriptionStore.SweepOrphanedTagSetsAsync(db, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         return true;
@@ -131,8 +135,10 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         }
 
         await db.CachedUpstreamIndexes.Where(c => c.FeedUpstreamKey == upstreamKey).ExecuteDeleteAsync(cancellationToken);
+        await db.CachedUpstreamDescriptions.Where(c => c.FeedUpstreamKey == upstreamKey).ExecuteDeleteAsync(cancellationToken);
         db.FeedUpstreams.Remove(upstream);
         await db.SaveChangesAsync(cancellationToken);
+        await EfUpstreamDescriptionStore.SweepOrphanedTagSetsAsync(db, cancellationToken);
 
         if (!await db.FeedUpstreams.AnyAsync(u => u.FeedKey == feedKey, cancellationToken))
         {

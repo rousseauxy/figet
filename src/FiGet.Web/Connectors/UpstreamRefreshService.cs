@@ -96,6 +96,7 @@ public sealed class UpstreamRefreshService(
         // context with it.
         await using var scope = scopes.CreateAsyncScope();
         var index = scope.ServiceProvider.GetRequiredService<IUpstreamIndexStore>();
+        var descriptions = scope.ServiceProvider.GetRequiredService<IUpstreamDescriptionStore>();
 
         var catalog = await client.GetCatalogAsync(upstream, idLower, cancellationToken);
         var now = time.GetUtcNow().UtcDateTime;
@@ -103,6 +104,7 @@ public sealed class UpstreamRefreshService(
         // Both halves, or the descriptions never arrive: the request path only fills them when it had to
         // fetch synchronously, which after this change is the first view of a package and nothing else.
         await index.SaveAsync(upstream.Key, idLower, catalog.Id, catalog.Versions, catalog.Described, stale: false, now, cancellationToken);
+        await descriptions.SaveAsync(upstream.Key, idLower, catalog.Described, cancellationToken);
         metadataCache.Set(upstream.Key, idLower, catalog.Described, now);
 
         logger.LogInformation(

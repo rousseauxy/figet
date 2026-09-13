@@ -152,6 +152,79 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                     b.ToTable("AssetItems", (string)null);
                 });
 
+            modelBuilder.Entity("FiGet.Domain.Entities.CachedUpstreamDescription", b =>
+                {
+                    b.Property<long>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Authors")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Downloads")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("FeedUpstreamKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("IconUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IdLower")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LicenseUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedVersion")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProjectUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("PublishedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TagSetHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("TagSetHash");
+
+                    b.HasIndex("FeedUpstreamKey", "IdLower", "NormalizedVersion")
+                        .IsUnique();
+
+                    b.ToTable("CachedUpstreamDescriptions", (string)null);
+                });
+
             modelBuilder.Entity("FiGet.Domain.Entities.CachedUpstreamIndex", b =>
                 {
                     b.Property<long>("Key")
@@ -205,6 +278,21 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                         .IsUnique();
 
                     b.ToTable("CachedUpstreamIndexes", (string)null);
+                });
+
+            modelBuilder.Entity("FiGet.Domain.Entities.CachedUpstreamTagSet", b =>
+                {
+                    b.Property<string>("Hash")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Tags")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Hash");
+
+                    b.ToTable("CachedUpstreamTagSets", (string)null);
                 });
 
             modelBuilder.Entity("FiGet.Domain.Entities.Feed", b =>
@@ -620,6 +708,17 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                         .IsRequired();
 
                     b.Navigation("Feed");
+                });
+
+            modelBuilder.Entity("FiGet.Domain.Entities.CachedUpstreamDescription", b =>
+                {
+                    b.HasOne("FiGet.Domain.Entities.FeedUpstream", "FeedUpstream")
+                        .WithMany()
+                        .HasForeignKey("FeedUpstreamKey")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("FeedUpstream");
                 });
 
             modelBuilder.Entity("FiGet.Domain.Entities.CachedUpstreamIndex", b =>

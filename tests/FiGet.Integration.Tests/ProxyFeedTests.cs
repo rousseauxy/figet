@@ -622,6 +622,61 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         server.Upstream.Add(id, version, package.ToArray());
     }
 
+    /// <summary>
+    /// After a restart a proxied package reads as it did before, not as a bare version list: the descriptions are
+    /// stored, and read back when memory has none - with the upstream unreachable, so nothing is fetched to get them.
+    /// </summary>
+    [Fact]
+    public async Task Descriptions_survive_a_restart()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Restart");
+        AddUpstream(id, "1.0.0");
+        AddUpstream(id, "1.1.0");
+        Assert.Equal("Described by the stub upstream.", Property((await FindAsync("proxy", id))[0], "Description"));
+
+        await ForgetDescriptionsAsync(id);
+        server.Upstream.Fails = true;
+        try
+        {
+            var entries = await FindAsync("proxy", id);
+            Assert.Equal(2, entries.Count);
+            Assert.All(entries, e => Assert.Equal("Described by the stub upstream.", Property(e, "Description")));
+            Assert.All(entries, e => Assert.Contains("PSEdition_Desktop", Property(e, "Tags"), StringComparison.Ordinal));
+        }
+        finally
+        {
+            server.Upstream.Fails = false;
+        }
+    }
+
+    /// <summary>
+    /// A PowerShell module repeats its tag list on every version, and that repetition is what made one package a
+    /// hundred megabytes. Each distinct list is stored once; a version the upstream stops describing is dropped with
+    /// its list when nothing else uses it.
+    /// </summary>
+    [Fact]
+    public async Task Tag_lists_are_stored_once_and_forgotten_with_the_last_version_using_them()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.TagSets");
+        server.Upstream.AddVersions(id, Enumerable.Range(0, 30).Select(n => $"1.0.{n}"));
+        await FindAsync("proxy", id);
+
+        await using var scope = server.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<FiGetDbContext>();
+        var idLower = id.ToLowerInvariant();
+        var rows = await db.CachedUpstreamDescriptions.Where(d => d.IdLower == idLower).ToListAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(30, rows.Count);
+        var hash = Assert.Single(rows.Select(r => r.TagSetHash).Distinct());
+
+        var store = scope.ServiceProvider.GetRequiredService<IUpstreamDescriptionStore>();
+        var upstreamKey = rows[0].FeedUpstreamKey;
+        var remaining = new UpstreamMetadata(NuGet.Versioning.NuGetVersion.Parse("1.0.0"), "d", "s", "t", "a", "different tags", "", "", "", null, 0);
+        await store.SaveAsync(upstreamKey, idLower, [remaining], TestContext.Current.CancellationToken);
+
+        Assert.Equal(["1.0.0"], await db.CachedUpstreamDescriptions.Where(d => d.IdLower == idLower).Select(d => d.NormalizedVersion).ToListAsync(TestContext.Current.CancellationToken));
+        Assert.False(await db.CachedUpstreamTagSets.AnyAsync(t => t.Hash == hash && !db.CachedUpstreamDescriptions.Any(d => d.TagSetHash == t.Hash), TestContext.Current.CancellationToken));
+    }
+
     private void AddSecondUpstream(string id, string version)
     {
         using var package = TestPackages.Create(id, version);
@@ -1100,12 +1155,16 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         }
     }
 
-    /// <summary>Blanks the stored facts, leaving a row shaped like one the migration has just added them to.</summary>
+    /// <summary>
+    /// Blanks the stored facts, leaving a row shaped like one the migration has just added them to. That migration
+    /// predates stored descriptions, so a row it left behind has none: they are removed too.
+    /// </summary>
     private async Task BlankStoredFactsAsync(string id)
     {
         await using var scope = server.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<FiGetDbContext>();
         var idLower = id.ToLowerInvariant();
+        await db.CachedUpstreamDescriptions.Where(d => d.IdLower == idLower).ExecuteDeleteAsync(TestContext.Current.CancellationToken);
         await db.CachedUpstreamIndexes
             .Where(c => c.IdLower == idLower)
             .ExecuteUpdateAsync(
