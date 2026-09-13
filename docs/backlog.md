@@ -26,32 +26,10 @@ the entries. Options, for a decision:
    `Find-Module -AllVersions` would show no `Includes` for old versions. User-visible.
 4. **Accept it.** The client asks for every version by design; PSResourceGet over v3 is already fast.
 
-### A role above admin, and what a token may create
-
-**Part of the SSO / authentication plan** (being written by the owner, 2026-09-13); build it with that, not before.
-
-Raised 2026-09-12. Today there is one signed-in role, and `TokenScopes` (Read, Push, Delete, Admin) says
-what a *token* may do rather than what a *person* may do. The proposal: a super admin above admin, both
-able to create tokens, with only the super admin able to revoke or delete them.
-
-**Settled 2026-09-12: only a super admin may issue admin or super-admin tokens.** An admin may still
-create read, push and delete tokens; it is the top two levels that are reserved. This is the rule that
-makes the rest work, because the obvious version restricts nothing — an admin who can create *any* token
-can create an **admin** token, sign in with it, and delete whatever they like. Generalised: nobody may
-mint a token carrying more than they hold. That ceiling is the feature; the menu item is the easy part.
-
-**This has to survive SSO, and SSO does not solve it.** Build plan section 8 has Reader / Publisher /
-FeedAdmin / Admin arriving from an OIDC group claim, so the fifth tier belongs there and not bolted onto
-the `TokenScopes` flags, or the two disagree the moment sign-in stops being "paste an admin token". Note
-what moves and what does not: with SSO, *who is an admin* becomes the identity provider's answer, so
-granting the admin role leaves FiGet entirely and becomes group management in the IdP. What does **not**
-move is the ceiling on minting — a signed-in admin still issues API tokens from inside FiGet, and
-nothing in the group claim stops them issuing one above their own level. The check belongs in the token
-service regardless of where the role came from.
-
 ### An audit log: who changed what, and when
 
-**Part of the SSO / authentication plan** (2026-09-13): the admin page and sign-in events belong with it.
+**Phase 5 of docs/auth-plan.md**, the one phase of that plan not built. Phases 1-4 (accounts, roles, groups, per-feed
+permissions, personal keys with the minting ceiling, OpenID Connect) are done; see docs/status.md.
 
 **The console half shipped on 2026-09-13** (docs/status.md, "The flapping is fixed at the cause, and there is an audit log"): every change below is written as a line under the `FiGet.Audit` category. What remains is the database table and the admin page.
 
@@ -168,7 +146,6 @@ set of CVEs in an assembly the app never ships itself.
 - **History tab** on a version, which needs the audit log of phase 5.
 - **Usage and statistics**, which needs per-version download tracking — the same data cache pruning wants.
 - **Cache pruning and retention** by age and use.
-- **OIDC sign-in** (phase 5), provider-agnostic, which is where the role model above belongs.
 
 ## Decided against
 
