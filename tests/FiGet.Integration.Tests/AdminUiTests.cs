@@ -322,8 +322,8 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         HttpAssert.Status(HttpStatusCode.BadRequest, await client.PostAsync($"/admin/feeds/{feed}/upstreams/add", forged));
         Assert.Empty((await FindFeedAsync(feed))!.Upstreams);
 
-        // The same post from the settings page, token and all, still works.
-        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/admin/feeds/{feed}"));
+        // The same post from the settings page with the add form open, token and all, still works.
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/admin/feeds/{feed}?edit=new"));
         var form = FormElement().Matches(page).Single(f => f.Value.Contains("upstreams/add", StringComparison.Ordinal)).Value;
         var fields = HiddenFields(form);
         foreach (var (key, value) in upstream)

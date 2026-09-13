@@ -184,6 +184,14 @@ else
                                 <td><span class="fg-badge">@upstream.Kind</span></td>
                                 <td><code>@upstream.Url</code></td>
                                 <td class="fg-cell-actions">
+                                    @if (EditingKey == upstream.Key)
+                                    {
+                                        <a class="fg-btn fg-btn-sm" href="@UpstreamsAnchor" aria-expanded="true">Close</a>
+                                    }
+                                    else
+                                    {
+                                        <a class="fg-btn fg-btn-sm" href="@EditUrl(upstream.Key.ToString(CultureInfo.InvariantCulture))" aria-expanded="false">Edit</a>
+                                    }
                                     <form method="post" action="/admin/feeds/@feed.Name/upstreams/remove">
                                         <AntiforgeryToken />
                                         <input type="hidden" name="key" value="@upstream.Key" />
@@ -192,26 +200,22 @@ else
                                     </form>
                                 </td>
                             </tr>
+
+                            @* Inline, in a row of its own directly under the upstream, as on the goods overview of the sibling
+                               application: the row being changed stays in view. Opened by a link rather than a script, because
+                               this page is static; the fragment brings the form back into view after the reload. *@
+                            @if (EditingKey == upstream.Key)
+                            {
+                                <tr class="fg-row-panel" id="upstream-@upstream.Key">
+                                    <td colspan="5">
+                                        <UpstreamForm Feed="feed" Upstream="upstream" Error="@UpstreamError" Cancel="@UpstreamsAnchor" />
+                                    </td>
+                                </tr>
+                            }
                         }
                     </tbody>
                 </table>
             </div>
-            @foreach (var upstream in feed.Upstreams.OrderBy(u => u.Ordinal))
-            {
-                <details class="fg-more">
-                    <summary>Edit @upstream.Name</summary>
-                    <form method="post" action="/admin/feeds/@feed.Name/upstreams/update" class="fg-form">
-                        <AntiforgeryToken />
-                        <input type="hidden" name="key" value="@upstream.Key" />
-                        <UpstreamFields Upstream="upstream" Prefix="@($"upstream-{upstream.Key}")" />
-                        <p class="fg-muted fg-small">
-                            A new URL, protocol or credential drops the version lists stored from the old source, and they are
-                            fetched again from the new one. Packages already cached stay.
-                        </p>
-                        <button type="submit" class="fg-btn fg-btn-primary">Save upstream</button>
-                    </form>
-                </details>
-            }
             <p class="fg-muted fg-small">
                 The first upstream that holds a package id serves it; upstreams further down are not asked about
                 that id, so two different packages that share a name are never mixed. Removing an upstream keeps the
@@ -219,18 +223,16 @@ else
             </p>
         }
 
-        @* Behind a disclosure. Seven fields, filled in rarely, that used to take most of the page height
-           on every visit. Closed by default costs one click; open by default cost every other task. *@
-        <details class="fg-more">
-            <summary>Add an upstream</summary>
-            <form method="post" action="/admin/feeds/@feed.Name/upstreams/add" class="fg-form">
-                <AntiforgeryToken />
-                <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                <UpstreamFields />
-
-                <button type="submit" class="fg-btn fg-btn-primary">Add upstream</button>
-            </form>
-        </details>
+        @if (Editing == "new")
+        {
+            <div id="upstream-new">
+                <UpstreamForm Feed="feed" Error="@UpstreamError" Cancel="@UpstreamsAnchor" />
+            </div>
+        }
+        else
+        {
+            <a class="fg-btn fg-btn-primary" href="@EditUrl("new")">Add upstream</a>
+        }
     </section>
     }
 
@@ -455,13 +457,6 @@ else
             alternate name and every client registered with it goes on working while it is updated; each client still using it
             is in the audit log, and below is when it was last used.
         </p>
-        @if (IsConfigured(feed.Name))
-        {
-            <div class="fg-alert fg-alert-warn">
-                '@feed.Name' is created from the server configuration (<code>FiGet:Feeds</code>): rename it there too. Until then keep
-                the old name as an alternate name, or the next restart creates a new, empty @Noun called '@feed.Name'.
-            </div>
-        }
         <form method="post" action="/admin/feeds/@feed.Name/rename" class="fg-form">
             <AntiforgeryToken />
             <div class="fg-field">
@@ -469,6 +464,14 @@ else
                 <input id="rename-to" name="name" required maxlength="64" autocomplete="off" placeholder="@feed.Name" />
             </div>
             <label class="fg-check"><input type="checkbox" name="keepOldName" value="true" checked /> Keep '@feed.Name' as an alternate name</label>
+            @if (IsConfigured(feed.Name))
+            {
+                <p class="fg-muted fg-small">
+                    '@feed.Name' is also listed in the server configuration (<code>FiGet:Feeds</code>), which creates it on start when it
+                    is missing. Keep the old name, or remove it from the configuration too; otherwise the next restart creates a new,
+                    empty @Noun called '@feed.Name'.
+                </p>
+            }
             <button type="submit" class="fg-btn fg-btn-primary">Rename @Noun</button>
         </form>
 
@@ -546,6 +549,24 @@ else
     private IReadOnlyList<GroupSummary> groupChoices = [];
     private IReadOnlyList<FeedAlias> aliases = [];
 
+    /// <summary>The upstream whose form is open under its row, by key, or "new" for the add form under the table.</summary>
+    [SupplyParameterFromQuery(Name = "edit")]
+    private string? Editing { get; set; }
+
+    private int? EditingKey => int.TryParse(Editing, NumberStyles.None, CultureInfo.InvariantCulture, out var key) ? key : null;
+
+    private string UpstreamsAnchor => $"/admin/feeds/{Uri.EscapeDataString(feed!.Name)}#upstreams";
+
+    private string EditUrl(string which) => $"/admin/feeds/{Uri.EscapeDataString(feed!.Name)}?edit={which}#upstream-{which}";
+
+    /// <summary>Why the open form was refused, shown inside it.</summary>
+    private string? UpstreamError => UpstreamResult switch
+    {
+        "taken" => "Another upstream of this feed already has that name.",
+        "invalid" => "An upstream needs a name and a URL.",
+        _ => null,
+    };
+
     /// <summary>What the last upstream edit did, carried on the redirect back here.</summary>
     [SupplyParameterFromQuery(Name = "upstream")]
     private string? UpstreamResult { get; set; }
@@ -553,8 +574,7 @@ else
     private (string Text, bool IsError)? UpstreamMessage => UpstreamResult switch
     {
         "saved" => ("Upstream saved.", false),
-        "taken" => ("Another upstream of this feed already has that name.", true),
-        "invalid" => ("An upstream needs a name and a URL.", true),
+        "added" => ("Upstream added. It is asked after the others; move it up to ask it earlier.", false),
         "gone" => ("That upstream no longer exists.", true),
         _ => null,
     };

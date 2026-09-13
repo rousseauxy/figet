@@ -414,6 +414,19 @@ pre code { padding: 0; background: none; }
 .fg-cell-actions form { display: inline; margin: 0; }
 .fg-cell-actions > * + * { margin-left: 0.4rem; }
 
+/* A form opened under the row it changes (the upstreams of a feed): a row of its own, set in from the table by an accent
+   rule so it reads as belonging to the row above rather than as the next row. */
+.fg-table tr.fg-row-panel > td { padding: 0 0.5rem 0.75rem 1.5rem; background: var(--surface); }
+.fg-inline-panel {
+  border-left: 3px solid var(--accent);
+  background: var(--inset);
+  border-radius: var(--r-1);
+  padding: 0.75rem 1rem;
+  margin-block: 0.5rem;
+  white-space: normal;
+}
+.fg-inline-panel > h3 { margin: 0 0 0.5rem; font-size: 0.95rem; }
+
 /* ── Toolbar above a list ───────────────────────────────────────── */
 .fg-toolbar {
   display: flex;

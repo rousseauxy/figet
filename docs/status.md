@@ -2634,3 +2634,11 @@ set (a disabled upstream shows a badge in the list).
 Tests: `UpstreamEditTests` - pointed at another source, the upstream answers with that source's versions straight away
 and keeps its place; another upstream's name (in other case) and an empty URL are refused and change nothing; a disabled
 upstream is not asked and the page marks it. Falsified: with the stored lists not dropped, the first test fails.
+
+Follow-up the same evening, from the owner's look at it: the **Edit** disclosures under the table and the "Add an
+upstream" disclosure did not match the buttons used everywhere else. Each row now has an **Edit** button beside
+**Remove**, which opens the form in a row of its own directly under that upstream (the inline panel of the sibling
+application's goods overview), and **Add upstream** is a button that opens the empty form under the table. The page is
+static, so opening is a link (`?edit={key}#upstream-{key}`, `?edit=new`) rather than a script; a refused save reopens the
+same form with the reason inside it. The configuration note in the Name panel is now a muted line under the rename
+checkbox instead of a warning shown on every visit.

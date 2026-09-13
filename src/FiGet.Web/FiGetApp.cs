@@ -1238,7 +1238,11 @@ public static class FiGetApp
                 }
             }
 
-            return Results.Redirect($"/admin/feeds/{Uri.EscapeDataString(target.Name)}?upstream={code}#upstreams");
+            // A refused edit reopens its form, so what was typed is corrected where it was typed.
+            var settings = $"/admin/feeds/{Uri.EscapeDataString(target.Name)}";
+            return Results.Redirect(code is "taken" or "invalid"
+                ? $"{settings}?edit={before!.Key}&upstream={code}#upstream-{before.Key}"
+                : $"{settings}?upstream={code}#upstreams");
         });
 
         manageFeed.MapPost("/feeds/{feed}/upstreams/move", async (
