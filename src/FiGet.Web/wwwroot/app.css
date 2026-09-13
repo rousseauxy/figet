@@ -299,14 +299,12 @@ pre code { padding: 0; background: none; }
 
 /* The publisher's icon. Removed by app.js when it fails to load, which an air-gapped install
    guarantees, so nothing here has to style a broken image. */
+/* A package's own icon, as its author drew it: no frame or backdrop, which made every icon look like a tile. */
 .fg-icon {
   width: 34px;
   height: 34px;
   object-fit: contain;
   border-radius: var(--r-1);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  padding: 2px;
   flex: 0 0 auto;
 }
 .fg-version {

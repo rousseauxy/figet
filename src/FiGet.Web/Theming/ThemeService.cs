@@ -11,7 +11,7 @@ namespace FiGet.Web.Theming;
 public sealed record ThemeSummary(string Name, string Label, string? Description);
 
 /// <summary>What the top bar shows for a theme: the name, and the logo's address when the pack has one.</summary>
-public sealed record ThemeBrand(string Title, string? LogoUrl, string LogoAlt, bool HideTitle)
+public sealed record ThemeBrand(string Title, string? LogoUrl, string LogoAlt, bool HideTitle, string? FaviconUrl = null)
 {
     public static readonly ThemeBrand Default = new("FiGet", null, "FiGet", HideTitle: false);
 }
@@ -108,40 +108,48 @@ public sealed class ThemeService : IThemeService
         }
 
         var title = string.IsNullOrWhiteSpace(branding.TitlePlain) ? ThemeBrand.Default.Title : branding.TitlePlain.Trim();
-        string? logo = null;
-        var value = branding.Logo?.Trim();
-        if (!string.IsNullOrEmpty(value))
+        var logo = ImageUrl(entry.Pack.Name, branding.Logo, "logo");
+        var favicon = ImageUrl(entry.Pack.Name, branding.Favicon, "favicon") ?? logo;
+        var alt = string.IsNullOrWhiteSpace(branding.LogoAlt) ? title : branding.LogoAlt.Trim();
+        return new ThemeBrand(title, logo, alt, branding.HideTitle && logo is not null, favicon);
+    }
+
+    /// <summary>Where a branding image is fetched from: a data: URL as it is, a file next to the pack through the assets endpoint.</summary>
+    private string? ImageUrl(string pack, string? configured, string what)
+    {
+        var value = configured?.Trim();
+        if (string.IsNullOrEmpty(value))
         {
-            if (value.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
-            {
-                logo = value;
-            }
-            else if (IsPlainFileName(value) && AssetTypes.ContainsKey(Path.GetExtension(value)))
-            {
-                logo = $"/themes/{Uri.EscapeDataString(entry.Pack.Name)}/assets/{Uri.EscapeDataString(value)}";
-            }
-            else
-            {
-                logger.LogWarning("Theme {Theme} names a logo that is neither a file next to the pack nor a data: URL; it is not shown.", entry.Pack.Name);
-            }
+            return null;
         }
 
-        var alt = string.IsNullOrWhiteSpace(branding.LogoAlt) ? title : branding.LogoAlt.Trim();
-        return new ThemeBrand(title, logo, alt, branding.HideTitle && logo is not null);
+        if (value.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return value;
+        }
+
+        if (IsPlainFileName(value) && AssetTypes.ContainsKey(Path.GetExtension(value)))
+        {
+            return $"/themes/{Uri.EscapeDataString(pack)}/assets/{Uri.EscapeDataString(value)}";
+        }
+
+        logger.LogWarning("Theme {Theme} names a {What} that is neither a file next to the pack nor a data: URL; it is not shown.", pack, what);
+        return null;
     }
 
     public (string Path, string ContentType)? GetAsset(string name, string file)
     {
         if (!packs.TryGetValue(name, out var entry)
-            || entry.Pack.Branding?.Logo?.Trim() is not { } logo
-            || !string.Equals(logo, file, StringComparison.OrdinalIgnoreCase)
-            || !IsPlainFileName(logo)
-            || !AssetTypes.TryGetValue(Path.GetExtension(logo), out var type))
+            || new[] { entry.Pack.Branding?.Logo, entry.Pack.Branding?.Favicon }
+                .Select(v => v?.Trim())
+                .FirstOrDefault(v => string.Equals(v, file, StringComparison.OrdinalIgnoreCase)) is not { } named
+            || !IsPlainFileName(named)
+            || !AssetTypes.TryGetValue(Path.GetExtension(named), out var type))
         {
             return null;
         }
 
-        var path = Path.Combine(directory, logo);
+        var path = Path.Combine(directory, named);
         var info = new FileInfo(path);
         return info.Exists && info.Length <= MaxAssetBytes ? (path, type) : null;
     }

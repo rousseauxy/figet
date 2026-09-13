@@ -25,6 +25,8 @@ fonts:
 branding:
   titlePlain: FiGet
   logo: cobalt-logo.svg
+  # The browser tab's icon; left out, the logo is used.
+  favicon: cobalt-logo.svg
   logoAlt: FiGet
 
 layout:

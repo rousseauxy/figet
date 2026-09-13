@@ -74,8 +74,9 @@ than refused. `wwwroot/themes/graphite.yaml` is the built-in look written out as
 the worked example. A pack may also carry `fonts`, `layout` (corner radii and `pageWidth`, the widest the
 content grows, default `1440px`), `branding`, and a `customCSS` block for the rare rule a token cannot express.
 
-`branding` sets the top bar: `titlePlain` (the name, default "FiGet"), `logo`, `logoAlt` (default the name) and
-`hideTitle` (drop the name when the logo carries it). `logo` is a file next to the pack - SVG, PNG, WebP, JPEG or GIF,
+`branding` sets the top bar and the browser tab: `titlePlain` (the name, default "FiGet"), `logo`, `favicon`
+(default the logo, else FiGet's own mark), `logoAlt` (default the name) and `hideTitle` (drop the name when the
+logo carries it). `logo` and `favicon` are each a file next to the pack - SVG, PNG, WebP, JPEG or GIF,
 at most 1 MB, served by FiGet at `/themes/{pack}/assets/{file}` with a policy that runs nothing - or a
 `data:image/...` URL. A link to another site is not accepted: the logo would depend on that site and every reader's
 browser would call it. The top bar is dark in both light and dark mode, so one logo serves both; draw it for a dark

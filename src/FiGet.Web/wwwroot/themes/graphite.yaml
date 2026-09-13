@@ -24,6 +24,8 @@ fonts:
 branding:
   titlePlain: FiGet
   logo: graphite-logo.svg
+  # The browser tab's icon; left out, the logo is used.
+  favicon: graphite-logo.svg
   logoAlt: FiGet
 
 layout:

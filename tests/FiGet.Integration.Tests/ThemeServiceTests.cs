@@ -127,6 +127,7 @@ public sealed class ThemeServiceTests : IDisposable
         Assert.Equal("Acme packages", brand.Title);
         Assert.Equal("/themes/brand/assets/acme.svg", brand.LogoUrl);
         Assert.Equal("Acme", brand.LogoAlt);
+        Assert.Equal(brand.LogoUrl, brand.FaviconUrl);
         Assert.Equal("image/svg+xml", service.GetAsset("brand", "acme.svg")!.Value.ContentType);
         Assert.Null(service.GetAsset("brand", "other.svg"));
         Assert.Null(service.GetAsset("brand", "../brand.yaml"));

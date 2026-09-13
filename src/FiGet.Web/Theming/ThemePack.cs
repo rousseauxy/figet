@@ -63,6 +63,12 @@ public sealed class ThemeBranding
     /// </summary>
     public string? Logo { get; set; }
 
+    /// <summary>
+    /// The browser tab's icon, the same kinds of value as <see cref="Logo"/>. Empty: the logo, and with no logo either,
+    /// FiGet's own mark. Unlike the logo it is drawn on whatever the browser's tab bar is, light or dark.
+    /// </summary>
+    public string? Favicon { get; set; }
+
     /// <summary>What a screen reader says for the logo. Empty: the title.</summary>
     public string? LogoAlt { get; set; }
 

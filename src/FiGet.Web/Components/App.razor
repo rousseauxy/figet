@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
+    @* The theme's icon when it has one, else FiGet's own mark, so a tab never shows the browser's blank page. *@
+    <link rel="icon" href="@(brand.FaviconUrl ?? Assets["favicon.svg"])" />
     @if (!string.IsNullOrWhiteSpace(theme))
     {
         <link rel="stylesheet" href="@($"/themes/{theme}.css")" />

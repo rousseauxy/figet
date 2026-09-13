@@ -26,6 +26,19 @@ public abstract class PageRenderTests
         server.SkipIfUnavailable();
     }
 
+    /// <summary>Every page names a tab icon, and without a theme it is FiGet's own mark, which is served.</summary>
+    [Fact]
+    public async Task A_page_links_a_favicon_that_is_served()
+    {
+        using var client = server.CreateClient();
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/"));
+
+        var match = System.Text.RegularExpressions.Regex.Match(page, "<link rel=\"icon\" href=\"(?<href>[^\"]+)\"");
+        Assert.True(match.Success, "No favicon link on the page.");
+        Assert.Contains("favicon", match.Groups["href"].Value, StringComparison.Ordinal);
+        HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync(match.Groups["href"].Value.TrimStart('/')));
+    }
+
     [Fact]
     public async Task Pages_render_without_error_under_concurrent_requests()
     {
