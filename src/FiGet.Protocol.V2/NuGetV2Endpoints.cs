@@ -163,8 +163,16 @@ public static class NuGetV2Endpoints
         }
 
         var term = Unquote(query["searchTerm"]) ?? "";
-        var prerelease = Bool(query["includePrerelease"]) || (filter?.LatestOnly != true);
+
+        // includePrerelease is honoured unless a filter other than a latest-only one asks about versions itself,
+        // in which case that filter decides. With no filter at all it applies too: `nuget list -AllVersions`
+        // sends none, and got prerelease versions it had not asked for until a recorded answer showed otherwise.
+        var prerelease = Bool(query["includePrerelease"]) || (filter is not null && !filter.LatestOnly);
         var rows = await SearchRowsAsync(store, connector, request!.Feed, term, prerelease, SemVer2(query), cancellationToken);
+
+        // A search lists what a client may choose from: never an unlisted version, and a prerelease one only when
+        // asked. The package search above picks packages; these pick among each package's versions.
+        rows = rows.Where(r => r.Entry.Listed && (prerelease || !r.Version.IsPrerelease)).ToList();
         return Page(http, request.Feed.Name, rows, filter, order, query);
     }
 
@@ -359,7 +367,7 @@ public static class NuGetV2Endpoints
         }
 
         audit.Record(http, "package.delete", id, $"feed={feed} version={version}");
-        return Results.NoContent();
+        return Results.Ok();
     }
 
     /// <summary>

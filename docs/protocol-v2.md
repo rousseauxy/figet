@@ -188,7 +188,7 @@ only the plain root serves: see conclusion 4 above for why `GET /nuget/{feed}/ap
 | `GET /nuget/{feed}` | Service document. A trailing slash is the same endpoint: the router ignores it, so it is mapped once. |
 | `GET /nuget/{feed}/$metadata` | Static EDMX for `V2FeedPackage` plus `Search`, `FindPackagesById` and `GetUpdates`. |
 | `GET /nuget/{feed}/FindPackagesById()` | `id`, `$filter`, `$orderby`, `$skip`, `$top`, `$inlinecount`, `semVerLevel`. Unknown id: empty feed, 200, which is also the providers' source-validation probe. |
-| `GET /nuget/{feed}/Search()` | Adds `searchTerm` (PowerShellGet's ` tag:x` syntax included) and `includePrerelease`. |
+| `GET /nuget/{feed}/Search()` | Adds `searchTerm` (PowerShellGet's ` tag:x` syntax included) and `includePrerelease`. Never returns an unlisted version; `includePrerelease=false` excludes prerelease versions unless a filter other than a latest-only one decides for itself. |
 | `GET /nuget/{feed}/Packages()` and `Packages(Id='x',Version='y')` | The collection and one entry; an `Id eq` in the filter fetches that package directly. |
 | `GET /nuget/{feed}/GetUpdates()` | `packageIds`, `versions`, `includePrerelease`, `includeAllVersions`. No recorded client sends it. |
 | `GET …/$count` on the three listings | `text/plain` integer. |

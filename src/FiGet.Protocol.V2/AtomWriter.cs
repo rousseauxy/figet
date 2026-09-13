@@ -152,6 +152,7 @@ public static class AtomWriter
                 <Property Name="MinClientVersion" Type="Edm.String" Nullable="true" />
                 <Property Name="LastEdited" Type="Edm.DateTime" Nullable="true" />
                 <Property Name="LicenseUrl" Type="Edm.String" Nullable="true" />
+                <Property Name="LicenseExpression" Type="Edm.String" Nullable="true" />
                 <Property Name="LicenseNames" Type="Edm.String" Nullable="true" />
                 <Property Name="LicenseReportUrl" Type="Edm.String" Nullable="true" />
                 <Property Name="Listed" Type="Edm.Boolean" Nullable="false" />
@@ -259,6 +260,7 @@ public static class AtomWriter
         Text(writer, "MinClientVersion", metadata.MinClientVersion);
         Null(writer, "LastEdited", "Edm.DateTime");
         Text(writer, "LicenseUrl", metadata.LicenseUrl);
+        Text(writer, "LicenseExpression", metadata.LicenseExpression);
         Text(writer, "LicenseNames", metadata.LicenseExpression);
         Text(writer, "LicenseReportUrl", "");
         Typed(writer, "Listed", "Edm.Boolean", Flag(row.Listed));

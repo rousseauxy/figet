@@ -63,7 +63,20 @@ URLs in responses (downloads, `next` links) went straight to the gallery and are
 
 ## What the fixtures are for
 
-Phase 2 replays each request against FiGet and compares the digest of FiGet's answer with the recorded one:
-the same status, the same kind, the same property set, the same versions in the entries. The latest flags are
-the exception where FiGet deliberately differs from this reference server: see `docs/protocol-v2.md`,
-"Paging and latest flags", for why the recorded proxy-feed answers are wrong and what FiGet returns instead.
+`tests/FiGet.Integration.Tests/FixtureReplayTests.cs` replays them against FiGet, on both database providers, and
+digests FiGet's answers with the same code that made the fixtures (`tests/FiGet.Testing/ProtocolDigest.cs`, also
+used by `tools/FiGet.Fixtures`, so the two can never reduce an answer differently).
+
+- **Replayed exchange by exchange**, in the order the recording scripts ran them, against a fresh feed with the
+  synthetic packages rebuilt (same ids, versions and tags): the curated-feed scenarios of `powershellget-2.2.5`,
+  all of `nugetexe-6.11.1` and all of `psresourceget-1.2.0-v2`. Compared: status; for a success with a body, its
+  kind, service-document collections, next links, the property set (less the reference server's own product
+  properties), and per entry, matched by id and version, the latest, prerelease and listed flags, whether it has
+  dependencies, and its download path.
+- **Differences FiGet makes on purpose** are listed in the test one exchange at a time with the reason, and an
+  exception that stops being needed fails too. Today: a duplicate push, which the reference server silently
+  overwrote and FiGet refuses with 409.
+- **Not replayed:** the proxy, paging and meta-module scenarios answered from the live PowerShell Gallery and
+  record the reference server's double-latest defect (`docs/protocol-v2.md`, "Paging and latest flags"); the
+  proxy tests pin FiGet's rules there. From `psresourceget-1.2.0-v2-gallery` only the requests are used: every
+  filter PSResourceGet sent must parse (200, never 400).

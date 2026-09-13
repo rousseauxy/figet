@@ -2008,3 +2008,46 @@ was replayed: the CI fallback picks 13.0.3 from `versions` sorted on `published`
 
 Committed just before it: a file stored with the non-standard `binary/octet-stream` type, as the gallery's CDN serves
 packages, now gets its type from the extension, like `application/octet-stream` already did.
+
+## Fixture replay and the real Windows PowerShell 5.1 client - 2026-09-13
+
+The two open items of the v2 milestone.
+
+**Replay.** `FixtureReplayTests` replays the phase 0 recordings against FiGet on both providers: 68 PowerShellGet,
+25 nuget.exe and 4 PSResourceGet publish exchanges, in recorded order against a fresh feed with the synthetic
+packages rebuilt, plus every filter PSResourceGet sent to the gallery (all must parse). Answers are digested by
+`tests/FiGet.Testing/ProtocolDigest.cs`, which the fixture tool now uses too; regenerating all four fixture sets
+from the raw recordings with the refactored tool gave byte-identical files. `tests/fixtures/README.md` has what
+is compared and what is not. The first run found:
+
+- **A real bug:** `nuget list -AllVersions` (a `Search()` with no `$filter`, `includePrerelease=false`) got the
+  deleted, unlisted 1.0.0 and the prerelease 2.0.0-beta1 back, where the reference answered 1.1.0 alone. Search
+  honoured `includePrerelease` only beside a latest-only filter, and listed every version of each matching package.
+  Fixed; with the fix reverted the replay fails on exactly that exchange.
+- `LicenseExpression` missing from v2 entries (now written), and a v2 delete answering 204 where the reference
+  answered 200 (now 200).
+- One deliberate difference, listed in the test: a duplicate push, which the reference server silently overwrote.
+
+**Windows PowerShell 5.1 + PowerShellGet 2.2.5 + PackageManagement 1.4.8.1 (NuGet provider 3.0.0.1)**, the fleet's
+pinned set, run with `tests/FiGet.Compat/Record-PowerShellGetV2.ps1` through FiGet.Recorder against a local FiGet
+with a curated feed and a proxy feed on the live PowerShell Gallery. Every scenario passes, the two expected
+refusals included (find before publish, duplicate publish refused client-side). PSRepositories.xml and NuGet.Config
+restored byte for byte (hashes compared), no module left behind, no error in the server log.
+
+The first run found what no fixture could: **PowerShellGet registered `…/nuget/curated/api/v2/` instead of the URL
+it was given.** It probes `{source}/api/v2/`; the reference server answers 404, FiGet served the alias's service
+document, and PowerShellGet then prefers the probed URL. Ansible's `win_psrepository` compares `SourceLocation`
+with its `source_location` as a string (line 112 of the module), so the baseline's `PSGallery_Local` task would
+report "changed" and re-register on every run. Fixed by answering that probe with 404, keeping every operation
+under `/api/v2` for PSResourceGet. The second run registered the plain URL.
+
+Second run with `-IncludeLargePackages`, the two failures the team reported on the server being replaced:
+
+    Pester, 144 versions over 5 pages      144 entries, 144 unique, one latest (6.2.0), also after caching 4.10.1
+    Find-Module Pester -AllVersions        75 = 82 stable minus the 7 the gallery has unlisted (Published 1900-01-01);
+                                           the reference server showed those 7 as listed
+    Microsoft.Graph after caching 2.30.0   Find-Module answers 2.39.0 (reference: the cached 2.30.0)
+    Microsoft.Graph.Authentication         2.39.0, 114 unique entries, one latest
+    Save-Module Microsoft.Graph, partial   40 modules, all 2.39.0 (reference: "multiple modules matched")
+
+Suites: unit 107/0; integration 231/0 on SQL Server and on SQLite.

@@ -185,10 +185,6 @@ public case and a current version. It is outward-facing, so it waits for a perso
 
 - **Promotion between feeds.** Referred to by the server being replaced; nothing in FiGet does it yet.
   Needs a decision on whether a promoted package keeps its origin or becomes a push.
-- **Replay the recorded fixtures as tests** (section 7.1). The fixtures are committed and the shapes they
-  carry are covered by hand-written tests, but nothing reads the fixture files.
-- **Run the real Windows PowerShell 5.1 client** against the v2 surface (section 7.2). The compat scripts
-  exist and need pointing at a running instance.
 - **Per-version registration leaves for upstream-only versions.** A v3 client can list them but cannot
   read a leaf for one that has never been downloaded.
 

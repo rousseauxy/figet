@@ -270,7 +270,9 @@ public abstract class NuGetV2Tests
         using var client = server.CreateClient();
         using var request = new HttpRequestMessage(HttpMethod.Delete, $"nuget/public/{id}/1.1.0");
         request.Headers.Add("X-NuGet-ApiKey", FiGetServerFixture.AdminToken);
-        HttpAssert.Status(HttpStatusCode.NoContent, await client.SendAsync(request));
+
+        // 200, as the reference server answered nuget.exe's delete (fixture nugetexe-6.11.1/delete-1.0.0).
+        HttpAssert.Status(HttpStatusCode.OK, await client.SendAsync(request));
 
         var entries = Entries(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/public/FindPackagesById()?id='{id}'")));
         var unlisted = entries.Single(e => Property(e, "Version") == "1.1.0");
