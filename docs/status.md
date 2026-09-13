@@ -1952,3 +1952,27 @@ and the metadata-address test failed; with the import total check disabled, the 
 with 200. Both restored.
 
 Suites: unit 107/0; integration 196/0 on SQL Server (ten consecutive runs), 196 with 63 skipped without it.
+
+## Asset directories verified live - 2026-09-13
+
+Deployed to the test instance (image `34942817d704`) and exercised over HTTPS through the full proxy chain,
+against a directory created in the admin UI and a token scoped to it, from a Windows workstation:
+
+    token listing / anonymous upload            200 / 401
+    PUT small file, PUT again                   201, 409 (not replaced)
+    Range bytes=0-4                             206, the first five bytes
+    150 MB in one PUT                           201 in 44 s, server SHA-256 equal to local
+    reference client 2.4.2 multipart, 12 MB in 5 MB parts exit 0, SHA-256 equal; reference client list exit 0
+    zip import / recursive zip export           200 {"imported":2}, entries a.txt, sub/, sub/b.txt
+    fetch by URL, gallery package via redirect  201, 247102 bytes stored
+    fetch http://192.168.100.10/                400, private address refused
+    fetch http://169.254.169.254/...            400, refused
+    anonymous download                          200
+    recursive delete                            200, directory empty afterwards
+
+The 150 MB upload settles the open question about the reverse proxy in front: nothing on the way limits the
+request body at that size.
+
+One cosmetic finding: the gallery's CDN labels a package `binary/octet-stream`, a non-standard spelling of
+"unknown", and it was stored with that type because only `application/octet-stream` makes the extension
+decide.
