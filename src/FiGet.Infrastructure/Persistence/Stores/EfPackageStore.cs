@@ -1,4 +1,5 @@
 using System.Text;
+using FiGet.Application.Packages;
 using FiGet.Application.Ports;
 using FiGet.Domain.Entities;
 using FiGet.Domain.Search;
@@ -282,10 +283,17 @@ public sealed class EfPackageStore(FiGetDbContext db) : IPackageStore
         return true;
     }
 
-    public Task IncrementDownloadsAsync(long packageVersionKey, CancellationToken cancellationToken) =>
+    public Task IncrementDownloadsAsync(long packageVersionKey, DateTime utcNow, CancellationToken cancellationToken) =>
         db.PackageVersions
             .Where(v => v.Key == packageVersionKey)
-            .ExecuteUpdateAsync(s => s.SetProperty(v => v.Downloads, v => v.Downloads + 1), cancellationToken);
+            .ExecuteUpdateAsync(s => s.SetProperty(v => v.Downloads, v => v.Downloads + 1).SetProperty(v => v.LastUsedUtc, utcNow), cancellationToken);
+
+    public async Task<IReadOnlyList<RetentionCandidate>> ListRetentionCandidatesAsync(int feedKey, CancellationToken cancellationToken) =>
+        await db.PackageVersions
+            .AsNoTracking()
+            .Where(v => v.Package!.FeedKey == feedKey)
+            .Select(v => new RetentionCandidate(v.Package!.Id, v.Package.IdLower, v.NormalizedVersion, v.IsPrerelease, v.Listed, v.Origin, v.LastUsedUtc, v.Size))
+            .ToListAsync(cancellationToken);
 
     public async Task ReplaceSymbolFilesAsync(long packageVersionKey, IReadOnlyList<SymbolFile> files, CancellationToken cancellationToken)
     {

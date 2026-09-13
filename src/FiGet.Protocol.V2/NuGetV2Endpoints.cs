@@ -6,6 +6,7 @@ using FiGet.Domain.Entities;
 using FiGet.Domain.Search;
 using FiGet.Domain.Versions;
 using FiGet.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
@@ -311,7 +312,7 @@ public static class NuGetV2Endpoints
             return Results.NotFound();
         }
 
-        await store.IncrementDownloadsAsync(row.Key, cancellationToken);
+        await store.IncrementDownloadsAsync(row.Key, http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime, cancellationToken);
         var fileName = string.Create(CultureInfo.InvariantCulture, $"{idLower}.{versionLower}.nupkg");
         return Results.Stream(stream, "application/zip", fileName, enableRangeProcessing: true);
     }

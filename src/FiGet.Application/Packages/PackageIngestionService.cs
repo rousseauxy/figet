@@ -72,6 +72,7 @@ public sealed class PackageIngestionService(
         }
 
         var row = ToEntity(indexed, publishedUtc ?? time.GetUtcNow().UtcDateTime, origin);
+        row.LastUsedUtc = time.GetUtcNow().UtcDateTime;
         if (!await store.AddVersionAsync(feed.Key, indexed.Id, row, feed.AllowOverwrite, cancellationToken))
         {
             return new PushResult(PushOutcome.Conflict, $"{indexed.Id} {normalized} already exists in feed '{feed.Name}'.", indexed.Id, normalized);

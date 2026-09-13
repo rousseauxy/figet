@@ -30,6 +30,27 @@ public sealed class Feed
     /// </summary>
     public bool MergePushedIdsWithUpstreams { get; set; }
 
+    /// <summary>
+    /// Retention for pushed packages: the newest this many stable versions of each package are kept, the rest removed as
+    /// the feed's <see cref="DeletionBehavior"/> says. Null: no limit.
+    /// </summary>
+    public int? RetainStableVersions { get; set; }
+
+    /// <summary>The same for prerelease versions, counted separately. Null: no limit; 0 keeps none but the latest.</summary>
+    public int? RetainPrereleaseVersions { get; set; }
+
+    /// <summary>Count the retained versions per major version, so a 1.x line keeps its own newest releases beside 2.x.</summary>
+    public bool RetainPerMajorVersion { get; set; }
+
+    /// <summary>A version downloaded within this many days is kept whatever the counts say. Null: downloads do not matter.</summary>
+    public int? RetainIfUsedWithinDays { get; set; }
+
+    /// <summary>
+    /// Cache pruning on a proxy feed: a cached copy nobody has downloaded for this many days is deleted, file and all. The
+    /// upstream still has it, so the next request caches it again. Null: cached copies are kept for ever.
+    /// </summary>
+    public int? PruneCachedAfterDays { get; set; }
+
     public DateTime CreatedUtc { get; set; }
 
     /// <summary>Upstreams of a proxy feed, in the order they are queried. Empty on a curated feed.</summary>

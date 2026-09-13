@@ -455,6 +455,21 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<int?>("PruneCachedAfterDays")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RetainIfUsedWithinDays")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("RetainPerMajorVersion")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("RetainPrereleaseVersions")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RetainStableVersions")
+                        .HasColumnType("int");
+
                     b.HasKey("Key");
 
                     b.HasIndex("NameLower")
@@ -816,6 +831,9 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                         .HasColumnType("nvarchar(64)");
 
                     b.Property<DateTime>("LastUpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("LastUsedUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("LicenseExpression")

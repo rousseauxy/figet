@@ -10,6 +10,7 @@ using FiGet.Domain.Entities;
 using FiGet.Domain.Search;
 using FiGet.Domain.Versions;
 using FiGet.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
@@ -302,7 +303,7 @@ public static class NuGetV3Endpoints
 
         if (isNupkg)
         {
-            await store.IncrementDownloadsAsync(row.Key, cancellationToken);
+            await store.IncrementDownloadsAsync(row.Key, http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime, cancellationToken);
         }
 
         return Results.Stream(stream, isNupkg ? "application/octet-stream" : "application/xml", enableRangeProcessing: true);

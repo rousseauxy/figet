@@ -97,6 +97,8 @@ public static class FiGetApp
         services.AddSingleton<IPackageStorage>(provider => new FileSystemPackageStorage(Path.Combine(provider.GetRequiredService<StoragePaths>().Root, "files")));
         services.AddSingleton<IAssetStorage>(provider => new FileSystemAssetStorage(Path.Combine(provider.GetRequiredService<StoragePaths>().Root, "files")));
         services.AddScoped<PackageIngestionService>();
+        services.AddScoped<RetentionService>();
+        services.AddHostedService<RetentionJobService>();
         services.AddScoped<AssetService>();
         services.AddScoped<AssetArchiveService>();
         services.AddSingleton<IRemoteFileSource>(provider =>
@@ -1003,6 +1005,27 @@ public static class FiGetApp
             }
 
             return Results.Redirect($"/admin/groups/{key}" + (done.Length > 0 ? "?done=" + done : ""));
+        });
+
+        // The retention job, now, for one feed: what the preview on its settings page lists.
+        manageFeed.MapPost("/feeds/{feed}/retention/run", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            RetentionService retention,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            if (target is null)
+            {
+                return Results.NotFound();
+            }
+
+            var report = await retention.RunAsync(target, cancellationToken);
+            audit.Record(http, "retention.run", target.Name, RetentionJobService.Describe(target.Name, report));
+            return Results.Redirect(
+                $"/admin/feeds/{Uri.EscapeDataString(target.Name)}?retention={report.Unlisted}.{report.Deleted}.{report.Pruned}.{report.FreedBytes}{(report.StoppedAtLimit ? ".more" : "")}#retention");
         });
 
         manageFeed.MapPost("/feeds/{feed}/upstreams/move", async (

@@ -1,3 +1,4 @@
+using FiGet.Application.Packages;
 using FiGet.Application.Ports;
 using FiGet.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -59,6 +60,21 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         feed.MergePushedIdsWithUpstreams = mergePushedIdsWithUpstreams;
         await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    public async Task<bool> UpdateRetentionAsync(int key, RetentionRules rules, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        return await db.Feeds
+            .Where(f => f.Key == key)
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(f => f.RetainStableVersions, rules.KeepStable)
+                    .SetProperty(f => f.RetainPrereleaseVersions, rules.KeepPrerelease)
+                    .SetProperty(f => f.RetainPerMajorVersion, rules.PerMajorVersion)
+                    .SetProperty(f => f.RetainIfUsedWithinDays, rules.KeepIfUsedWithinDays)
+                    .SetProperty(f => f.PruneCachedAfterDays, rules.PruneCachedAfterDays),
+                cancellationToken) > 0;
     }
 
     public async Task<bool> DeleteAsync(int key, CancellationToken cancellationToken)

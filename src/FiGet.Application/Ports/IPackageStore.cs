@@ -1,3 +1,4 @@
+using FiGet.Application.Packages;
 using FiGet.Domain.Entities;
 using FiGet.Domain.Search;
 
@@ -46,7 +47,11 @@ public interface IPackageStore
     /// <summary>Deletes the version row with its dependencies and symbol rows; removes the package row when it was the last version.</summary>
     Task<bool> DeleteVersionAsync(int feedKey, string idLower, string normalizedVersionLower, CancellationToken cancellationToken);
 
-    Task IncrementDownloadsAsync(long packageVersionKey, CancellationToken cancellationToken);
+    /// <summary>Counts a download and marks the version used now, which is what retention and cache pruning look at.</summary>
+    Task IncrementDownloadsAsync(long packageVersionKey, DateTime utcNow, CancellationToken cancellationToken);
+
+    /// <summary>Every version of every package in the feed, with what retention decides on and nothing else.</summary>
+    Task<IReadOnlyList<RetentionCandidate>> ListRetentionCandidatesAsync(int feedKey, CancellationToken cancellationToken);
 
     /// <summary>Replaces the symbol rows of a package version.</summary>
     Task ReplaceSymbolFilesAsync(long packageVersionKey, IReadOnlyList<SymbolFile> files, CancellationToken cancellationToken);

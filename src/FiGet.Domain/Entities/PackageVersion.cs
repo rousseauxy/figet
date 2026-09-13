@@ -76,6 +76,12 @@ public sealed class PackageVersion
 
     public long Downloads { get; set; }
 
+    /// <summary>
+    /// When this version was last downloaded, or else stored: what retention and cache pruning measure "unused" by. A
+    /// version pushed or cached and never downloaded counts from the day it arrived.
+    /// </summary>
+    public DateTime LastUsedUtc { get; set; }
+
     /// <summary>Lower-cased id, title, tags, summary, description and authors, for provider-neutral search.</summary>
     public string SearchTextLower { get; set; } = "";
 

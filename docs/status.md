@@ -2377,3 +2377,26 @@ API key stored without its value, an unknown Basic password not stored; the page
 guard and pruning each disabled in turn, the matching test fails.
 
 Suites: unit 107/0; integration 349/0 on SQLite and on SQL Server.
+
+## Retention and cache pruning - 2026-09-13
+
+- **Per feed, on its settings page** (Manage): stable versions to keep per package, prerelease versions to keep, count
+  per major version, always keep a version downloaded within N days, and on a proxy feed, delete cached copies not
+  downloaded for N days. Empty is no rule. The newest version of a package is always kept. Pushed versions beyond the
+  counts are unlisted or deleted as the feed's delete behaviour says (when it unlists, only listed versions count);
+  cached copies past the pruning period are deleted with their files, since the upstream still has them.
+- **`RetentionPolicy.Plan`** is a pure function of the stored versions and the rules, used by both the page's preview
+  (the next run's removals, with reason, last use, size and total space freed) and the run, so the two cannot disagree.
+- **Runs**: hourly by `RetentionJobService` (first run five minutes after start, every replica, at most 1,000 removals
+  a run, the rest next hour), or **Run now** on the page. Each run that removes anything writes a `retention.run` audit
+  entry with the counts and bytes freed; saving the rules writes `feed.retention`.
+- **`PackageVersions.LastUsedUtc`**: set when a version is stored and on every download, over v2 and v3. Existing rows
+  are backfilled to 2026-09-13 by the migration, so copies cached before it are not pruned as unused from the year 1.
+
+Tests: `RetentionPolicyTests` (13: counts, version order 1.10 over 1.9, newest always kept, per major, recent use,
+unlist-only counting listed, cache pruning by last use without touching pushed versions, rule validation) and
+`RetentionTests` on both providers (Run now deletes what the preview listed and their files, keeps the newest; a
+download keeps a cached copy from being pruned). With the download no longer refreshing last use, or the newest
+version no longer protected, the matching test fails.
+
+Suites: unit 120/0; integration 353/0 on SQLite and on SQL Server.
