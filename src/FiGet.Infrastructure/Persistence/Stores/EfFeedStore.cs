@@ -77,6 +77,17 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
                 cancellationToken) > 0;
     }
 
+    public async Task<bool> UpdateInstructionsAsync(int key, string? clientBaseUrl, string? packageInstructions, string? feedInstructions, string? fileInstructions, CancellationToken cancellationToken) =>
+        await db.Feeds
+            .Where(f => f.Key == key)
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(f => f.ClientBaseUrl, clientBaseUrl)
+                    .SetProperty(f => f.PackageInstructions, packageInstructions)
+                    .SetProperty(f => f.FeedInstructions, feedInstructions)
+                    .SetProperty(f => f.FileInstructions, fileInstructions),
+                cancellationToken) > 0;
+
     public async Task<bool> DeleteAsync(int key, CancellationToken cancellationToken)
     {
         if (!await db.Feeds.AnyAsync(f => f.Key == key, cancellationToken))

@@ -1168,3 +1168,8 @@ h2 + .fg-panel { margin-top: 0.5rem; }
 .fg-audit-filter-actions { display: flex; gap: 0.5rem; padding-bottom: 0.9rem; }
 .fg-audit-detail { min-width: 14rem; overflow-wrap: anywhere; }
 .fg-nowrap { white-space: nowrap; }
+
+/* Instructions: a caption above the commands it introduces, and the disclosure that holds them on the feed page. */
+.fg-instruction-caption { margin: 0.8rem 0 0.25rem; font-size: 0.78rem; color: var(--text-2); font-weight: 600; }
+.fg-connect { margin: 0.25rem 0 1rem; }
+textarea.fg-mono { font-family: var(--font-mono); font-size: 0.8rem; }

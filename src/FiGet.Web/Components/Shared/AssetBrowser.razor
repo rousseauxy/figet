@@ -53,6 +53,11 @@
     <button type="button" class="fg-copy" data-copy="@BaseUrl" title="Copy this URL" aria-label="Copy the download URL of this folder">Copy</button>
 </p>
 
+<details class="fg-more fg-connect">
+    <summary>Download from a script</summary>
+    <Instructions Lines="@FiGet.Domain.Feeds.InstructionTemplates.Render(Feed.FileInstructions, FiGet.Domain.Feeds.InstructionTemplates.DefaultFiles, new Dictionary<string, string> { ["directory"] = Feed.Name, ["folderUrl"] = BaseUrl })" />
+</details>
+
 @if (missing)
 {
     <p class="fg-empty">There is no folder <code>@Folder.Value</code> in this directory.</p>
@@ -213,7 +218,7 @@ else
 
     private string ReturnUrl => HttpContext.Request.Path + HttpContext.Request.QueryString;
 
-    private string BaseUrl => $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(Feed.Name)}/content/"
+    private string BaseUrl => $"{PublicUrls.ClientBase(HttpContext, Feed.ClientBaseUrl)}/endpoints/{Uri.EscapeDataString(Feed.Name)}/content/"
         + (Folder.IsRoot ? "" : AssetEndpoints.EscapePath(Folder.Value) + "/");
 
     protected override async Task OnParametersSetAsync()
@@ -263,7 +268,8 @@ else
         _ => null,
     };
 
-    private string ContentUrl(FiGet.Domain.Entities.AssetItem item) => AssetEndpoints.ContentUrl(HttpContext, Feed.Name, item.Path);
+    private string ContentUrl(FiGet.Domain.Entities.AssetItem item) =>
+        $"{PublicUrls.ClientBase(HttpContext, Feed.ClientBaseUrl)}/endpoints/{Uri.EscapeDataString(Feed.Name)}/content/{AssetEndpoints.EscapePath(item.Path)}";
 
     private string FolderLink(AssetPath folder) =>
         folder.IsRoot

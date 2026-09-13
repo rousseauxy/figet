@@ -18,6 +18,9 @@ public interface IFeedStore
     /// <summary>Changes the feed's retention and cache pruning. Returns false when the feed no longer exists.</summary>
     Task<bool> UpdateRetentionAsync(int key, RetentionRules rules, CancellationToken cancellationToken);
 
+    /// <summary>Changes the client address and the instruction templates; nulls restore the defaults. False when the feed no longer exists.</summary>
+    Task<bool> UpdateInstructionsAsync(int key, string? clientBaseUrl, string? packageInstructions, string? feedInstructions, string? fileInstructions, CancellationToken cancellationToken);
+
     /// <summary>
     /// Deletes the feed with every package, version, dependency, symbol row, asset row and feed-scoped token it owns.
     /// Files are not touched: the caller removes them through <c>IPackageStorage</c> and <c>IAssetStorage</c> first, because

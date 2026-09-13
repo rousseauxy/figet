@@ -51,6 +51,22 @@ public sealed class Feed
     /// </summary>
     public int? PruneCachedAfterDays { get; set; }
 
+    /// <summary>
+    /// The address this feed's clients reach, when it is not the server's public address - an internal host name, a
+    /// load balancer. Used in the URLs and commands the pages show; protocol answers keep the public base URL. Null: the
+    /// public base URL.
+    /// </summary>
+    public string? ClientBaseUrl { get; set; }
+
+    /// <summary>Install commands on package pages (see <c>InstructionTemplates</c>). Null: the default.</summary>
+    public string? PackageInstructions { get; set; }
+
+    /// <summary>Commands to connect a client, on the feed's page. Null: the default.</summary>
+    public string? FeedInstructions { get; set; }
+
+    /// <summary>Download commands on an asset directory's page. Null: the default.</summary>
+    public string? FileInstructions { get; set; }
+
     public DateTime CreatedUtc { get; set; }
 
     /// <summary>Upstreams of a proxy feed, in the order they are queried. Empty on a curated feed.</summary>

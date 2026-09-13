@@ -3,6 +3,7 @@
 @using FiGet.Application.Connectors
 @using FiGet.Domain.Versions
 @inject FiGet.Application.Accounts.FeedAccessService Access
+@using FiGet.Domain.Feeds
 @inject IFeedStore Feeds
 @inject IPackageStore Packages
 @inject IPackageStorage Storage
@@ -118,9 +119,7 @@
         </div>
 
         <h2>Install this version</h2>
-        <CommandSnippet Command="@($"Install-Module -Name {displayId} -RequiredVersion {row.NormalizedVersion} -Repository {feed.Name}")" />
-        <CommandSnippet Command="@($"Install-PSResource -Name {displayId} -Version {row.NormalizedVersion} -Repository {feed.Name}")" />
-        <CommandSnippet Command="@($"dotnet add package {displayId} --version {row.NormalizedVersion} --source {feedUrl}/v3/index.json")" />
+        <Instructions Lines="@InstructionTemplates.Render(feed.PackageInstructions, InstructionTemplates.DefaultPackage, new Dictionary<string, string> { ["id"] = displayId, ["version"] = row.NormalizedVersion, ["feed"] = feed.Name, ["feedUrl"] = feedUrl, ["v3Url"] = feedUrl + "/v3/index.json" })" />
         break;
 }
 
@@ -204,7 +203,7 @@
         }
 
         displayId = package?.Id ?? upstream.Spell(Id);
-        feedUrl = PublicUrls.Feed(HttpContext, feed.Name);
+        feedUrl = $"{PublicUrls.ClientBase(HttpContext, feed.ClientBaseUrl)}/nuget/{Uri.EscapeDataString(feed.Name)}";
         origin = entry.Source switch
         {
             VersionSource.Local when row.Origin == PackageOrigin.Cached => "Cached",

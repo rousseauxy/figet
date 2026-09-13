@@ -1,0 +1,20 @@
+@using FiGet.Domain.Feeds
+
+@* A feed's instructions, rendered from its template (InstructionTemplates): captions as small headings, commands to copy. *@
+
+@foreach (var line in Lines)
+{
+    if (line.IsCaption)
+    {
+        <p class="fg-instruction-caption">@line.Text</p>
+    }
+    else
+    {
+        <CommandSnippet Command="@line.Text" />
+    }
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<InstructionLine> Lines { get; set; } = [];
+}

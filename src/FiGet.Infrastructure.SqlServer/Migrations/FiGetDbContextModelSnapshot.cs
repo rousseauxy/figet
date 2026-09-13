@@ -429,6 +429,10 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.Property<bool>("AnonymousRead")
                         .HasColumnType("bit");
 
+                    b.Property<string>("ClientBaseUrl")
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
@@ -436,6 +440,14 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("FeedInstructions")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("FileInstructions")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
 
                     b.Property<string>("Kind")
                         .IsRequired()
@@ -454,6 +466,10 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("PackageInstructions")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
 
                     b.Property<int?>("PruneCachedAfterDays")
                         .HasColumnType("int");

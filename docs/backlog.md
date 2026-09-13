@@ -103,8 +103,6 @@ set of CVEs in an assembly the app never ships itself.
 
 ## Later
 
-- **Per-feed instruction templates** for install and file usage, so wording and the client-facing
-  hostname can differ per feed.
 - **History tab** on a version: the audit log exists now (filter by feed on its page); a per-version view of it is not built.
 - **Usage and statistics**, which needs per-version download tracking — the same data cache pruning wants. Per-download
   records with whether a version came from cache or upstream belong here, not in the audit log: heaviest by volume.

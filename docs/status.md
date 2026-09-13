@@ -2420,3 +2420,20 @@ sign-in goes back to the page. With a garbage key treated as credentials, it fai
 every test request comes from one address.
 
 Suites: unit 120/0; integration 354/0 on SQLite and on SQL Server.
+
+## Per-feed instructions - 2026-09-13
+
+- **Templates per feed** (settings page, Manage): connect a client (shown on the feed page under "Connect a client"),
+  install a package (package and version pages), and for asset directories download commands ("Download from a
+  script"). One command per line, `#` lines are captions, placeholders `{feed} {feedUrl} {v3Url} {id} {version}` and
+  `{directory} {folderUrl}`; an unknown placeholder stays visible. Empty, or the default typed back, is stored as null
+  so a later change to a default reaches the feed. The defaults reproduce the three install commands shown before and
+  add the three connect commands (PowerShellGet, PSResourceGet, dotnet).
+- **Client address per feed**: the address the pages use for URLs and commands when clients reach the feed by another
+  name than the public one. Protocol answers keep the public base URL.
+
+Tests: `InstructionTemplatesTests` (4) and `InstructionTests` on both providers (defaults on a fresh feed; a client address
+and an install template saved through the settings page appear on the package and feed pages and not in the v3 index;
+an asset directory's download template). With the client address ignored, both integration tests fail.
+
+Suites: unit 124/0; integration 358/0 on SQLite and on SQL Server.

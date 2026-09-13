@@ -71,6 +71,10 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.HasIndex(x => x.NameLower).IsUnique();
             e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(16);
             e.Property(x => x.DeletionBehavior).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.ClientBaseUrl).HasMaxLength(512);
+            e.Property(x => x.PackageInstructions).HasMaxLength(4000);
+            e.Property(x => x.FeedInstructions).HasMaxLength(4000);
+            e.Property(x => x.FileInstructions).HasMaxLength(4000);
         });
 
         modelBuilder.Entity<FeedUpstream>(e =>
