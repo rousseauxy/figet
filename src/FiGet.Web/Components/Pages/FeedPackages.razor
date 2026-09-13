@@ -87,12 +87,12 @@ else
         <table class="fg-table">
             <thead>
                 <tr>
-                    <th>Package</th>
+                    <th aria-sort="@AriaSort(PackageSortField.Id)"><a class="fg-sort @SortClass(PackageSortField.Id)" href="@SortLink(PackageSortField.Id)">Package</a></th>
                     <th>Latest</th>
-                    <th>Versions</th>
+                    <th aria-sort="@AriaSort(PackageSortField.Versions)"><a class="fg-sort @SortClass(PackageSortField.Versions)" href="@SortLink(PackageSortField.Versions)">Versions</a></th>
                     <th>Source</th>
-                    <th>Downloads</th>
-                    <th>Last published</th>
+                    <th aria-sort="@AriaSort(PackageSortField.Downloads)"><a class="fg-sort @SortClass(PackageSortField.Downloads)" href="@SortLink(PackageSortField.Downloads)">Downloads</a></th>
+                    <th aria-sort="@AriaSort(PackageSortField.LastPublished)"><a class="fg-sort @SortClass(PackageSortField.LastPublished)" href="@SortLink(PackageSortField.LastPublished)">Last published</a></th>
                     <th></th>
                 </tr>
             </thead>
@@ -163,6 +163,14 @@ else
     [SupplyParameterFromQuery(Name = "page")]
     private int Page { get; set; }
 
+    [SupplyParameterFromQuery(Name = "sort")]
+    private string? SortField { get; set; }
+
+    [SupplyParameterFromQuery(Name = "dir")]
+    private string? SortDirection { get; set; }
+
+    private PackageSort? Sort => PackageSort.Parse(SortField, SortDirection);
+
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
 
@@ -211,7 +219,7 @@ else
 
     private async Task AddLocalAsync()
     {
-        var filter = new PackageSearchFilter(SearchQueryParser.Parse(Q), IncludePrerelease: true, IncludeSemVer2: true, PackageTypeLower: null);
+        var filter = new PackageSearchFilter(SearchQueryParser.Parse(Q), IncludePrerelease: true, IncludeSemVer2: true, PackageTypeLower: null, Sort);
         var page = await Packages.SearchAsync(feed!.Key, filter, (Page - 1) * PageSize, PageSize, HttpContext.RequestAborted);
         total = page.TotalHits;
 
@@ -273,7 +281,26 @@ else
         _ => "fg-badge-plain",
     };
 
-    private string PageLink(int page)
+    private string PageLink(int page) => Link(page, Sort);
+
+    /// <summary>
+    /// A header's link: the first click on a column orders it the way it is usually wanted - ids A to Z, numbers and
+    /// dates largest first - and clicking the current column again reverses it. Always back to page one.
+    /// </summary>
+    private string SortLink(PackageSortField field)
+    {
+        var current = Sort;
+        var descending = current?.Field == field ? !current.Descending : field != PackageSortField.Id;
+        return Link(1, new PackageSort(field, descending));
+    }
+
+    private string SortClass(PackageSortField field) =>
+        Sort?.Field == field ? (Sort.Descending ? "fg-sort-desc" : "fg-sort-asc") : "";
+
+    private string? AriaSort(PackageSortField field) =>
+        Sort?.Field == field ? (Sort.Descending ? "descending" : "ascending") : null;
+
+    private string Link(int page, PackageSort? sort)
     {
         var link = $"/feeds/{Uri.EscapeDataString(Name)}?page={page}";
         if (!string.IsNullOrWhiteSpace(Q))
@@ -284,6 +311,11 @@ else
         if (Src.Length > 0)
         {
             link += "&src=" + Uri.EscapeDataString(Src);
+        }
+
+        if (sort is not null)
+        {
+            link += "&sort=" + sort.Field.ToString().ToLowerInvariant() + (sort.Descending ? "&dir=desc" : "");
         }
 
         return link;

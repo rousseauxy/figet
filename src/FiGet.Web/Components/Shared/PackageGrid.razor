@@ -59,22 +59,24 @@
 
 <div class="fg-table-wrap">
     <QuickGrid TGridItem="Row" ItemsProvider="provider" Class="fg-table" @ref="grid">
-        <TemplateColumn Title="Package" Context="row">
+        @* Sortable columns carry a SortBy only so the grid draws them as sortable; the provider reads which column
+           was chosen and asks the database, because the rows on screen are one page of many. *@
+        <TemplateColumn Title="Package" Context="row" SortBy="BySort" IsDefaultSortColumn="false">
             <a href="/feeds/@FeedName/packages/@row.Id">@Display.BreakableId(row.Id)</a>
         </TemplateColumn>
         <TemplateColumn Title="Latest" Context="row">
             <span class="fg-num">@row.Latest</span>
         </TemplateColumn>
-        <TemplateColumn Title="Versions" Context="row">
+        <TemplateColumn Title="Versions" Context="row" SortBy="BySort" InitialSortDirection="SortDirection.Descending">
             <span class="fg-num">@(row.Versions > 0 ? row.Versions.ToString(CultureInfo.InvariantCulture) : Display.None)</span>
         </TemplateColumn>
         <TemplateColumn Title="Source" Context="row">
             <span class="fg-badge @SourceBadge(row.Source)">@row.Source</span>
         </TemplateColumn>
-        <TemplateColumn Title="Downloads" Context="row">
+        <TemplateColumn Title="Downloads" Context="row" SortBy="BySort" InitialSortDirection="SortDirection.Descending">
             <span class="fg-num">@(row.Local ? Display.Count(row.Downloads) : Display.None)</span>
         </TemplateColumn>
-        <TemplateColumn Title="Last published" Context="row">
+        <TemplateColumn Title="Last published" Context="row" SortBy="BySort" InitialSortDirection="SortDirection.Descending">
             <span class="fg-num">@Display.Date(row.Published)</span>
         </TemplateColumn>
         <TemplateColumn Title="" Context="row">
@@ -122,6 +124,12 @@
     /// Its own samples do not show this because the padding only happens when Pagination is set.
     /// </summary>
     private int pageIndex;
+
+    /// <summary>A placeholder the grid needs to call a column sortable; the order itself comes from the database.</summary>
+    private static readonly GridSort<Row> BySort = GridSort<Row>.ByAscending(row => row.Id);
+
+    /// <summary>The order the last page was loaded in, so choosing another order starts again at the first page.</summary>
+    private PackageSort? loadedSort;
 
     private GridItemsProvider<Row>? provider;
     private QuickGrid<Row>? grid;
@@ -203,12 +211,27 @@
             return GridItemsProviderResult.From<Row>([], 0);
         }
 
+        var sort = request.SortByColumn?.Title switch
+        {
+            "Package" => new PackageSort(PackageSortField.Id, !request.SortByAscending),
+            "Versions" => new PackageSort(PackageSortField.Versions, !request.SortByAscending),
+            "Downloads" => new PackageSort(PackageSortField.Downloads, !request.SortByAscending),
+            "Last published" => new PackageSort(PackageSortField.LastPublished, !request.SortByAscending),
+            _ => null,
+        };
+
+        if (sort != loadedSort)
+        {
+            pageIndex = 0;
+            loadedSort = sort;
+        }
+
         var rows = new List<Row>();
         var count = 0;
 
         if (source != "upstream")
         {
-            var filter = new PackageSearchFilter(SearchQueryParser.Parse(query), IncludePrerelease: true, IncludeSemVer2: true, PackageTypeLower: null);
+            var filter = new PackageSearchFilter(SearchQueryParser.Parse(query), IncludePrerelease: true, IncludeSemVer2: true, PackageTypeLower: null, sort);
             // The grid is not paging, so its request always starts at zero: the offset is ours to apply.
             var page = await packages.SearchAsync(feed.Key, filter, pageIndex * PageSize, PageSize, request.CancellationToken);
             count = page.TotalHits;

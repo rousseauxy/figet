@@ -59,8 +59,41 @@ public interface IPackageStore
 /// <summary>A page of package keys matching a search, in result order, plus the total number of matching packages.</summary>
 public sealed record SearchPage(IReadOnlyList<long> PackageKeys, int TotalHits);
 
+/// <param name="Sort">How the matching packages are ordered; null is relevance, as the protocols expect.</param>
 public sealed record PackageSearchFilter(
     IReadOnlyList<SearchTerm> Terms,
     bool IncludePrerelease,
     bool IncludeSemVer2,
-    string? PackageTypeLower);
+    string? PackageTypeLower,
+    PackageSort? Sort = null);
+
+/// <summary>What a package list can be ordered by. Only what the database can order by: a package's latest version
+/// is a NuGet version comparison, not a column, so it is not one of them.</summary>
+public enum PackageSortField
+{
+    /// <summary>An exact id match first, then by id - what a search answers with.</summary>
+    Relevance,
+
+    Id,
+
+    /// <summary>How many versions the feed holds, listed or not.</summary>
+    Versions,
+
+    /// <summary>Downloads summed over every version.</summary>
+    Downloads,
+
+    /// <summary>When the newest version was published.</summary>
+    LastPublished,
+}
+
+public sealed record PackageSort(PackageSortField Field, bool Descending)
+{
+    /// <summary>
+    /// Reads a sort from a query string: the field's name in any case, and <c>desc</c> for descending. Anything else is
+    /// relevance, so a hand-edited URL can at worst lose its order, never fail the page.
+    /// </summary>
+    public static PackageSort? Parse(string? field, string? direction) =>
+        Enum.TryParse<PackageSortField>(field, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed) && parsed != PackageSortField.Relevance
+            ? new PackageSort(parsed, string.Equals(direction, "desc", StringComparison.OrdinalIgnoreCase))
+            : null;
+}

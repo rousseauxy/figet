@@ -109,18 +109,44 @@ public sealed class EfPackageStore(FiGetDbContext db) : IPackageStore
             return new SearchPage([], total);
         }
 
-        // An exact id match on the first free-text term ranks first, so "q=Pester" finds Pester before PesterHelper.
-        var exact = filter.Terms.FirstOrDefault(t => t.Field is SearchField.Any or SearchField.Id or SearchField.PackageId && !t.Value.Contains('*', StringComparison.Ordinal))?.Value ?? "";
-        var keys = await db.Packages.AsNoTracking()
-            .Where(p => matchingKeys.Contains(p.Key))
-            .OrderBy(p => p.IdLower == exact ? 0 : 1)
-            .ThenBy(p => p.IdLower)
+        var packages = db.Packages.AsNoTracking().Where(p => matchingKeys.Contains(p.Key));
+        var keys = await Order(packages, filter)
             .Skip(skip)
             .Take(take)
             .Select(p => p.Key)
             .ToListAsync(cancellationToken);
 
         return new SearchPage(keys, total);
+    }
+
+    /// <summary>
+    /// The order of a search. Every order ends on the id, so a page boundary between equal values - two packages with
+    /// the same download count - falls in the same place on every request, and paging neither repeats nor skips one.
+    /// The aggregates are over every version the package holds, the same numbers the package lists show.
+    /// </summary>
+    private static IOrderedQueryable<Package> Order(IQueryable<Package> packages, PackageSearchFilter filter)
+    {
+        var sort = filter.Sort;
+        if (sort is null || sort.Field == PackageSortField.Relevance)
+        {
+            // An exact id match on the first free-text term ranks first, so "q=Pester" finds Pester before PesterHelper.
+            var exact = filter.Terms.FirstOrDefault(t => t.Field is SearchField.Any or SearchField.Id or SearchField.PackageId && !t.Value.Contains('*', StringComparison.Ordinal))?.Value ?? "";
+            return packages.OrderBy(p => p.IdLower == exact ? 0 : 1).ThenBy(p => p.IdLower);
+        }
+
+        var ordered = (sort.Field, sort.Descending) switch
+        {
+            (PackageSortField.Id, false) => packages.OrderBy(p => p.IdLower),
+            (PackageSortField.Id, true) => packages.OrderByDescending(p => p.IdLower),
+            (PackageSortField.Versions, false) => packages.OrderBy(p => p.Versions.Count),
+            (PackageSortField.Versions, true) => packages.OrderByDescending(p => p.Versions.Count),
+            (PackageSortField.Downloads, false) => packages.OrderBy(p => p.Versions.Sum(v => v.Downloads)),
+            (PackageSortField.Downloads, true) => packages.OrderByDescending(p => p.Versions.Sum(v => v.Downloads)),
+            (PackageSortField.LastPublished, false) => packages.OrderBy(p => p.Versions.Max(v => v.PublishedUtc)),
+            _ => packages.OrderByDescending(p => p.Versions.Max(v => v.PublishedUtc)),
+        };
+
+        return sort.Field == PackageSortField.Id ? ordered : ordered.ThenBy(p => p.IdLower);
     }
 
     public async Task<IReadOnlyList<string>> AutocompleteIdsAsync(int feedKey, string query, bool includePrerelease, bool includeSemVer2, int skip, int take, CancellationToken cancellationToken)
