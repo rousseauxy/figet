@@ -35,12 +35,30 @@ public abstract class NuGetV2Tests
     {
         using var client = server.CreateClient();
 
-        foreach (var path in new[] { "nuget/public", "nuget/public/", "nuget/public/api/v2", "nuget/public/api/v2/" })
+        foreach (var path in new[] { "nuget/public", "nuget/public/" })
         {
             var document = XDocument.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync(path)));
             var collection = document.Root!.Element(App + "workspace")!.Element(App + "collection")!;
             Assert.Equal("Packages", collection.Attribute("href")!.Value);
         }
+    }
+
+    /// <summary>
+    /// The /api/v2 alias serves the operations PSResourceGet calls but no service document, as the server being
+    /// replaced does. Register-PSRepository probes <c>{source}/api/v2/</c> and, when it answers, stores that URL
+    /// instead of the one it was given - which makes Ansible's win_psrepository, comparing the two as strings,
+    /// report "changed" and re-register on every run. Found by running PowerShellGet 2.2.5 against FiGet.
+    /// </summary>
+    [Fact]
+    public async Task The_api_v2_alias_answers_operations_but_not_the_registration_probe()
+    {
+        using var client = server.CreateClient();
+        foreach (var path in new[] { "nuget/public/api/v2", "nuget/public/api/v2/" })
+        {
+            HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync(path));
+        }
+
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync("nuget/public/api/v2/FindPackagesById()?id='FoooBarr'"));
     }
 
     /// <summary>

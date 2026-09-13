@@ -63,7 +63,12 @@ Not requested at all: `$metadata`, `Packages()`, `Packages(Id=,Version=)`, `GetU
    all: the meta-module's pinned dependency closure, which the client resolves itself and fetches id by id
    — 39 downloads in `meta-save-module-old-version.json`. That is dependency resolution, not wildcard
    expansion, and the two are easy to confuse from the outside.
-4. **`api/v2/` under a feed root may 404.** The client tolerates it.
+4. **`api/v2/` under a feed root may 404, and should.** The client tolerates the 404 - but when that probe
+   *answers*, `Register-PSRepository` stores `{source}/api/v2/` as the repository's `SourceLocation` instead of the
+   URL it was given, and sends every later query there. Not visible against the reference server, which answers
+   404; found on 2026-09-13 by running the same client against FiGet, which then served the alias's service
+   document. Ansible's `win_psrepository` compares `SourceLocation` with the configured URL as a string, so a
+   fleet would report "changed" and re-register on every run. FiGet now answers that probe with 404 as well.
 5. **Publish-Module checks the feed first**: it calls `FindPackagesById()` and refuses client-side when the
    version already exists or is not higher than the current version, so a duplicate never reaches `PUT`.
 6. **Latest flags: see the next section.** With fewer versions than one page (SecretManagement, 16) the
@@ -175,7 +180,8 @@ FiGet's `/nuget/{feed}/api/v2` alias is what makes v2 usable for PSResourceGet a
 
 Built from the recordings above, in `src/FiGet.Protocol.V2`. Both roots carry the identical surface:
 `/nuget/{feed}` for PowerShellGet and nuget.exe, `/nuget/{feed}/api/v2` because PSResourceGet decides the
-protocol from the URL suffix and reports `Unknown` without it.
+protocol from the URL suffix and reports `Unknown` without it. The one exception is the service document, which
+only the plain root serves: see conclusion 4 above for why `GET /nuget/{feed}/api/v2/` must be a 404.
 
 | Route | Notes |
 |---|---|

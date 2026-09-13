@@ -44,16 +44,27 @@ public static class NuGetV2Endpoints
 
         // Both roots carry the same operations. PSResourceGet decides the protocol from the URL suffix,
         // so /api/v2 must exist and behave identically; PowerShellGet uses the bare feed root.
-        Map(app.MapGroup("/nuget/{feed}"));
-        Map(app.MapGroup("/nuget/{feed}/api/v2"));
+        Map(app.MapGroup("/nuget/{feed}"), serviceDocument: true);
+
+        // Except the service document. Register-PSRepository probes {source}/api/v2/ and, when that answers,
+        // stores it as the repository's SourceLocation instead of the URL it was given. The server being
+        // replaced answers the probe with 404, so a fleet registered against it keeps its plain URL - and
+        // Ansible's win_psrepository compares that URL as a string, so a rewritten one reports "changed" and
+        // re-registers on every run. Found by running PowerShellGet 2.2.5 against FiGet. PSResourceGet never
+        // asks /api/v2 for a service document: it goes straight to the operations below.
+        Map(app.MapGroup("/nuget/{feed}/api/v2"), serviceDocument: false);
         return app;
     }
 
-    private static void Map(RouteGroupBuilder group)
+    private static void Map(RouteGroupBuilder group, bool serviceDocument)
     {
         // Only the slashless form is mapped: the router ignores a trailing slash, so mapping both would
         // make "/nuget/{feed}/", the URL PowerShellGet registers, an ambiguous match.
-        group.MapGet("", ServiceDocumentAsync);
+        if (serviceDocument)
+        {
+            group.MapGet("", ServiceDocumentAsync);
+        }
+
         group.MapGet("/$metadata", MetadataAsync);
 
         group.MapGet("/FindPackagesById()", FindPackagesByIdAsync);
