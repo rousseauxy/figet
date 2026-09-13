@@ -30,13 +30,24 @@ public static class FeedAccess
     /// 404 for an unknown feed, 401 with a Basic challenge when credentials are missing or invalid,
     /// 403 when a valid token lacks the scope.
     /// </summary>
-    public static async Task<(FeedRequest? Request, IResult? Error)> ResolveAsync(HttpContext http, string feedName, TokenScopes required, CancellationToken cancellationToken)
+    public static Task<(FeedRequest? Request, IResult? Error)> ResolveAsync(HttpContext http, string feedName, TokenScopes required, CancellationToken cancellationToken) =>
+        ResolveAsync(http, feedName, required, assets: false, cancellationToken);
+
+    /// <summary>
+    /// The same rules for an asset directory. A package feed named here does not exist, and an asset
+    /// directory does not exist to the package endpoints: each surface sees only its own kind, so a NuGet
+    /// client pointed at a directory gets a clean 404 rather than an empty feed that looks broken.
+    /// </summary>
+    public static Task<(FeedRequest? Request, IResult? Error)> ResolveAssetsAsync(HttpContext http, string directoryName, TokenScopes required, CancellationToken cancellationToken) =>
+        ResolveAsync(http, directoryName, required, assets: true, cancellationToken);
+
+    private static async Task<(FeedRequest? Request, IResult? Error)> ResolveAsync(HttpContext http, string feedName, TokenScopes required, bool assets, CancellationToken cancellationToken)
     {
         var feeds = http.RequestServices.GetRequiredService<IFeedStore>();
         var feed = await feeds.FindAsync(feedName, cancellationToken);
-        if (feed is null)
+        if (feed is null || (feed.Kind == FeedKind.Assets) != assets)
         {
-            return (null, Results.NotFound(new { error = $"Feed '{feedName}' does not exist." }));
+            return (null, Results.NotFound(new { error = assets ? $"Asset directory '{feedName}' does not exist." : $"Feed '{feedName}' does not exist." }));
         }
 
         var tokens = http.RequestServices.GetRequiredService<AccessTokenService>();

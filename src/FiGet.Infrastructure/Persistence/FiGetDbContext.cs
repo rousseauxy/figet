@@ -30,6 +30,8 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
 
     public DbSet<Setting> Settings => Set<Setting>();
 
+    public DbSet<AssetItem> AssetItems => Set<AssetItem>();
+
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -148,6 +150,27 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.HasIndex(x => new { x.FeedKey, x.FileNameLower, x.SymbolKeyLower });
             e.HasIndex(x => x.PackageVersionKey);
             e.HasOne(x => x.PackageVersion).WithMany().HasForeignKey(x => x.PackageVersionKey).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AssetItem>(e =>
+        {
+            e.ToTable("AssetItems");
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Path).HasMaxLength(FiGet.Domain.Assets.AssetPath.MaxLength);
+            e.Property(x => x.PathLower).HasMaxLength(FiGet.Domain.Assets.AssetPath.MaxLength);
+            e.Property(x => x.ParentLower).HasMaxLength(FiGet.Domain.Assets.AssetPath.MaxLength);
+            e.Property(x => x.Name).HasMaxLength(FiGet.Domain.Assets.AssetPath.MaxSegmentLength);
+            e.Property(x => x.BlobId).HasMaxLength(32);
+            e.Property(x => x.ContentType).HasMaxLength(256);
+            e.Property(x => x.Md5).HasMaxLength(32);
+            e.Property(x => x.Sha1).HasMaxLength(40);
+            e.Property(x => x.Sha256).HasMaxLength(64);
+            e.Property(x => x.Sha512).HasMaxLength(128);
+            e.Property(x => x.CacheHeaderType).HasMaxLength(32);
+            e.Property(x => x.CacheHeaderValue).HasMaxLength(256);
+            e.HasIndex(x => new { x.FeedKey, x.PathLower }).IsUnique();
+            e.HasIndex(x => new { x.FeedKey, x.ParentLower });
+            e.HasOne(x => x.Feed).WithMany().HasForeignKey(x => x.FeedKey).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<AccessToken>(e =>

@@ -36,10 +36,10 @@ else
                 {
                     <tr>
                         <td><a href="/admin/feeds/@feed.Name">@feed.Name</a></td>
-                        <td><span class="fg-badge">@feed.Kind</span></td>
+                        <td><span class="fg-badge">@Display.Kind(feed.Kind)</span></td>
                         <td>@(feed.AnonymousRead ? "Anonymous" : "Token")</td>
-                        <td>@(feed.AllowOverwrite ? "Overwrite" : "Reject (409)")</td>
-                        <td>@feed.DeletionBehavior</td>
+                        <td>@(feed.Kind == FeedKind.Assets ? Display.None : feed.AllowOverwrite ? "Overwrite" : "Reject (409)")</td>
+                        <td>@(feed.Kind == FeedKind.Assets ? Display.None : feed.DeletionBehavior.ToString())</td>
                         <td class="fg-num">@(feed.Upstreams.Count == 0 ? Display.None : feed.Upstreams.Count.ToString(CultureInfo.InvariantCulture))</td>
                         <td class="fg-cell-actions">
                             <a class="fg-btn fg-btn-sm" href="/admin/feeds/@feed.Name">Settings</a>
@@ -51,7 +51,7 @@ else
     </div>
 }
 
-<h2>Create a feed</h2>
+<h2>Create a feed or asset directory</h2>
 <div class="fg-panel">
     <EditForm Model="NewFeed!" FormName="create-feed" OnValidSubmit="CreateAsync" method="post" class="fg-form">
         <DataAnnotationsValidator />
@@ -61,11 +61,19 @@ else
             <ValidationMessage For="() => NewFeed!.Name" />
         </div>
 
+        <div class="fg-field">
+            <label for="feed-kind">What it holds</label>
+            <InputSelect id="feed-kind" @bind-Value="NewFeed!.Kind">
+                <option value="@FeedKind.Curated">Packages (NuGet and PowerShell modules)</option>
+                <option value="@FeedKind.Assets">Files (an asset directory, downloaded by URL)</option>
+            </InputSelect>
+        </div>
+
         <label class="fg-check"><InputCheckbox @bind-Value="NewFeed!.AnonymousRead" /> Anyone can read without a token</label>
-        <label class="fg-check"><InputCheckbox @bind-Value="NewFeed!.AllowOverwrite" /> Pushing an existing version replaces it</label>
+        <label class="fg-check"><InputCheckbox @bind-Value="NewFeed!.AllowOverwrite" /> Pushing an existing version replaces it (packages only)</label>
 
         <div class="fg-field">
-            <label for="feed-delete">Delete behaviour</label>
+            <label for="feed-delete">Delete behaviour (packages only)</label>
             <InputSelect id="feed-delete" @bind-Value="NewFeed!.DeletionBehavior">
                 <option value="@PackageDeletionBehavior.Unlist">Unlist (recommended)</option>
                 <option value="@PackageDeletionBehavior.HardDelete">Hard delete</option>
@@ -110,6 +118,9 @@ else
             {
                 Name = NewFeed!.Name,
                 NameLower = NewFeed!.Name.ToLowerInvariant(),
+                // Only the two a person chooses between: a proxy feed is what a package feed becomes when
+                // it gains an upstream, not something created as such.
+                Kind = NewFeed!.Kind == FeedKind.Assets ? FeedKind.Assets : FeedKind.Curated,
                 AnonymousRead = NewFeed!.AnonymousRead,
                 AllowOverwrite = NewFeed!.AllowOverwrite,
                 DeletionBehavior = NewFeed!.DeletionBehavior,
@@ -123,7 +134,7 @@ else
                 HttpContext,
                 "feed.create",
                 NewFeed!.Name,
-                $"anonymousRead={NewFeed!.AnonymousRead} allowOverwrite={NewFeed!.AllowOverwrite} onDelete={NewFeed!.DeletionBehavior}");
+                $"kind={NewFeed!.Kind} anonymousRead={NewFeed!.AnonymousRead} allowOverwrite={NewFeed!.AllowOverwrite} onDelete={NewFeed!.DeletionBehavior}");
         }
 
         (message, messageIsError) = created ? ($"Feed '{NewFeed!.Name}' created.", false) : ($"A feed named '{NewFeed!.Name}' already exists.", true);
@@ -138,6 +149,8 @@ else
     {
         [Required(ErrorMessage = "Enter a name.")]
         public string Name { get; set; } = "";
+
+        public FeedKind Kind { get; set; } = FeedKind.Curated;
 
         public bool AnonymousRead { get; set; }
 

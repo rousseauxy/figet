@@ -1,0 +1,204 @@
+@using FiGet.Application.Assets
+@using FiGet.Domain.Assets
+@using FiGet.Protocol.Assets
+@inject AssetService AssetFiles
+
+@* The browse page of an asset directory. Statically rendered like the rest of the public pages: a folder
+   is a link, a file is a download, and the one piece of script is the upload drop zone an admin sees. *@
+
+<p class="fg-crumbs">
+    <a href="/">Feeds</a>
+    <span class="fg-crumb-sep">/</span>
+    @if (Folder.IsRoot)
+    {
+        <span>@Feed.Name</span>
+    }
+    else
+    {
+        <a href="@FolderLink(AssetPath.Root)">@Feed.Name</a>
+        @for (var i = 0; i < Folder.Segments.Count; i++)
+        {
+            var depth = i + 1;
+            <span class="fg-crumb-sep">/</span>
+            @if (depth == Folder.Segments.Count)
+            {
+                <span>@Folder.Segments[i]</span>
+            }
+            else
+            {
+                AssetPath.TryParse(string.Join('/', Folder.Segments.Take(depth)), out var ancestor);
+                <a href="@FolderLink(ancestor)">@Folder.Segments[i]</a>
+            }
+        }
+    }
+</p>
+
+<div class="fg-page-head">
+    <h1>@(Folder.IsRoot ? Feed.Name : Folder.Name)</h1>
+    <span class="fg-badge">Asset directory</span>
+    @if (IsAdmin)
+    {
+        <a class="fg-btn fg-btn-sm" href="/admin/feeds/@Feed.Name">Settings</a>
+    }
+</div>
+
+<p class="fg-url">
+    <span class="fg-label">Download URL</span>
+    <code>@BaseUrl</code>
+    <button type="button" class="fg-copy" data-copy="@BaseUrl" title="Copy this URL" aria-label="Copy the download URL of this folder">Copy</button>
+</p>
+
+@if (missing)
+{
+    <p class="fg-empty">There is no folder <code>@Folder.Value</code> in this directory.</p>
+    return;
+}
+
+@if (IsAdmin)
+{
+    <section class="fg-dropzone" data-asset-upload data-upload-url="/admin/assets/@Uri.EscapeDataString(Feed.Name)/upload" data-folder="@Folder.Value">
+        <AntiforgeryToken />
+        <p class="fg-dropzone-prompt">
+            <strong>Drop files here</strong> to upload them into <code>@(Folder.IsRoot ? "/" : Folder.Value)</code>, or
+            <label class="fg-dropzone-pick">choose files<input type="file" multiple data-asset-files /></label>.
+        </p>
+        <p class="fg-muted fg-small">
+            An existing file is only replaced after you confirm. Up to @Display.Size(MaxAssetBytes) per file.
+        </p>
+        <ul class="fg-upload-list" data-asset-progress aria-live="polite"></ul>
+    </section>
+
+    <details class="fg-more">
+        <summary>New folder</summary>
+        <form method="post" action="/admin/assets/@Uri.EscapeDataString(Feed.Name)/folders" class="fg-form">
+            <AntiforgeryToken />
+            <input type="hidden" name="parent" value="@Folder.Value" />
+            <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+            <div class="fg-field">
+                <label for="folder-name">Name</label>
+                <input id="folder-name" name="name" required maxlength="@AssetPath.MaxSegmentLength" placeholder="for example: tools" />
+            </div>
+            <button type="submit" class="fg-btn fg-btn-primary">Create folder</button>
+        </form>
+    </details>
+}
+
+<p class="fg-result-count">@FolderCount folder@(FolderCount == 1 ? "" : "s"), @FileCount file@(FileCount == 1 ? "" : "s").</p>
+
+@if (items.Count == 0)
+{
+    <p class="fg-empty">This folder is empty.</p>
+}
+else
+{
+    <div class="fg-table-wrap">
+        <table class="fg-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Size</th>
+                    <th>Modified</th>
+                    <th>Type</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in items)
+                {
+                    <tr>
+                        @if (item.IsDirectory)
+                        {
+                            AssetPath.TryParse(item.Path, out var folder);
+                            <td><a href="@FolderLink(folder)">@item.Name/</a></td>
+                            <td class="fg-num">@Display.None</td>
+                            <td class="fg-num">@Display.Date(item.ModifiedUtc)</td>
+                            <td><span class="fg-badge fg-badge-plain">Folder</span></td>
+                        }
+                        else
+                        {
+                            <td><a href="@ContentUrl(item)" title="Download @item.Name">@Display.BreakableId(item.Name)</a></td>
+                            <td class="fg-num">@Display.Size(item.Size)</td>
+                            <td class="fg-num">@Display.Date(item.ModifiedUtc)</td>
+                            <td class="fg-small fg-muted">@item.ContentType</td>
+                        }
+                        <td class="fg-cell-actions">
+                            @if (!item.IsDirectory)
+                            {
+                                <button type="button" class="fg-copy" data-copy="@ContentUrl(item)" title="Copy the download URL" aria-label="Copy the download URL of @item.Name">Copy URL</button>
+                            }
+                            @if (IsAdmin)
+                            {
+                                <form method="post" action="/admin/assets/@Uri.EscapeDataString(Feed.Name)/delete"
+                                      data-confirm="@(item.IsDirectory ? $"Delete the folder {item.Name} and everything in it?" : $"Delete {item.Name}?")">
+                                    <AntiforgeryToken />
+                                    <input type="hidden" name="path" value="@item.Path" />
+                                    <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                                    <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Delete</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<FiGet.Domain.Entities.AssetItem> items = [];
+    private bool missing;
+
+    [Parameter, EditorRequired]
+    public Feed Feed { get; set; } = default!;
+
+    /// <summary>The folder being shown, as the query string carried it.</summary>
+    [Parameter]
+    public string? Path { get; set; }
+
+    [Parameter]
+    public bool IsAdmin { get; set; }
+
+    [Parameter]
+    public long MaxAssetBytes { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private AssetPath Folder { get; set; } = AssetPath.Root;
+
+    private int FolderCount => items.Count(i => i.IsDirectory);
+
+    private int FileCount => items.Count(i => !i.IsDirectory);
+
+    private string ReturnUrl => HttpContext.Request.Path + HttpContext.Request.QueryString;
+
+    private string BaseUrl => $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(Feed.Name)}/content/"
+        + (Folder.IsRoot ? "" : AssetEndpoints.EscapePath(Folder.Value) + "/");
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!AssetPath.TryParse(Path, out var folder))
+        {
+            missing = true;
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        Folder = folder;
+        if (!folder.IsRoot && await AssetFiles.FindAsync(Feed, folder, HttpContext.RequestAborted) is not { IsDirectory: true })
+        {
+            missing = true;
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        items = await AssetFiles.ListAsync(Feed, folder, recursive: false, HttpContext.RequestAborted);
+    }
+
+    private string ContentUrl(FiGet.Domain.Entities.AssetItem item) => AssetEndpoints.ContentUrl(HttpContext, Feed.Name, item.Path);
+
+    private string FolderLink(AssetPath folder) =>
+        folder.IsRoot
+            ? $"/feeds/{Uri.EscapeDataString(Feed.Name)}"
+            : $"/feeds/{Uri.EscapeDataString(Feed.Name)}?path={Uri.EscapeDataString(folder.Value)}";
+}

@@ -15,12 +15,15 @@ public interface IFeedStore
     Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Deletes the feed with every package, version, dependency, symbol row and feed-scoped token it owns.
-    /// Package files are not touched: the caller removes them through <c>IPackageStorage</c> first, because
+    /// Deletes the feed with every package, version, dependency, symbol row, asset row and feed-scoped token it owns.
+    /// Files are not touched: the caller removes them through <c>IPackageStorage</c> and <c>IAssetStorage</c> first, because
     /// a leftover row is recoverable while a leftover file is not discoverable.
     /// Returns false when the feed no longer exists.
     /// </summary>
     Task<bool> DeleteAsync(int key, CancellationToken cancellationToken);
+
+    /// <summary>How many files an asset directory holds, folders not counted.</summary>
+    Task<int> CountAssetsAsync(int key, CancellationToken cancellationToken);
 
     /// <summary>How many package versions the feed holds, listed or not.</summary>
     Task<int> CountVersionsAsync(int key, CancellationToken cancellationToken);

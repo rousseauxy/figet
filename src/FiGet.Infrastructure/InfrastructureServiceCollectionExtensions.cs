@@ -17,6 +17,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IAccessTokenStore, EfAccessTokenStore>();
         services.AddScoped<IUpstreamIndexStore, EfUpstreamIndexStore>();
         services.AddScoped<ISettingStore, EfSettingStore>();
+        services.AddScoped<IAssetStore, EfAssetStore>();
         return services;
     }
 }

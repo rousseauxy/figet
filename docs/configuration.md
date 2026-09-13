@@ -37,7 +37,7 @@ configuration. If no feed exists after seeding, a feed named `default` is create
 | Key | Default | Meaning |
 |---|---|---|
 | `Feeds:N:Name` | required | Letters, digits, `.`, `-`, `_`; 1 to 64 characters; starts with a letter or digit. Case-insensitive in URLs. |
-| `Feeds:N:Kind` | `Curated` | `Curated` or `Proxy` (proxy behaviour arrives in phase 3). |
+| `Feeds:N:Kind` | `Curated` | `Curated`, `Proxy` or `Assets`. A feed with upstreams is a proxy feed whatever this says. `Assets` makes an asset directory: files by path under `/endpoints/{name}`, described in `docs/protocol-assets.md`; `AllowOverwrite`, `DeletionBehavior` and upstreams do not apply to it. |
 | `Feeds:N:AnonymousRead` | `false` | When true, every read endpoint works without credentials. |
 | `Feeds:N:AllowOverwrite` | `false` | When true, pushing an existing version replaces it instead of answering 409. |
 | `Feeds:N:DeletionBehavior` | `Unlist` | `Unlist` hides the version from search and keeps it downloadable; `HardDelete` removes the metadata and the files. |
@@ -88,6 +88,7 @@ the rare rule a token cannot express.
 | Key | Default | Meaning |
 |---|---|---|
 | `MaxPackageSizeMB` | `256` | Largest accepted package or symbol package upload. Larger uploads get 413. |
+| `MaxAssetSizeMB` | `1024` | Largest file an asset directory accepts. Separate from the package limit because installers are far larger. Larger uploads get 413 and leave nothing behind. A reverse proxy in front has its own body limit, which has to be at least this. |
 
 ## FiGet:Logging
 
@@ -99,8 +100,8 @@ the rare rule a token cannot express.
 ### The audit log
 
 Who changed what, and when: feeds created, edited and deleted, upstreams added and removed, tokens issued
-and revoked, the theme changed, packages pushed, deleted, relisted, pulled and un-cached, and sign-ins
-including refused ones.
+and revoked, the theme changed, packages pushed, deleted, relisted, pulled and un-cached, asset files uploaded
+and deleted, asset folders created, asset metadata changed, and sign-ins including refused ones.
 
 It has no on/off key of its own. Every line is written at Information under the category `FiGet.Audit`, so
 the standard log-level configuration governs it:

@@ -170,6 +170,18 @@ public case and a current version. It is outward-facing, so it waits for a perso
 
 ## Soon
 
+- **Asset directory extras** (left out of phase 4 on purpose, 2026-09-13): multipart upload for files over
+  2 GB, archive import and export of a folder, and fetching a file from a remote URL. Nothing in the fleet
+  uses them; import would help a migration from the server being replaced.
+- **Record the asset write side from the reference server.** Its uploads, deletes and metadata were taken
+  from the client library and the documentation, because writing to the reference instance was not possible
+  in the session that built them. Still unconfirmed: the status of a `PUT` onto an existing file (FiGet
+  answers 409), and the header name for user metadata marked `includeInResponseHeader` (FiGet sends none).
+  Needs an API key for the reference instance.
+- **Drive the upload drop zone in a real browser.** The request it sends is covered by a test and the page
+  was checked visually, but the script's drag, progress and confirm-before-replace path has not been clicked
+  through by a person yet.
+
 - **Promotion between feeds.** Referred to by the server being replaced; nothing in FiGet does it yet.
   Needs a decision on whether a promoted package keeps its origin or becomes a push.
 - **The packages management API** (`/api/packages/{feed}/{versions|latest|delete}`), build plan section
@@ -226,8 +238,6 @@ set of CVEs in an assembly the app never ships itself.
 
 ## Later
 
-- **Asset directories** (phase 4): `/endpoints/{dir}/content/{path}`, upload through the UI with
-  drag-and-drop, and a size limit that accommodates a .NET hosting bundle.
 - **Per-feed instruction templates** for install and file usage, so wording and the client-facing
   hostname can differ per feed.
 - **History tab** on a version, which needs the audit log of phase 5.

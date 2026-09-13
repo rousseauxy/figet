@@ -15,6 +15,7 @@ COPY src/FiGet.Infrastructure/FiGet.Infrastructure.csproj src/FiGet.Infrastructu
 COPY src/FiGet.Infrastructure.Sqlite/FiGet.Infrastructure.Sqlite.csproj src/FiGet.Infrastructure.Sqlite/
 COPY src/FiGet.Infrastructure.SqlServer/FiGet.Infrastructure.SqlServer.csproj src/FiGet.Infrastructure.SqlServer/
 COPY src/FiGet.Http/FiGet.Http.csproj src/FiGet.Http/
+COPY src/FiGet.Protocol.Assets/FiGet.Protocol.Assets.csproj src/FiGet.Protocol.Assets/
 COPY src/FiGet.Protocol.V2/FiGet.Protocol.V2.csproj src/FiGet.Protocol.V2/
 COPY src/FiGet.Protocol.V3/FiGet.Protocol.V3.csproj src/FiGet.Protocol.V3/
 COPY src/FiGet.Web/FiGet.Web.csproj src/FiGet.Web/

@@ -892,3 +892,39 @@ legend {
    never falls below a readable width, and a table wider than a phone scrolls sideways inside its wrapper,
    which is what a table of records should do there. */
 .fg-table td:first-child { white-space: normal; overflow-wrap: anywhere; min-width: 8rem; }
+
+/* ── Uploading into an asset directory ──────────────────────────── */
+/* A dashed target that says what dropping does. Visible without script, where the file picker inside it
+   still works as a plain control; the drag highlight and the progress rows only exist once app.js runs. */
+.fg-dropzone {
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--r-2);
+  background: var(--surface);
+  padding: 1rem 1.2rem;
+  margin: 0.8rem 0;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.fg-dropzone-over { border-color: var(--accent); background: var(--accent-soft); }
+.fg-dropzone.fg-uploading { border-style: solid; }
+.fg-dropzone-prompt { margin: 0 0 0.3rem; }
+.fg-dropzone-pick { color: var(--accent); text-decoration: underline; cursor: pointer; }
+.fg-dropzone-pick input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.fg-dropzone-pick:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.fg-upload-list { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 0.3rem; }
+.fg-upload-list:empty { display: none; }
+.fg-upload-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(6rem, 12rem) minmax(0, max-content);
+  gap: 0.6rem;
+  align-items: center;
+  font-size: 0.82rem;
+}
+.fg-upload-name { overflow-wrap: anywhere; font-family: var(--font-mono); }
+.fg-upload-list progress { width: 100%; accent-color: var(--accent); }
+.fg-upload-ok [data-status] { color: var(--ok); }
+.fg-upload-failed [data-status] { color: var(--danger); }
+
+@media (max-width: 600px) {
+  .fg-upload-list li { grid-template-columns: minmax(0, 1fr); gap: 0.15rem; }
+}

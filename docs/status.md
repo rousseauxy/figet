@@ -1850,3 +1850,47 @@ buttons for a signed-in admin.
 `RequestVerificationToken` header or the form. `AdminUiTests.An_admin_button_post_without_its_page_token_changes_nothing`
 posts to "add upstream" without the token (400, nothing added) and then with the page's token (302, added).
 With the filter's check disabled the test fails with `Expected 400, got 302 Found`; restored, it passes.
+
+## Asset directories - 2026-09-13
+
+Phase 4, core only by decision: download, upload, delete, folders, listing, metadata, and a browse page with
+a drop zone. Multipart upload, archive import and export, and remote-URL fetching are in the backlog.
+
+**Contract.** Recorded from the reference server where anonymous reads could reach (empty listing `[]`,
+missing file `The specified asset was not found.`, missing metadata `Asset not found.`); everything else from
+the reference client library's model files and the published API documentation. The build plan's own sketch
+of §4.4 turned out wrong in four places, corrected there. `docs/protocol-assets.md` has the table as built and
+what each rule rests on. The write side was not recorded, because writing to the reference instance was not
+possible in this session; that is a backlog item.
+
+**Shape.** An asset directory is a feed of kind `Assets`, as on the reference server, so tokens, anonymous
+read, deletion and the audit log apply without a second implementation. Rows in a new `AssetItems` table
+(migration `AssetDirectories`, both providers); bytes under random ids in `files/assets/`. Each surface sees
+only its own kind: `/nuget/{name}` is 404 for a directory and `/endpoints/{name}` is 404 for a package feed.
+
+**Tests.** `AssetDirectoryTests`, 20 tests on SQLite and the same 20 on SQL Server (LocalDB): byte-for-byte
+download with the SHA-256 ETag, PUT/POST/PATCH semantics, a Range request answered 206, HEAD, the recorded 404
+bodies, listings (including recursive, and a `%` in a folder name taken literally by the SQL prefix match),
+case-insensitive paths, scopes (anonymous and read-only tokens refused writes even on an anonymous directory),
+idempotent delete removing the stored bytes, full folders deleted only with `recursive`, a file in the way,
+metadata with a `ttl` cache header, a 1 MB limit refusing a 1 MB + 1 byte upload and leaving nothing behind,
+the browse page for a reader, and the page upload with and without its token. `AssetPathTests`, 13 unit tests.
+Suites: unit 84/0; integration 165/0 with SQL Server, 29 + 20 skipped without it.
+
+**Real clients**, against a local instance with a directory named `installers`, a 3 MB random file uploaded to
+`tools/runtime/installer.exe`:
+
+    curl 8.16.0 --data-binary PUT               201; again 409, file unchanged
+    curl download, anonymous                    SHA-256 equal to the upload
+    Windows PowerShell 5.1.26100 Invoke-WebRequest -UseBasicParsing     SHA-256 equal
+    Windows PowerShell 5.1 System.Net.WebClient.DownloadFile            SHA-256 equal
+    PowerShell 7.6.5 Invoke-WebRequest -Resume, from a 1 MB partial     206, SHA-256 equal
+
+The request log recorded all of them, `.exe` included: the log's browser-furniture filter goes by extension,
+and `/endpoints` now joins `/nuget` as never noise.
+
+**UI.** The browse page, signed in, checked in headless Chrome at desktop width and in a 390 px frame: breadcrumbs,
+download URL with copy, the drop zone, a "new folder" disclosure, and a table of folders and files with copy
+and delete; on the phone the table scrolls inside its wrapper like every other table. The page capture had its
+scripts removed, so the drop zone's own drag, progress and confirm-before-replace were not exercised in a
+browser; the request it sends is the one the page-upload test sends.

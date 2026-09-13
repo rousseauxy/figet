@@ -149,4 +149,7 @@ public sealed class AuthOptions
 public sealed class LimitsOptions
 {
     public int MaxPackageSizeMB { get; set; } = 256;
+
+    /// <summary>The largest file an asset directory accepts. Sized for installers, not packages.</summary>
+    public int MaxAssetSizeMB { get; set; } = 1024;
 }

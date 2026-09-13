@@ -6,6 +6,7 @@
 @inject IFeedStore Feeds
 @inject IPackageStore Packages
 @inject ConnectorService Connector
+@inject Microsoft.Extensions.Options.IOptions<UploadOptions> Upload
 
 <PageTitle>@Name · FiGet</PageTitle>
 
@@ -16,6 +17,12 @@
         There is no feed named <code>@Name</code>, or it cannot be read without signing in.
         <a href="/">Back to feeds</a>.
     </p>
+    return;
+}
+
+@if (feed.Kind == FeedKind.Assets)
+{
+    <AssetBrowser Feed="feed" Path="@AssetFolder" IsAdmin="IsAdmin" MaxAssetBytes="Upload.Value.MaxAssetSizeBytes" />
     return;
 }
 
@@ -163,6 +170,10 @@ else
     [SupplyParameterFromQuery(Name = "page")]
     private int Page { get; set; }
 
+    /// <summary>The folder shown when this is an asset directory.</summary>
+    [SupplyParameterFromQuery(Name = "path")]
+    private string? AssetFolder { get; set; }
+
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
 
@@ -191,6 +202,12 @@ else
         if (feed is null)
         {
             HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        // An asset directory has no packages to search; the browser component loads its own folder.
+        if (feed.Kind == FeedKind.Assets)
+        {
             return;
         }
 

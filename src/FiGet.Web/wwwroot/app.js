@@ -181,4 +181,167 @@
             image.remove();
         }
     }, true);
+
+    // ── Buttons that ask first ───────────────────────────────────────────────────────────────────
+    // A form carrying data-confirm posts only after the reader agrees. Without script it posts at once,
+    // which is why only admins ever see such a form.
+
+    document.addEventListener("submit", function (event) {
+        var form = event.target.closest ? event.target.closest("form[data-confirm]") : null;
+        if (form && !window.confirm(form.getAttribute("data-confirm"))) {
+            event.preventDefault();
+        }
+    });
+
+    // ── Uploading into an asset directory ────────────────────────────────────────────────────────
+    // One request per file, one file at a time, the file itself as the body: that is what lets a gigabyte
+    // installer through without the browser or the server holding it in memory, and it is the same way a
+    // script uploads. The antiforgery token travels in a header because the body is taken.
+    //
+    // A file that already exists is not replaced silently. The server refuses the first attempt with 409,
+    // and only a confirmed second attempt asks it to replace.
+
+    function uploadOne(zone, file, overwrite, row) {
+        return new Promise(function (resolve) {
+            var folder = zone.getAttribute("data-folder") || "";
+            var path = folder ? folder + "/" + file.name : file.name;
+            var url = zone.getAttribute("data-upload-url") + "?path=" + encodeURIComponent(path) + (overwrite ? "&overwrite=true" : "");
+            var token = zone.querySelector("input[name='__RequestVerificationToken']");
+            var bar = row.querySelector("progress");
+            var status = row.querySelector("[data-status]");
+
+            var request = new XMLHttpRequest();
+            request.open("POST", url);
+            if (token) {
+                request.setRequestHeader("RequestVerificationToken", token.value);
+            }
+            if (file.type) {
+                request.setRequestHeader("Content-Type", file.type);
+            }
+
+            request.upload.addEventListener("progress", function (progress) {
+                if (progress.lengthComputable) {
+                    bar.max = progress.total;
+                    bar.value = progress.loaded;
+                }
+            });
+
+            request.addEventListener("load", function () {
+                var message = "";
+                try {
+                    message = JSON.parse(request.responseText).error || "";
+                } catch (error) {
+                    message = "";
+                }
+                resolve({ status: request.status, message: message });
+            });
+
+            request.addEventListener("error", function () {
+                resolve({ status: 0, message: "The connection failed." });
+            });
+
+            status.textContent = "Uploading";
+            request.send(file);
+        });
+    }
+
+    function progressRow(zone, file) {
+        var list = zone.querySelector("[data-asset-progress]");
+        var row = document.createElement("li");
+        var name = document.createElement("span");
+        var bar = document.createElement("progress");
+        var status = document.createElement("span");
+        name.className = "fg-upload-name";
+        name.textContent = file.name;
+        bar.max = 1;
+        bar.value = 0;
+        status.setAttribute("data-status", "");
+        status.className = "fg-small";
+        status.textContent = "Waiting";
+        row.appendChild(name);
+        row.appendChild(bar);
+        row.appendChild(status);
+        list.appendChild(row);
+        return row;
+    }
+
+    function uploadAll(zone, files) {
+        if (!files || files.length === 0 || zone.classList.contains("fg-uploading")) {
+            return;
+        }
+
+        zone.classList.add("fg-uploading");
+        var queue = Array.prototype.slice.call(files);
+        var changed = false;
+
+        function next() {
+            var file = queue.shift();
+            if (!file) {
+                zone.classList.remove("fg-uploading");
+                if (changed) {
+                    // The listing is server-rendered; a reload is the honest way to show what is there now.
+                    window.location.reload();
+                }
+                return;
+            }
+
+            var row = progressRow(zone, file);
+            var status = row.querySelector("[data-status]");
+            uploadOne(zone, file, false, row).then(function (result) {
+                if (result.status === 409 && window.confirm("\"" + file.name + "\" already exists here. Replace it?")) {
+                    return uploadOne(zone, file, true, row);
+                }
+                return result;
+            }).then(function (result) {
+                if (result.status === 201) {
+                    changed = true;
+                    status.textContent = "Done";
+                    row.classList.add("fg-upload-ok");
+                } else if (result.status === 409) {
+                    status.textContent = "Kept the existing file";
+                } else {
+                    status.textContent = result.message || ("Failed (" + result.status + ")");
+                    row.classList.add("fg-upload-failed");
+                }
+                next();
+            });
+        }
+
+        next();
+    }
+
+    document.addEventListener("change", function (event) {
+        var input = event.target.closest ? event.target.closest("input[data-asset-files]") : null;
+        var zone = input ? input.closest("[data-asset-upload]") : null;
+        if (zone) {
+            uploadAll(zone, input.files);
+            input.value = "";
+        }
+    });
+
+    document.addEventListener("dragover", function (event) {
+        var zone = event.target.closest ? event.target.closest("[data-asset-upload]") : null;
+        if (zone) {
+            event.preventDefault();
+            zone.classList.add("fg-dropzone-over");
+        }
+    });
+
+    document.addEventListener("dragleave", function (event) {
+        var zone = event.target.closest ? event.target.closest("[data-asset-upload]") : null;
+        if (zone && !zone.contains(event.relatedTarget)) {
+            zone.classList.remove("fg-dropzone-over");
+        }
+    });
+
+    document.addEventListener("drop", function (event) {
+        var zone = event.target.closest ? event.target.closest("[data-asset-upload]") : null;
+        if (!zone) {
+            return;
+        }
+
+        event.preventDefault();
+        zone.classList.remove("fg-dropzone-over");
+        uploadAll(zone, event.dataTransfer ? event.dataTransfer.files : null);
+    });
 })();

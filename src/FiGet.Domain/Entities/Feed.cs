@@ -29,6 +29,14 @@ public enum FeedKind
 {
     Curated,
     Proxy,
+
+    /// <summary>
+    /// An asset directory: files by path, served by plain GET, no packages. A feed kind rather than a
+    /// separate object because the server being replaced models it that way too, and because tokens,
+    /// anonymous read and deletion then apply to it without a second implementation of each. It is
+    /// never a package feed: the NuGet endpoints refuse it, and the asset endpoints refuse every other kind.
+    /// </summary>
+    Assets,
 }
 
 public enum PackageDeletionBehavior

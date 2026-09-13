@@ -1,10 +1,12 @@
 using System.Globalization;
 using System.Security.Claims;
+using FiGet.Application.Assets;
 using FiGet.Application.Connectors;
 using FiGet.Application.Packages;
 using FiGet.Application.Ports;
 using FiGet.Application.Tokens;
 using FiGet.Domain.Entities;
+using FiGet.Domain.Assets;
 using FiGet.Domain.Feeds;
 using FiGet.Http;
 using FiGet.Infrastructure.Packages;
@@ -14,6 +16,7 @@ using FiGet.Infrastructure.Sqlite;
 using FiGet.Infrastructure.Storage;
 using FiGet.Infrastructure.Upstream;
 using FiGet.Infrastructure;
+using FiGet.Protocol.Assets;
 using FiGet.Protocol.V2;
 using FiGet.Protocol.V3;
 using FiGet.Web.Components;
@@ -53,6 +56,7 @@ public static class FiGetApp
         services.AddOptions<UploadOptions>().Configure<IOptions<FiGetOptions>>((upload, figet) =>
         {
             upload.MaxPackageSizeBytes = figet.Value.Limits.MaxPackageSizeMB * 1024L * 1024L;
+            upload.MaxAssetSizeBytes = figet.Value.Limits.MaxAssetSizeMB * 1024L * 1024L;
             upload.TempPath = figet.Value.Storage.TempPath;
         });
         services.AddSingleton<StoragePaths>();
@@ -75,7 +79,9 @@ public static class FiGetApp
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IPackageIndexer, PackageIndexer>();
         services.AddSingleton<IPackageStorage>(provider => new FileSystemPackageStorage(Path.Combine(provider.GetRequiredService<StoragePaths>().Root, "files")));
+        services.AddSingleton<IAssetStorage>(provider => new FileSystemAssetStorage(Path.Combine(provider.GetRequiredService<StoragePaths>().Root, "files")));
         services.AddScoped<PackageIngestionService>();
+        services.AddScoped<AssetService>();
         services.AddScoped<AccessTokenService>();
 
         // Proxy feeds. The client is a singleton because NuGet's repositories cache resources and
@@ -186,6 +192,7 @@ public static class FiGetApp
 
         app.MapNuGetV2();
         app.MapNuGetV3();
+        app.MapAssetEndpoints();
         app.MapAccountEndpoints();
         app.MapAdminEndpoints();
         app.MapStaticAssets();
@@ -435,6 +442,97 @@ public static class FiGetApp
             }
 
             return Back(form["returnUrl"].ToString(), $"/feeds/{Uri.EscapeDataString(feed)}");
+        });
+
+        // The upload page. Its own route rather than the API's, because the API accepts tokens and never the
+        // sign-in cookie: a cookie is sent by the browser on its own, so an API that honoured one could be
+        // made to upload by any page the admin happened to visit. Here the request carries the antiforgery
+        // token in a header - the body is the file - and the storing is the API's own code.
+        admin.MapPost("/assets/{directory}/upload", async (
+            string directory,
+            string? path,
+            bool? overwrite,
+            HttpContext http,
+            IFeedStore feeds,
+            AssetService assets,
+            IOptions<UploadOptions> upload,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var target = await feeds.FindAsync(directory, cancellationToken);
+            if (target is not { Kind: FeedKind.Assets } || !AssetPath.TryParse(path, out var parsed) || parsed.IsRoot)
+            {
+                return Results.Json(new { error = "There is no such asset directory, or the file name is not valid." }, statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            var outcome = await AssetEndpoints.WriteAsync(
+                http,
+                target,
+                parsed,
+                http.Request.Body,
+                http.Request.ContentType,
+                overwrite == true ? AssetWriteMode.CreateOrReplace : AssetWriteMode.CreateOnly,
+                assets,
+                upload.Value,
+                cancellationToken);
+            if (outcome is AssetOutcome.Created or AssetOutcome.Replaced)
+            {
+                audit.Record(http, "asset.upload", parsed.Value, $"directory={target.Name} outcome={outcome}");
+            }
+
+            return outcome switch
+            {
+                AssetOutcome.Created or AssetOutcome.Replaced => Results.Json(new { outcome = outcome.ToString() }, statusCode: StatusCodes.Status201Created),
+                AssetOutcome.AlreadyExists => Results.Json(new { error = "A file with this name already exists." }, statusCode: StatusCodes.Status409Conflict),
+                AssetOutcome.TooLarge => Results.Json(new { error = "The file is larger than this server accepts." }, statusCode: StatusCodes.Status413PayloadTooLarge),
+                AssetOutcome.WrongType => Results.Json(new { error = "A folder with this name already exists." }, statusCode: StatusCodes.Status409Conflict),
+                _ => Results.Json(new { error = "The file could not be stored here." }, statusCode: StatusCodes.Status400BadRequest),
+            };
+        }).DisableAntiforgery();
+
+        admin.MapPost("/assets/{directory}/folders", async (
+            string directory,
+            HttpContext http,
+            IFeedStore feeds,
+            AssetService assets,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(directory, cancellationToken);
+            var name = form["name"].ToString().Trim();
+            if (target is { Kind: FeedKind.Assets }
+                && AssetPath.TryParse(form["parent"].ToString(), out var parent)
+                && !name.Contains('/', StringComparison.Ordinal)
+                && AssetPath.TryParse(parent.IsRoot ? name : parent.Value + "/" + name, out var folder)
+                && !folder.IsRoot
+                && await assets.CreateFolderAsync(target, folder, cancellationToken) == AssetOutcome.Created)
+            {
+                audit.Record(http, "asset.folder.create", folder.Value, $"directory={target.Name}");
+            }
+
+            return Back(form["returnUrl"].ToString(), $"/feeds/{Uri.EscapeDataString(directory)}");
+        });
+
+        admin.MapPost("/assets/{directory}/delete", async (
+            string directory,
+            HttpContext http,
+            IFeedStore feeds,
+            AssetService assets,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(directory, cancellationToken);
+            if (target is { Kind: FeedKind.Assets }
+                && AssetPath.TryParse(form["path"].ToString(), out var path)
+                && !path.IsRoot
+                && await assets.DeleteAsync(target, path, recursive: true, cancellationToken) == AssetOutcome.Deleted)
+            {
+                audit.Record(http, "asset.delete", path.Value, $"directory={target.Name} recursive=True");
+            }
+
+            return Back(form["returnUrl"].ToString(), $"/feeds/{Uri.EscapeDataString(directory)}");
         });
 
         admin.MapPost("/feeds/{feed}/upstreams/remove", async (

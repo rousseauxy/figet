@@ -69,9 +69,11 @@ public sealed class RequestLogMiddleware(RequestDelegate next, ILogger<RequestLo
     private static bool IsNoise(PathString path)
     {
         // Protocol traffic is never noise, whatever it is named. A package may legitimately be called
-        // something.css, and these are the requests the log exists for - so this test comes first and the
-        // extension check below can never swallow a download.
-        if (path.StartsWithSegments("/nuget", StringComparison.OrdinalIgnoreCase))
+        // something.css, an asset directory is full of installers named setup.js and logo.png, and these
+        // are the requests the log exists for - so this test comes first and the extension check below can
+        // never swallow a download.
+        if (path.StartsWithSegments("/nuget", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWithSegments("/endpoints", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }

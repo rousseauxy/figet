@@ -27,7 +27,7 @@ else
                     <th>Read</th>
                     <th>On existing version</th>
                     <th>Delete</th>
-                    <th>v3 source URL</th>
+                    <th>URL</th>
                 </tr>
             </thead>
             <tbody>
@@ -36,14 +36,14 @@ else
                     var url = SourceUrl(feed);
                     <tr>
                         <td><a href="/feeds/@feed.Name">@feed.Name</a></td>
-                        <td><span class="fg-badge">@feed.Kind</span></td>
+                        <td><span class="fg-badge">@Display.Kind(feed.Kind)</span></td>
                         <td>@(feed.AnonymousRead ? "Anonymous" : "Token")</td>
-                        <td>@(feed.AllowOverwrite ? "Overwrite" : "Reject (409)")</td>
-                        <td>@feed.DeletionBehavior</td>
+                        <td>@(feed.Kind == FeedKind.Assets ? Display.None : feed.AllowOverwrite ? "Overwrite" : "Reject (409)")</td>
+                        <td>@(feed.Kind == FeedKind.Assets ? Display.None : feed.DeletionBehavior.ToString())</td>
                         <td>
                             <div class="fg-url">
                                 <code>@url</code>
-                                <button type="button" class="fg-copy" data-copy="@url" title="Copy this URL" aria-label="Copy the v3 source URL of feed @feed.Name">Copy</button>
+                                <button type="button" class="fg-copy" data-copy="@url" title="Copy this URL" aria-label="Copy the URL of @feed.Name">Copy</button>
                             </div>
                         </td>
                     </tr>
@@ -67,7 +67,11 @@ else
     /// </summary>
     private bool IsAdmin => HttpContext.User.HasClaim(ClaimTypes.Role, "admin");
 
-    private string SourceUrl(Feed feed) => $"{PublicUrls.Feed(HttpContext, feed.Name)}/v3/index.json";
+    /// <summary>The v3 source of a package feed; for an asset directory, where its files download from.</summary>
+    private string SourceUrl(Feed feed) =>
+        feed.Kind == FeedKind.Assets
+            ? $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(feed.Name)}/content/"
+            : $"{PublicUrls.Feed(HttpContext, feed.Name)}/v3/index.json";
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;

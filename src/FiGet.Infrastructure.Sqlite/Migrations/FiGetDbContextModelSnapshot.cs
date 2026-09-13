@@ -66,6 +66,92 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                     b.ToTable("AccessTokens", (string)null);
                 });
 
+            modelBuilder.Entity("FiGet.Domain.Entities.AssetItem", b =>
+                {
+                    b.Property<int>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BlobId")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CacheHeaderType")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CacheHeaderValue")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FeedKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsDirectory")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Md5")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ParentLower")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PathLower")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sha1")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Sha512")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserMetadata")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("FeedKey", "ParentLower");
+
+                    b.HasIndex("FeedKey", "PathLower")
+                        .IsUnique();
+
+                    b.ToTable("AssetItems", (string)null);
+                });
+
             modelBuilder.Entity("FiGet.Domain.Entities.CachedUpstreamIndex", b =>
                 {
                     b.Property<long>("Key")
@@ -518,6 +604,17 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                         .WithMany()
                         .HasForeignKey("FeedKey")
                         .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Feed");
+                });
+
+            modelBuilder.Entity("FiGet.Domain.Entities.AssetItem", b =>
+                {
+                    b.HasOne("FiGet.Domain.Entities.Feed", "Feed")
+                        .WithMany()
+                        .HasForeignKey("FeedKey")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Feed");
                 });

@@ -15,9 +15,17 @@ public static class Display
 
     public static string Size(long bytes) => bytes switch
     {
+        >= 1024L * 1024 * 1024 => (bytes / 1024d / 1024d / 1024d).ToString("0.0", CultureInfo.InvariantCulture) + " GB",
         >= 1024 * 1024 => (bytes / 1024d / 1024d).ToString("0.0", CultureInfo.InvariantCulture) + " MB",
         >= 1024 => (bytes / 1024d).ToString("0", CultureInfo.InvariantCulture) + " KB",
         _ => bytes.ToString(CultureInfo.InvariantCulture) + " B",
+    };
+
+    /// <summary>What a feed is, in words rather than the enum name: "Assets" alone reads like a count.</summary>
+    public static string Kind(FiGet.Domain.Entities.FeedKind kind) => kind switch
+    {
+        FiGet.Domain.Entities.FeedKind.Assets => "Asset directory",
+        _ => kind.ToString(),
     };
 
     public static string Count(long value) => value.ToString("N0", CultureInfo.InvariantCulture);

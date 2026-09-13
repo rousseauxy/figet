@@ -5,6 +5,7 @@
 @using FiGet.Application.Ports
 @inject IFeedStore Feeds
 @inject IPackageStorage Storage
+@inject IAssetStorage AssetStorage
 @inject NavigationManager Navigation
 @inject FiGet.Http.AuditLog Audit
 
@@ -35,26 +36,58 @@ else
         <h2>Settings</h2>
         <EditForm Model="Settings!" FormName="feed-settings" OnValidSubmit="SaveAsync" method="post" class="fg-form">
             <label class="fg-check"><InputCheckbox id="anonymous-read" @bind-Value="Settings!.AnonymousRead" /> Anyone can read without a token</label>
-            <label class="fg-check"><InputCheckbox id="allow-overwrite" @bind-Value="Settings!.AllowOverwrite" /> Pushing an existing version replaces it</label>
+            @if (IsAssets)
+            {
+                <p class="fg-muted fg-small">Uploading and deleting always need a token or a signed-in admin, whatever this says.</p>
+            }
+            else
+            {
+                <label class="fg-check"><InputCheckbox id="allow-overwrite" @bind-Value="Settings!.AllowOverwrite" /> Pushing an existing version replaces it</label>
 
-            <div class="fg-field">
-                <label for="delete-behaviour">Delete behaviour</label>
-                <InputSelect id="delete-behaviour" @bind-Value="Settings!.DeletionBehavior">
-                    <option value="@PackageDeletionBehavior.Unlist">Unlist (recommended)</option>
-                    <option value="@PackageDeletionBehavior.HardDelete">Hard delete</option>
-                </InputSelect>
-            </div>
+                <div class="fg-field">
+                    <label for="delete-behaviour">Delete behaviour</label>
+                    <InputSelect id="delete-behaviour" @bind-Value="Settings!.DeletionBehavior">
+                        <option value="@PackageDeletionBehavior.Unlist">Unlist (recommended)</option>
+                        <option value="@PackageDeletionBehavior.HardDelete">Hard delete</option>
+                    </InputSelect>
+                </div>
+            }
 
             <button type="submit" class="fg-btn fg-btn-primary">Save settings</button>
         </EditForm>
 
         <dl class="fg-facts">
-            <dt>Kind</dt><dd>@feed.Kind</dd>
+            <dt>Kind</dt><dd>@Display.Kind(feed.Kind)</dd>
             <dt>Created</dt><dd class="fg-num">@feed.CreatedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) UTC</dd>
-            <dt>Versions</dt><dd class="fg-num">@versionCount.ToString("N0", CultureInfo.InvariantCulture)</dd>
+            <dt>@(IsAssets ? "Files" : "Versions")</dt><dd class="fg-num">@versionCount.ToString("N0", CultureInfo.InvariantCulture)</dd>
         </dl>
     </section>
 
+    @if (IsAssets)
+    {
+        <section class="fg-panel">
+            <h2>URLs</h2>
+            <dl class="fg-facts">
+                <dt>Download</dt>
+                <dd>
+                    <div class="fg-url">
+                        <code>@AssetContentUrl</code>
+                        <button type="button" class="fg-copy" data-copy="@AssetContentUrl" title="Copy this URL" aria-label="Copy the download URL">Copy</button>
+                    </div>
+                </dd>
+                <dt>Listing (JSON)</dt>
+                <dd>
+                    <div class="fg-url">
+                        <code>@AssetListUrl</code>
+                        <button type="button" class="fg-copy" data-copy="@AssetListUrl" title="Copy this URL" aria-label="Copy the listing URL">Copy</button>
+                    </div>
+                </dd>
+            </dl>
+            <p class="fg-muted fg-small">Browse and upload files on <a href="/feeds/@feed.Name">the directory's page</a>.</p>
+        </section>
+    }
+    else
+    {
     <section class="fg-panel">
         <h2>Source URLs</h2>
         <dl class="fg-facts">
@@ -162,12 +195,14 @@ else
             </form>
         </details>
     </section>
+    }
 
     <section class="fg-panel fg-panel-danger">
         <h2>Delete this feed</h2>
         <p class="fg-muted fg-small">
-            Removes the feed with its @versionCount.ToString("N0", CultureInfo.InvariantCulture) package
-            version(s), their files, and any token scoped to this feed. This cannot be undone.
+            Removes the feed with its @versionCount.ToString("N0", CultureInfo.InvariantCulture)
+            @(IsAssets ? "file(s)" : "package version(s), their files,") and any token scoped to this feed.
+            This cannot be undone.
         </p>
         <EditForm Model="Confirm!" FormName="delete-feed" OnValidSubmit="DeleteAsync" method="post" class="fg-form">
             <div class="fg-field">
@@ -204,6 +239,12 @@ else
 
     private string V3Url => $"{FeedUrl}/v3/index.json";
 
+    private bool IsAssets => feed?.Kind == FeedKind.Assets;
+
+    private string AssetContentUrl => $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(feed!.Name)}/content/";
+
+    private string AssetListUrl => $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(feed!.Name)}/dir/";
+
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
@@ -217,7 +258,9 @@ else
     private async Task LoadAsync()
     {
         feed = await Feeds.FindAsync(Name, HttpContext.RequestAborted);
-        versionCount = feed is null ? 0 : await Feeds.CountVersionsAsync(feed.Key, HttpContext.RequestAborted);
+        versionCount = feed is null ? 0
+            : feed.Kind == FeedKind.Assets ? await Feeds.CountAssetsAsync(feed.Key, HttpContext.RequestAborted)
+            : await Feeds.CountVersionsAsync(feed.Key, HttpContext.RequestAborted);
     }
 
     private async Task SaveAsync()
@@ -261,6 +304,7 @@ else
         // Files first: a row without files is visible and fixable, an orphaned file is neither.
         Audit.Record(HttpContext, "feed.delete", feed.Name);
         await Storage.DeleteFeedAsync(feed.NameLower, HttpContext.RequestAborted);
+        await AssetStorage.DeleteFeedAsync(feed.NameLower, HttpContext.RequestAborted);
         await Feeds.DeleteAsync(feed.Key, HttpContext.RequestAborted);
         Navigation.NavigateTo("/admin/feeds", forceLoad: false);
     }

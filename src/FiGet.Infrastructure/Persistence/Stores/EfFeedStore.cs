@@ -71,6 +71,7 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         // behave the same and no row survives because a connection had foreign keys switched off.
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
+        await db.AssetItems.Where(a => a.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.SymbolFiles.Where(s => s.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.PackageDependencies
             .Where(d => db.PackageVersions.Any(v => v.Key == d.PackageVersionKey && db.Packages.Any(p => p.Key == v.PackageKey && p.FeedKey == key)))
@@ -86,6 +87,9 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         return true;
     }
 
+    public Task<int> CountAssetsAsync(int key, CancellationToken cancellationToken) =>
+        db.AssetItems.CountAsync(a => a.FeedKey == key && !a.IsDirectory, cancellationToken);
+
     public Task<int> CountVersionsAsync(int key, CancellationToken cancellationToken) =>
         db.PackageVersions.CountAsync(v => db.Packages.Any(p => p.Key == v.PackageKey && p.FeedKey == key), cancellationToken);
 
@@ -93,7 +97,10 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
     {
         ArgumentNullException.ThrowIfNull(upstream);
         var feed = await db.Feeds.FirstOrDefaultAsync(f => f.Key == feedKey, cancellationToken);
-        if (feed is null)
+
+        // An asset directory has files, not packages, so there is nothing an upstream could offer it; and
+        // gaining one would silently turn it into a proxy feed.
+        if (feed is null || feed.Kind == FeedKind.Assets)
         {
             return false;
         }

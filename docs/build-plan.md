@@ -403,14 +403,24 @@ multipart body to the source URL itself when the source does not end in `/api/v2
 
 ### 4.4 Asset directories
 
+> Corrected 2026-09-13 against the reference client library and documentation; the table as built, with
+> where each rule came from, is `docs/protocol-assets.md`. The sketch below was wrong in four places: `PUT`
+> never replaces (`POST` does, and is what the client sends), a file `DELETE` answers 200 rather than 204
+> and does not remove folders, folders are deleted through `POST /delete/{path}?recursive=` and created
+> through `POST /dir/{path}`, and a listing item's `type` is the content type or `dir`, never `file`.
+
 ```
 GET     /endpoints/{directory}/content/{path}    stream; ETag = sha256; Last-Modified; Range supported
 HEAD    same, headers only
-PUT     /endpoints/{directory}/content/{path}    raw body = file; creates folders; 201/204
-DELETE  /endpoints/{directory}/content/{path}    204; deleting a folder path removes the subtree
-GET     /endpoints/{directory}/dir/{path}        JSON: [{ "name", "type": "file"|"dir", "size", "modified", "sha256" }]
-GET     /endpoints/{directory}/metadata/{path}   JSON: { "contentType", "userMetadata": { … }, "cacheHeader": … }
-POST    /endpoints/{directory}/metadata/{path}   set user metadata / content type
+PUT     /endpoints/{directory}/content/{path}    raw body = file; creates folders; 201; never replaces
+POST    /endpoints/{directory}/content/{path}    raw body = file; creates or replaces; 201
+PATCH   /endpoints/{directory}/content/{path}    raw body = file; replaces only; 201
+DELETE  /endpoints/{directory}/content/{path}    200, also when absent; files only
+GET     /endpoints/{directory}/dir/{path}        JSON: [{ "name", "parent", "size", "type", "content", "created", "modified", "md5", "sha1", "sha256", "sha512", … }]
+POST    /endpoints/{directory}/dir/{path}        create a folder; 201
+POST    /endpoints/{directory}/delete/{path}     delete a file or folder; ?recursive=true for a full folder
+GET     /endpoints/{directory}/metadata/{path}   one item as above
+POST    /endpoints/{directory}/metadata/{path}   { "type", "userMetadataUpdateMode", "userMetadata", "cacheHeader" }
 ```
 
 Auth: read is per-directory anonymous or token; write always a token or an authenticated UI session, never

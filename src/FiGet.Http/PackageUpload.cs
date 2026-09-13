@@ -9,6 +9,12 @@ public sealed class UploadOptions
 {
     public long MaxPackageSizeBytes { get; set; } = 256L * 1024 * 1024;
 
+    /// <summary>
+    /// Asset directories hold installers, which are far larger than packages: a surveyed production
+    /// directory had a 118 MB file in it. Hence its own limit rather than the package one.
+    /// </summary>
+    public long MaxAssetSizeBytes { get; set; } = 1024L * 1024 * 1024;
+
     /// <summary>Where uploads are buffered while they are validated. Defaults to the system temp directory.</summary>
     public string? TempPath { get; set; }
 }

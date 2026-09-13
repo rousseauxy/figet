@@ -21,6 +21,7 @@
     <ProjectReference Include="..\FiGet.Infrastructure.SqlServer\FiGet.Infrastructure.SqlServer.csproj" />
     <ProjectReference Include="..\FiGet.Infrastructure.Sqlite\FiGet.Infrastructure.Sqlite.csproj" />
     <ProjectReference Include="..\FiGet.Http\FiGet.Http.csproj" />
+    <ProjectReference Include="..\FiGet.Protocol.Assets\FiGet.Protocol.Assets.csproj" />
     <ProjectReference Include="..\FiGet.Protocol.V2\FiGet.Protocol.V2.csproj" />
     <ProjectReference Include="..\FiGet.Protocol.V3\FiGet.Protocol.V3.csproj" />
   </ItemGroup>
