@@ -122,7 +122,7 @@ else
                                     <input type="hidden" name="id" value="@row.Id" />
                                     <input type="hidden" name="version" value="@row.Latest" />
                                     <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                                    <button type="submit" class="fg-btn fg-btn-sm" title="Download @row.Id @row.Latest into this feed">Pull</button>
+                                    <button type="submit" class="fg-btn fg-btn-sm fg-btn-icon fg-icon-pull" title="Pull @row.Id @row.Latest into this feed, with its dependencies" aria-label="Pull @row.Id @row.Latest into this feed"></button>
                                 </form>
                             }
                         </td>

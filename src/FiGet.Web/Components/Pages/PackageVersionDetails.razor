@@ -57,7 +57,7 @@
 
     @if (IsLocal)
     {
-        <a class="fg-btn fg-btn-primary" href="@(feedUrl)/package/@displayId/@row.NormalizedVersion">Download</a>
+        <a class="fg-btn fg-btn-primary fg-icon-download" href="@(feedUrl)/package/@displayId/@row.NormalizedVersion">Download</a>
     }
     else if (IsAdmin)
     {
@@ -67,7 +67,7 @@
             <input type="hidden" name="id" value="@displayId" />
             <input type="hidden" name="version" value="@row.NormalizedVersion" />
             <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-            <button type="submit" class="fg-btn fg-btn-primary">Pull into this feed</button>
+            <button type="submit" class="fg-btn fg-btn-primary fg-icon-pull">Pull into this feed</button>
         </form>
     }
     else

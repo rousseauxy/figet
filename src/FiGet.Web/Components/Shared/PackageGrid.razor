@@ -84,10 +84,10 @@
             {
                 @* A circuit call, not a form post: there is no HttpContext here to mint an
                    antiforgery token, and the circuit is already authenticated. *@
-                <button type="button" class="fg-btn fg-btn-sm" disabled="@pulling"
-                        title="Download @row.Id @row.Latest into this feed"
+                <button type="button" class="fg-btn fg-btn-sm fg-btn-icon fg-icon-pull" disabled="@pulling"
+                        title="Pull @row.Id @row.Latest into this feed, with its dependencies"
+                        aria-label="Pull @row.Id @row.Latest into this feed"
                         @onclick="() => PullAsync(row)">
-                    Pull
                 </button>
             }
         </TemplateColumn>

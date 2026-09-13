@@ -278,7 +278,7 @@
                             <td class="fg-cell-actions">
                                 @if (local)
                                 {
-                                    <a class="fg-btn fg-btn-sm" href="@(feedUrl)/package/@displayId/@row.NormalizedVersion">Download</a>
+                                    <a class="fg-btn fg-btn-sm fg-btn-icon fg-icon-download" href="@(feedUrl)/package/@displayId/@row.NormalizedVersion" title="Download @displayId @row.NormalizedVersion" aria-label="Download @displayId @row.NormalizedVersion"></a>
                                 }
                                 else if (IsAdmin)
                                 {
@@ -287,7 +287,7 @@
                                         <input type="hidden" name="id" value="@displayId" />
                                         <input type="hidden" name="version" value="@row.NormalizedVersion" />
                                         <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                                        <button type="submit" class="fg-btn fg-btn-sm">Pull</button>
+                                        <button type="submit" class="fg-btn fg-btn-sm fg-btn-icon fg-icon-pull" title="Pull @displayId @row.NormalizedVersion into this feed, with its dependencies" aria-label="Pull @displayId @row.NormalizedVersion into this feed"></button>
                                     </form>
                                 }
                             </td>
