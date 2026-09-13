@@ -1911,3 +1911,44 @@ SQL Server - the production database - is all of them.
 **Fix.** The theme is read through a scope of its own. `PageRenderTests` loads the feed page and the home page
 60 times at once, on both providers. Before the fix, on SQL Server, 45, 51 and 45 of 60 loads failed in three
 runs; SQLite passed. After it, 0 of 60 three times, and the full suite passed ten runs in a row on SQL Server.
+
+## Asset directories: multipart uploads, archives, fetch by URL - 2026-09-13
+
+The three extras left out of the first asset commit, added on request.
+
+- **Multipart upload** in the reference API's shape (`?multipart=upload|complete`), parts kept on shared storage
+  so they may reach different replicas, checked on completion, swept hourly when abandoned for 24 hours.
+- **Archive import and export** (`/import`, `/export`, zip and tgz). Every entry goes through the ordinary upload
+  code; the import limit counts bytes actually unpacked.
+- **Fetch by URL**, FiGet's own: an `X-Source-Url` header on an upload, or a form on the browse page. The address
+  is checked at connect time on every connection, redirects included; private networks are off by default and
+  cloud metadata addresses are refused always. `docs/protocol-assets.md` has the reasoning.
+
+The browse page gained an archive import beside the drop zone, a "Fetch from a URL" form, and links to
+download the folder as .zip or .tar.gz.
+
+**The reference client.** Version 2.4.2 ran all sixteen of its asset commands against a local instance and
+every one exits 0: single and multipart upload (a 3.5 MB file in four 1 MB parts, seen in the request log,
+downloaded back with an equal SHA-256), list, metadata set and get, folder create, zip and tgz import, zip and
+tgz export (the tgz round trip keeping every hash), download, and delete of a file and of a full folder. Its
+first run failed two of them, and both were FiGet's to fix:
+
+    list                    400   it sends ?recursive=false) - stray parenthesis - and binding was strict
+    metadata set custom     400   it sends a user metadata value as a plain string, not an object
+
+Both are fixed and each has a test. The reference client left one file behind under `%APPDATA%` (its update
+check, holding `2.4.2`); the folder did not exist before the run and was removed.
+
+**Tests.** `AssetTransferTests`, 14 on SQLite and the same on SQL Server, and `AssetFetchTests`, 3 against a
+server allowed to fetch from itself: multipart in order, with a part missing (400, then completed by a retry),
+a part of the wrong size, a total over the limit refused on the first part, the abandoned-upload sweep; zip
+import with folders, backslash names and a `../` entry refused; skip versus overwrite; an archive of zeros that
+unpacks past the import limit stopped with 413 after two entries; tgz export imported back with equal hashes;
+zip export with and without `recursive`; access; a fetch from the server's own address refused by default; a
+fetched file stored with its own hashes; a remote 404 as 502; and `169.254.169.254`, its NAT64 form and a
+`file:` URL refused even with private networks allowed. `RemoteFetchAddressTests`, 23 unit tests on the address
+rules. Falsified: with the connect-time check disabled, the fetch from the server's own address answered 201
+and the metadata-address test failed; with the import total check disabled, the zero-filled archive imported
+with 200. Both restored.
+
+Suites: unit 107/0; integration 196/0 on SQL Server (ten consecutive runs), 196 with 63 skipped without it.

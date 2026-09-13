@@ -319,6 +319,88 @@
         }
     });
 
+    // An archive is imported in one request, body and all, and unpacked by the server into this folder. What
+    // it did comes back as counts; a failure list stays on screen instead of being lost to a reload.
+
+    function importArchive(zone, file, overwrite) {
+        var name = file.name.toLowerCase();
+        var format = /\.zip$/.test(name) ? "zip" : (/\.(tgz|tar\.gz)$/.test(name) ? "tgz" : null);
+        var row = progressRow(zone, file);
+        var status = row.querySelector("[data-status]");
+        if (!format) {
+            status.textContent = "Not a .zip, .tgz or .tar.gz file";
+            row.classList.add("fg-upload-failed");
+            return;
+        }
+
+        var folder = zone.getAttribute("data-folder") || "";
+        var url = zone.getAttribute("data-import-url") + "?format=" + format + "&path=" + encodeURIComponent(folder) + (overwrite ? "&overwrite=true" : "");
+        var token = zone.querySelector("input[name='__RequestVerificationToken']");
+        var bar = row.querySelector("progress");
+        var request = new XMLHttpRequest();
+        request.open("POST", url);
+        if (token) {
+            request.setRequestHeader("RequestVerificationToken", token.value);
+        }
+
+        request.upload.addEventListener("progress", function (progress) {
+            if (progress.lengthComputable) {
+                bar.max = progress.total;
+                bar.value = progress.loaded;
+                if (progress.loaded === progress.total) {
+                    status.textContent = "Unpacking";
+                }
+            }
+        });
+
+        request.addEventListener("load", function () {
+            var result = null;
+            try {
+                result = JSON.parse(request.responseText);
+            } catch (error) {
+                result = null;
+            }
+
+            if (!result || typeof result.imported !== "number") {
+                status.textContent = (result && result.error) || ("Failed (" + request.status + ")");
+                row.classList.add("fg-upload-failed");
+                return;
+            }
+
+            var failed = result.failed || [];
+            status.textContent = "Imported " + result.imported + ", skipped " + result.skipped + (failed.length ? ", failed " + failed.length : "")
+                + (request.status === 413 ? " (stopped: larger than this server accepts)" : "");
+            if (failed.length || request.status !== 200) {
+                row.classList.add("fg-upload-failed");
+                var details = document.createElement("span");
+                details.className = "fg-small fg-muted";
+                details.textContent = failed.join("; ");
+                row.appendChild(details);
+            } else {
+                row.classList.add("fg-upload-ok");
+                window.location.reload();
+            }
+        });
+
+        request.addEventListener("error", function () {
+            status.textContent = "The connection failed.";
+            row.classList.add("fg-upload-failed");
+        });
+
+        status.textContent = "Uploading";
+        request.send(file);
+    }
+
+    document.addEventListener("change", function (event) {
+        var input = event.target.closest ? event.target.closest("input[data-asset-archive]") : null;
+        var zone = input ? input.closest("[data-asset-upload]") : null;
+        if (zone && input.files && input.files.length) {
+            var overwrite = zone.querySelector("input[data-asset-archive-overwrite]");
+            importArchive(zone, input.files[0], !!(overwrite && overwrite.checked));
+            input.value = "";
+        }
+    });
+
     document.addEventListener("dragover", function (event) {
         var zone = event.target.closest ? event.target.closest("[data-asset-upload]") : null;
         if (zone) {

@@ -19,7 +19,7 @@ namespace FiGet.Protocol.Assets;
 /// scripts and <c>win_get_url</c> tasks keep working unchanged. The contract is written down in
 /// docs/protocol-assets.md, with where each rule came from.
 /// </summary>
-public static class AssetEndpoints
+public static partial class AssetEndpoints
 {
     /// <summary>The body the server being replaced answers a missing file with, recorded from it.</summary>
     public const string FileNotFound = "The specified asset was not found.";
@@ -44,6 +44,8 @@ public static class AssetEndpoints
         group.MapPost("/delete/{**path}", DeleteAsync).DisableAntiforgery();
         group.MapGet("/metadata/{**path}", GetMetadataAsync);
         group.MapPost("/metadata/{**path}", SetMetadataAsync).DisableAntiforgery();
+        group.MapPost("/import/{**path}", ImportEndpointAsync).DisableAntiforgery();
+        group.MapGet("/export/{**path}", ExportEndpointAsync);
         return app;
     }
 
@@ -108,6 +110,16 @@ public static class AssetEndpoints
             _ => AssetWriteMode.CreateOrReplace,
         };
 
+        if (HttpMethods.IsPost(http.Request.Method) && http.Request.Query["multipart"].ToString() is { Length: > 0 } step)
+        {
+            return await MultipartAsync(http, request!.Feed, parsed, step, assets, upload.Value, audit, cancellationToken);
+        }
+
+        if (http.Request.Headers[SourceUrlHeader].ToString() is { Length: > 0 } source)
+        {
+            return await FetchFromHeaderAsync(http, request!.Feed, parsed, source.Trim(), mode, assets, upload.Value, audit, cancellationToken);
+        }
+
         var outcome = await WriteAsync(http, request!.Feed, parsed, http.Request.Body, http.Request.ContentType, mode, assets, upload.Value, cancellationToken);
         if (outcome is AssetOutcome.Created or AssetOutcome.Replaced)
         {
@@ -136,12 +148,7 @@ public static class AssetEndpoints
         ArgumentNullException.ThrowIfNull(upload);
         ArgumentNullException.ThrowIfNull(assets);
 
-        // Kestrel refuses anything over 30 MB before a handler sees it unless the limit is raised here.
-        var sizeFeature = http.Features.Get<IHttpMaxRequestBodySizeFeature>();
-        if (sizeFeature is { IsReadOnly: false })
-        {
-            sizeFeature.MaxRequestBodySize = upload.MaxAssetSizeBytes;
-        }
+        RaiseBodyLimit(http, upload.MaxAssetSizeBytes);
 
         try
         {
@@ -194,7 +201,7 @@ public static class AssetEndpoints
         return outcome is AssetOutcome.Deleted or AssetOutcome.NotFound ? Results.Ok() : ToResult(outcome);
     }
 
-    private static async Task<IResult> ListAsync(HttpContext http, string directory, string? path, bool? recursive, AssetService assets, CancellationToken cancellationToken)
+    private static async Task<IResult> ListAsync(HttpContext http, string directory, string? path, string? recursive, AssetService assets, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAssetsAsync(http, directory, TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -208,7 +215,7 @@ public static class AssetEndpoints
         }
 
         // A folder that does not exist lists as empty rather than 404, as documented and as recorded.
-        var items = await assets.ListAsync(request!.Feed, parsed, recursive ?? false, cancellationToken);
+        var items = await assets.ListAsync(request!.Feed, parsed, Flag(recursive), cancellationToken);
         return Results.Json(items.Select(item => Describe(http, request.Feed, item)).ToList(), Json);
     }
 
@@ -235,7 +242,7 @@ public static class AssetEndpoints
         return outcome is AssetOutcome.Created or AssetOutcome.AlreadyExists ? Results.StatusCode(StatusCodes.Status201Created) : ToResult(outcome);
     }
 
-    private static async Task<IResult> DeleteAsync(HttpContext http, string directory, string? path, bool? recursive, AssetService assets, AuditLog audit, CancellationToken cancellationToken)
+    private static async Task<IResult> DeleteAsync(HttpContext http, string directory, string? path, string? recursive, AssetService assets, AuditLog audit, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAssetsAsync(http, directory, TokenScopes.Delete, cancellationToken);
         if (error is not null)
@@ -248,10 +255,10 @@ public static class AssetEndpoints
             return Results.Text("The path is not a valid path.", "text/plain", statusCode: StatusCodes.Status400BadRequest);
         }
 
-        var outcome = await assets.DeleteAsync(request!.Feed, parsed, recursive ?? false, cancellationToken);
+        var outcome = await assets.DeleteAsync(request!.Feed, parsed, Flag(recursive), cancellationToken);
         if (outcome == AssetOutcome.Deleted)
         {
-            audit.Record(http, "asset.delete", parsed.Value, $"directory={request.Feed.Name} recursive={recursive ?? false}");
+            audit.Record(http, "asset.delete", parsed.Value, $"directory={request.Feed.Name} recursive={Flag(recursive)}");
         }
 
         // Deleting what does not exist is documented as not an error.
@@ -291,6 +298,10 @@ public static class AssetEndpoints
         try
         {
             body = await JsonSerializer.DeserializeAsync<MetadataUpdateJson>(http.Request.Body, Json, cancellationToken);
+            if (body?.UserMetadata is not null)
+            {
+                _ = ReadUserMetadata(body.UserMetadata);
+            }
         }
         catch (JsonException)
         {
@@ -304,9 +315,7 @@ public static class AssetEndpoints
 
         var change = new AssetMetadataChange(
             body.Type,
-            body.UserMetadata?.ToDictionary(
-                pair => pair.Key,
-                pair => new AssetUserMetadataValue(pair.Value.Value ?? "", pair.Value.IncludeInResponseHeader)),
+            body.UserMetadata is null ? null : ReadUserMetadata(body.UserMetadata),
             string.Equals(body.UserMetadataUpdateMode, "replace", StringComparison.OrdinalIgnoreCase),
             body.CacheHeader?.Type,
             body.CacheHeader?.Value is { ValueKind: not JsonValueKind.Null and not JsonValueKind.Undefined } value
@@ -367,7 +376,7 @@ public static class AssetEndpoints
             item.Sha1,
             item.Sha256,
             item.Sha512,
-            metadata.Count == 0 ? null : metadata.ToDictionary(p => p.Key, p => new UserMetadataJson(p.Value.Value, p.Value.IncludeInResponseHeader)),
+            metadata.Count == 0 ? null : metadata.ToDictionary(p => p.Key, p => p.Value.IncludeInResponseHeader ? (object)new UserMetadataJson(p.Value.Value, true) : p.Value.Value),
             item.CacheHeaderType is null ? null : new CacheHeaderJson(item.CacheHeaderType, item.CacheHeaderValue));
     }
 
@@ -384,7 +393,7 @@ public static class AssetEndpoints
         string? Sha1,
         string? Sha256,
         string? Sha512,
-        Dictionary<string, UserMetadataJson>? UserMetadata,
+        Dictionary<string, object>? UserMetadata,
         CacheHeaderJson? CacheHeader);
 
     private sealed record UserMetadataJson(string Value, bool IncludeInResponseHeader);
@@ -397,17 +406,42 @@ public static class AssetEndpoints
 
         public string? UserMetadataUpdateMode { get; set; }
 
-        public Dictionary<string, UserMetadataUpdateJson>? UserMetadata { get; set; }
+        public Dictionary<string, JsonElement>? UserMetadata { get; set; }
 
         public CacheHeaderUpdateJson? CacheHeader { get; set; }
     }
 
-    private sealed class UserMetadataUpdateJson
+    /// <summary>
+    /// Reads user metadata the way the reference client writes it: a plain string for an ordinary value, and
+    /// an object with <c>value</c> and <c>includeInResponseHeader</c> only when that flag is set. Anything else
+    /// is a malformed update.
+    /// </summary>
+    private static Dictionary<string, AssetUserMetadataValue> ReadUserMetadata(Dictionary<string, JsonElement> values)
     {
-        public string? Value { get; set; }
+        var read = new Dictionary<string, AssetUserMetadataValue>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, element) in values)
+        {
+            read[key] = element.ValueKind switch
+            {
+                JsonValueKind.String => new AssetUserMetadataValue(element.GetString()!, false),
+                JsonValueKind.Object when element.TryGetProperty("value", out var value) && value.ValueKind == JsonValueKind.String =>
+                    new AssetUserMetadataValue(
+                        value.GetString()!,
+                        element.TryGetProperty("includeInResponseHeader", out var header) && header.ValueKind == JsonValueKind.True),
+                _ => throw new JsonException($"User metadata '{key}' must be a string or an object with a string value."),
+            };
+        }
 
-        public bool IncludeInResponseHeader { get; set; }
+        return read;
     }
+
+    /// <summary>
+    /// A true/false query value, read leniently. The reference client builds its listing URL as
+    /// <c>?recursive=false)</c>, stray parenthesis included, and the server it was written against accepts
+    /// that; a strict boolean binding answered its every listing with 400.
+    /// </summary>
+    public static bool Flag(string? value) =>
+        value is not null && value.Trim().TrimEnd(')').Trim() is var trimmed && (trimmed.Equals("true", StringComparison.OrdinalIgnoreCase) || trimmed == "1");
 
     private sealed class CacheHeaderUpdateJson
     {

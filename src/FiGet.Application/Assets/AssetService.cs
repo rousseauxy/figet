@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using FiGet.Application.Ports;
 using FiGet.Domain.Assets;
@@ -38,6 +40,9 @@ public enum AssetOutcome
     NotEmpty,
     InvalidPath,
     TooLarge,
+
+    /// <summary>A multipart request whose numbers do not add up, or a completion with parts missing.</summary>
+    InvalidUpload,
 }
 
 /// <summary>One user-defined metadata value, as the asset API spells it.</summary>
@@ -165,6 +170,134 @@ public sealed class AssetService(IAssetStore store, IAssetStorage storage, TimeP
 
         return AssetOutcome.Replaced;
     }
+
+    /// <summary>
+    /// Stores one part of a multipart upload. Nothing appears in the directory until
+    /// <see cref="CompleteUploadAsync"/>; until then the parts wait on shared storage, and ones nobody completes
+    /// are swept away after a while.
+    /// </summary>
+    public async Task<AssetOutcome> UploadPartAsync(
+        Feed feed,
+        string uploadId,
+        int index,
+        long offset,
+        long totalSize,
+        long partSize,
+        int totalParts,
+        Stream content,
+        long maxBytes,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(feed);
+        ArgumentNullException.ThrowIfNull(content);
+        if (string.IsNullOrWhiteSpace(uploadId)
+            || totalParts <= 0
+            || index < 0
+            || index >= totalParts
+            || offset < 0
+            || partSize <= 0
+            || totalSize <= 0
+            || offset + partSize > totalSize)
+        {
+            return AssetOutcome.InvalidUpload;
+        }
+
+        // Refused on the first part rather than on completion, so nobody uploads four gigabytes to be told no.
+        if (totalSize > maxBytes)
+        {
+            return AssetOutcome.TooLarge;
+        }
+
+        var key = UploadKey(feed, uploadId);
+        var counted = new CountingStream(content, partSize);
+        try
+        {
+            await storage.SaveUploadPartAsync(key, index, offset, counted, cancellationToken);
+        }
+        catch (AssetTooLargeException)
+        {
+            return AssetOutcome.InvalidUpload;
+        }
+
+        if (counted.Count != partSize)
+        {
+            // The part is stored, but it is not the size its request claimed; completion would find the gap.
+            return AssetOutcome.InvalidUpload;
+        }
+
+        await storage.SaveUploadManifestAsync(key, totalSize, totalParts, cancellationToken);
+        return AssetOutcome.Updated;
+    }
+
+    /// <summary>
+    /// Joins the parts of an upload into the file at <paramref name="path"/>, replacing one that is there, as
+    /// an ordinary upload by POST does. The parts must be every index once, end to end, adding up to the
+    /// total the upload announced; otherwise nothing is stored and the parts stay for a corrected retry.
+    /// </summary>
+    public async Task<AssetOutcome> CompleteUploadAsync(
+        Feed feed,
+        AssetPath path,
+        string uploadId,
+        string contentType,
+        long maxBytes,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(feed);
+        ArgumentNullException.ThrowIfNull(path);
+        if (string.IsNullOrWhiteSpace(uploadId))
+        {
+            return AssetOutcome.InvalidUpload;
+        }
+
+        var key = UploadKey(feed, uploadId);
+        if (await storage.ReadUploadManifestAsync(key, cancellationToken) is not { } manifest)
+        {
+            return AssetOutcome.InvalidUpload;
+        }
+
+        var parts = await storage.ListUploadPartsAsync(key, cancellationToken);
+        long expectedOffset = 0;
+        for (var i = 0; i < parts.Count; i++)
+        {
+            if (parts[i].Index != i || parts[i].Offset != expectedOffset)
+            {
+                return AssetOutcome.InvalidUpload;
+            }
+
+            expectedOffset += parts[i].Size;
+        }
+
+        if (parts.Count != manifest.TotalParts || expectedOffset != manifest.TotalSize)
+        {
+            return AssetOutcome.InvalidUpload;
+        }
+
+        var sources = parts
+            .Select(part => (Func<CancellationToken, Task<Stream>>)(async token =>
+                await storage.OpenUploadPartAsync(key, part, token)
+                    ?? throw new IOException($"Part {part.Index} of an upload disappeared while it was being completed.")))
+            .ToList();
+
+        AssetOutcome outcome;
+        await using (var joined = new ConcatenatedStream(sources))
+        {
+            outcome = await WriteAsync(feed, path, joined, contentType, AssetWriteMode.CreateOrReplace, maxBytes, cancellationToken);
+        }
+
+        if (outcome is AssetOutcome.Created or AssetOutcome.Replaced)
+        {
+            await storage.DeleteUploadAsync(key, cancellationToken);
+        }
+
+        return outcome;
+    }
+
+    /// <summary>
+    /// The client chooses the id and the API promises nothing about its shape - a GUID is only one option -
+    /// so it is hashed into a fixed storage-safe form rather than validated.
+    /// </summary>
+    private static AssetUploadKey UploadKey(Feed feed, string uploadId) =>
+        new(feed.NameLower, Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(uploadId)))[..32]);
 
     /// <summary>Creates a folder and the folders above it. Creating one that exists is not an error.</summary>
     public async Task<AssetOutcome> CreateFolderAsync(Feed feed, AssetPath path, CancellationToken cancellationToken)

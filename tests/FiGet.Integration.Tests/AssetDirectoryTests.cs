@@ -26,6 +26,7 @@ public abstract class AssetServerFixture(TestDatabase database) : FiGetServerFix
         builder.UseSetting("FiGet:Feeds:4:Name", "vault");
         builder.UseSetting("FiGet:Feeds:4:Kind", "Assets");
         builder.UseSetting("FiGet:Limits:MaxAssetSizeMB", "1");
+        builder.UseSetting("FiGet:Limits:MaxImportSizeMB", "2");
     }
 }
 
@@ -198,6 +199,23 @@ public abstract partial class AssetDirectoryTests
         Assert.Equal(["inside.txt"], listed.Select(i => (string?)i!["name"]));
     }
 
+    /// <summary>
+    /// Found by running the reference client: it asks for <c>dir/{path}?recursive=false)</c>, parenthesis and
+    /// all. A strict boolean binding answered every listing it made with 400.
+    /// </summary>
+    [Fact]
+    public async Task A_listing_accepts_the_reference_clients_malformed_recursive_flag()
+    {
+        var folder = Unique();
+        using var admin = server.CreateClient(FiGetServerFixture.AdminToken);
+        HttpAssert.Status(HttpStatusCode.Created, await admin.PutAsync($"endpoints/files/content/{folder}/sub/x.txt", new ByteArrayContent([1])));
+
+        var shallow = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await admin.GetAsync($"endpoints/files/dir/{folder}?recursive=false)")))!.AsArray();
+        Assert.Equal(["sub"], shallow.Select(i => (string?)i!["name"]));
+        var deep = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await admin.GetAsync($"endpoints/files/dir/{folder}?recursive=true)")))!.AsArray();
+        Assert.Equal(2, deep.Count);
+    }
+
     [Fact]
     public async Task Paths_are_case_insensitive_and_keep_the_case_they_were_written_with()
     {
@@ -310,14 +328,18 @@ public abstract partial class AssetDirectoryTests
         HttpAssert.Status(HttpStatusCode.Created, await admin.PutAsync($"endpoints/files/content/{path}", new ByteArrayContent([1])));
 
         using var update = new StringContent(
-            """{"type":"application/json","userMetadataUpdateMode":"update","userMetadata":{"owner":{"value":"platform","includeInResponseHeader":false}},"cacheHeader":{"type":"ttl","value":60}}""",
+            """{"type":"application/json","userMetadataUpdateMode":"update","userMetadata":{"owner":"platform","shown":{"value":"yes","includeInResponseHeader":true}},"cacheHeader":{"type":"ttl","value":60}}""",
             Encoding.UTF8,
             "application/json");
         HttpAssert.Status(HttpStatusCode.OK, await admin.PostAsync($"endpoints/files/metadata/{path}", update));
 
         var item = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await admin.GetAsync($"endpoints/files/metadata/{path}")))!;
         Assert.Equal("application/json", (string?)item["type"]);
-        Assert.Equal("platform", (string?)item["userMetadata"]!["owner"]!["value"]);
+        // The reference client's own shapes, both ways: a plain string, and an object only when the value is
+        // also meant for a response header. Its reader expects exactly that mix back.
+        Assert.Equal("platform", (string?)item["userMetadata"]!["owner"]);
+        Assert.Equal("yes", (string?)item["userMetadata"]!["shown"]!["value"]);
+        Assert.True((bool?)item["userMetadata"]!["shown"]!["includeInResponseHeader"]);
         Assert.Equal("ttl", (string?)item["cacheHeader"]!["type"]);
         Assert.Equal("60", (string?)item["cacheHeader"]!["value"]);
 

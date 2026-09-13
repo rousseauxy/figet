@@ -170,17 +170,18 @@ public case and a current version. It is outward-facing, so it waits for a perso
 
 ## Soon
 
-- **Asset directory extras** (left out of phase 4 on purpose, 2026-09-13): multipart upload for files over
-  2 GB, archive import and export of a folder, and fetching a file from a remote URL. Nothing in the fleet
-  uses them; import would help a migration from the server being replaced.
+- **Fetch by URL through a proxy.** Fetching deliberately uses no proxy, because the address check would see
+  the proxy rather than the target. An instance whose only way out is a proxy needs the check done another
+  way - resolving and pinning the address before the request, or an allow-list of hosts - before it can fetch.
 - **Record the asset write side from the reference server.** Its uploads, deletes and metadata were taken
   from the client library and the documentation, because writing to the reference instance was not possible
   in the session that built them. Still unconfirmed: the status of a `PUT` onto an existing file (FiGet
-  answers 409), and the header name for user metadata marked `includeInResponseHeader` (FiGet sends none).
-  Needs an API key for the reference instance.
-- **Drive the upload drop zone in a real browser.** The request it sends is covered by a test and the page
-  was checked visually, but the script's drag, progress and confirm-before-replace path has not been clicked
-  through by a person yet.
+  answers 409), the header name for user metadata marked `includeInResponseHeader` (FiGet sends none), and the
+  body of an import response (FiGet answers counts). The reference client has since run every asset command
+  against FiGet, which settled the metadata shape. Needs an API key for the reference instance.
+- **Drive the upload drop zone in a real browser.** The requests it sends - an upload, and an archive import -
+  are covered by tests and the page was checked visually, but the script's drag, progress,
+  confirm-before-replace and import-result path has not been clicked through by a person yet.
 
 - **Promotion between feeds.** Referred to by the server being replaced; nothing in FiGet does it yet.
   Needs a decision on whether a promoted package keeps its origin or becomes a push.

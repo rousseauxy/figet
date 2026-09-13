@@ -928,3 +928,4 @@ legend {
 @media (max-width: 600px) {
   .fg-upload-list li { grid-template-columns: minmax(0, 1fr); gap: 0.15rem; }
 }
+.fg-check.fg-inline { display: inline-flex; margin-left: 0.6rem; }

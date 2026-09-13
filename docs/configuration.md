@@ -88,7 +88,16 @@ the rare rule a token cannot express.
 | Key | Default | Meaning |
 |---|---|---|
 | `MaxPackageSizeMB` | `256` | Largest accepted package or symbol package upload. Larger uploads get 413. |
+| `MaxImportSizeMB` | `4096` | Largest archive an asset import accepts, and the most it may unpack to, counted on bytes actually unpacked. Past it the import stops with 413. |
 | `MaxAssetSizeMB` | `1024` | Largest file an asset directory accepts. Separate from the package limit because installers are far larger. Larger uploads get 413 and leave nothing behind. A reverse proxy in front has its own body limit, which has to be at least this. |
+
+## FiGet:Assets
+
+| Key | Default | Meaning |
+|---|---|---|
+| `IncompleteUploadExpiry` | `24:00:00` | How long the parts of a multipart upload wait for completion before the hourly sweep removes them. |
+| `RemoteFetch:Timeout` | `00:30:00` | How long fetching one file by URL may take, download included. |
+| `RemoteFetch:AllowPrivateNetworks` | `false` | Whether a fetched URL may point at a private network, loopback or carrier-grade NAT address. Off, because an upload token could otherwise read internal addresses through the server. Link-local (cloud metadata) addresses stay refused either way. No HTTP proxy is used for fetching. |
 
 ## FiGet:Logging
 
@@ -101,7 +110,7 @@ the rare rule a token cannot express.
 
 Who changed what, and when: feeds created, edited and deleted, upstreams added and removed, tokens issued
 and revoked, the theme changed, packages pushed, deleted, relisted, pulled and un-cached, asset files uploaded
-and deleted, asset folders created, asset metadata changed, and sign-ins including refused ones.
+(multipart included), fetched by URL and deleted, archives imported, asset folders created, asset metadata changed, and sign-ins including refused ones.
 
 It has no on/off key of its own. Every line is written at Information under the category `FiGet.Audit`, so
 the standard log-level configuration governs it:

@@ -15,6 +15,9 @@ public sealed class UploadOptions
     /// </summary>
     public long MaxAssetSizeBytes { get; set; } = 1024L * 1024 * 1024;
 
+    /// <summary>The most one archive import may be, and may unpack to. What stops a zip bomb filling the disk.</summary>
+    public long MaxImportSizeBytes { get; set; } = 4096L * 1024 * 1024;
+
     /// <summary>Where uploads are buffered while they are validated. Defaults to the system temp directory.</summary>
     public string? TempPath { get; set; }
 }

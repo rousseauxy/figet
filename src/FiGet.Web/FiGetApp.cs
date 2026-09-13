@@ -9,6 +9,7 @@ using FiGet.Domain.Entities;
 using FiGet.Domain.Assets;
 using FiGet.Domain.Feeds;
 using FiGet.Http;
+using FiGet.Infrastructure.Assets;
 using FiGet.Infrastructure.Packages;
 using FiGet.Infrastructure.Persistence;
 using FiGet.Infrastructure.SqlServer;
@@ -57,6 +58,7 @@ public static class FiGetApp
         {
             upload.MaxPackageSizeBytes = figet.Value.Limits.MaxPackageSizeMB * 1024L * 1024L;
             upload.MaxAssetSizeBytes = figet.Value.Limits.MaxAssetSizeMB * 1024L * 1024L;
+            upload.MaxImportSizeBytes = figet.Value.Limits.MaxImportSizeMB * 1024L * 1024L;
             upload.TempPath = figet.Value.Storage.TempPath;
         });
         services.AddSingleton<StoragePaths>();
@@ -82,6 +84,13 @@ public static class FiGetApp
         services.AddSingleton<IAssetStorage>(provider => new FileSystemAssetStorage(Path.Combine(provider.GetRequiredService<StoragePaths>().Root, "files")));
         services.AddScoped<PackageIngestionService>();
         services.AddScoped<AssetService>();
+        services.AddScoped<AssetArchiveService>();
+        services.AddSingleton<IRemoteFileSource>(provider =>
+        {
+            var fetch = provider.GetRequiredService<IOptions<FiGetOptions>>().Value.Assets.RemoteFetch;
+            return new HttpRemoteFileSource(new RemoteFetchSettings { Timeout = fetch.Timeout, AllowPrivateNetworks = fetch.AllowPrivateNetworks });
+        });
+        services.AddHostedService<AssetUploadCleanupService>();
         services.AddScoped<AccessTokenService>();
 
         // Proxy feeds. The client is a singleton because NuGet's repositories cache resources and
@@ -490,6 +499,105 @@ public static class FiGetApp
             };
         }).DisableAntiforgery();
 
+        // Importing an archive from the page: the body is the archive and the token travels in a header, for the
+        // same reason as the upload above. The import itself is the API's.
+        admin.MapPost("/assets/{directory}/import", async (
+            string directory,
+            string? path,
+            string? format,
+            bool? overwrite,
+            HttpContext http,
+            IFeedStore feeds,
+            AssetArchiveService archives,
+            IOptions<UploadOptions> upload,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var target = await feeds.FindAsync(directory, cancellationToken);
+            if (target is not { Kind: FeedKind.Assets } || !AssetPath.TryParse(path, out var folder) || AssetEndpoints.ParseFormat(format) is not { } parsed)
+            {
+                return Results.Json(new { error = "There is no such asset directory, or the archive is not a .zip or .tar.gz." }, statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            var result = await AssetEndpoints.ImportAsync(http, target, folder, parsed, overwrite == true, archives, upload.Value, cancellationToken);
+            audit.Record(http, "asset.import", folder.IsRoot ? "/" : folder.Value, $"directory={target.Name} imported={result.Imported} skipped={result.Skipped} failed={result.Failed.Count}");
+            return AssetEndpoints.ImportResult(result);
+        }).DisableAntiforgery();
+
+        // Fetching a file from a URL. A plain form post that waits for the download, then returns to the
+        // folder with a word on how it went - a fixed code, so the page never echoes text from the request.
+        admin.MapPost("/assets/{directory}/fetch", async (
+            string directory,
+            HttpContext http,
+            IFeedStore feeds,
+            AssetService assets,
+            IRemoteFileSource remote,
+            IOptions<UploadOptions> upload,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(directory, cancellationToken);
+            var returnUrl = form["returnUrl"].ToString();
+            var fallback = $"/feeds/{Uri.EscapeDataString(directory)}";
+            var url = form["url"].ToString().Trim();
+            var name = form["name"].ToString().Trim();
+            if (name.Length == 0 && Uri.TryCreate(url, UriKind.Absolute, out var parsedUrl))
+            {
+                name = Uri.UnescapeDataString(parsedUrl.Segments.LastOrDefault()?.TrimEnd('/') ?? "");
+            }
+
+            if (target is not { Kind: FeedKind.Assets }
+                || !AssetPath.TryParse(form["parent"].ToString(), out var parent)
+                || name.Length == 0
+                || name.Contains('/', StringComparison.Ordinal)
+                || !AssetPath.TryParse(parent.IsRoot ? name : parent.Value + "/" + name, out var path))
+            {
+                return Back(WithResult(returnUrl, "invalid"), fallback);
+            }
+
+            var (outcome, _) = await AssetEndpoints.FetchAsync(
+                target,
+                path,
+                url,
+                form["overwrite"].ToString() is "true" or "on" ? AssetWriteMode.CreateOrReplace : AssetWriteMode.CreateOnly,
+                assets,
+                remote,
+                upload.Value,
+                cancellationToken);
+            if (outcome is AssetOutcome.Created or AssetOutcome.Replaced)
+            {
+                audit.Record(http, "asset.fetch", path.Value, $"directory={target.Name} url={url} outcome={outcome}");
+            }
+
+            var code = outcome switch
+            {
+                AssetOutcome.Created or AssetOutcome.Replaced => "fetched",
+                AssetOutcome.AlreadyExists => "exists",
+                AssetOutcome.TooLarge => "too-large",
+                AssetOutcome.InvalidPath => "refused",
+                _ => "failed",
+            };
+            return Back(WithResult(returnUrl, code), fallback);
+        });
+
+        // Downloading a folder as an archive from the page. A GET, so the sign-in cookie is enough: reading a
+        // folder changes nothing, and the API would want a token the browser does not have.
+        admin.MapGet("/assets/{directory}/export", async (
+            string directory,
+            string? path,
+            string? format,
+            IFeedStore feeds,
+            AssetArchiveService archives,
+            IOptions<UploadOptions> upload,
+            CancellationToken cancellationToken) =>
+        {
+            var target = await feeds.FindAsync(directory, cancellationToken);
+            return target is not { Kind: FeedKind.Assets }
+                ? Results.NotFound()
+                : await AssetEndpoints.ExportAsync(target, path, format, recursive: true, archives, upload.Value, cancellationToken);
+        });
+
         admin.MapPost("/assets/{directory}/folders", async (
             string directory,
             HttpContext http,
@@ -552,6 +660,23 @@ public static class FiGetApp
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
         });
+    }
+
+    /// <summary>A return address with the outcome of a fetch added, replacing one left by an earlier fetch.</summary>
+    private static string WithResult(string returnUrl, string code)
+    {
+        if (string.IsNullOrWhiteSpace(returnUrl))
+        {
+            return returnUrl;
+        }
+
+        var query = returnUrl.IndexOf('?', StringComparison.Ordinal);
+        var path = query < 0 ? returnUrl : returnUrl[..query];
+        var pairs = query < 0
+            ? []
+            : returnUrl[(query + 1)..].Split('&', StringSplitOptions.RemoveEmptyEntries).Where(p => !p.StartsWith("fetch=", StringComparison.Ordinal)).ToList();
+        pairs.Add("fetch=" + code);
+        return path + "?" + string.Join('&', pairs);
     }
 
     /// <summary>Back where the button was pressed, as long as that is a page on this server.</summary>

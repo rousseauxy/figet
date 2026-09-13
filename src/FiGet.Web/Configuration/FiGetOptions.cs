@@ -26,6 +26,8 @@ public sealed class FiGetOptions
 
     public ThemingOptions Theming { get; set; } = new();
 
+    public AssetOptions Assets { get; set; } = new();
+
     /// <summary>
     /// What to show as the running version, for example the image tag a deployment built. Empty: the
     /// assembly's informational version, which is what a local run has.
@@ -152,4 +154,28 @@ public sealed class LimitsOptions
 
     /// <summary>The largest file an asset directory accepts. Sized for installers, not packages.</summary>
     public int MaxAssetSizeMB { get; set; } = 1024;
+
+    /// <summary>The largest archive an import accepts, and the most it may unpack to.</summary>
+    public int MaxImportSizeMB { get; set; } = 4096;
+}
+
+public sealed class AssetOptions
+{
+    /// <summary>How long the parts of a multipart upload wait for their completion before they are removed.</summary>
+    public TimeSpan IncompleteUploadExpiry { get; set; } = TimeSpan.FromHours(24);
+
+    public RemoteFetchOptions RemoteFetch { get; set; } = new();
+}
+
+public sealed class RemoteFetchOptions
+{
+    /// <summary>How long fetching one file from a URL may take, the download included.</summary>
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(30);
+
+    /// <summary>
+    /// Whether a URL may point into a private network or at this host. Off by default, because a token that
+    /// may upload could otherwise make the server read internal addresses and store the answer where the
+    /// token can download it. Cloud metadata addresses stay refused either way.
+    /// </summary>
+    public bool AllowPrivateNetworks { get; set; }
 }
