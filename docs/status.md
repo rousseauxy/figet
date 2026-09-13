@@ -2302,3 +2302,42 @@ each disabled in turn, the matching test fails (deletion also trips the foreign 
 instance: forced password change, two keys created, both listed on the tokens page.
 
 Suites: unit 107/0; integration 315/0 on SQLite and on SQL Server.
+
+## Accounts, phase 4: OpenID Connect providers - 2026-09-13
+
+- **Providers** (`OidcProviders`) are added by a super admin under Admin > Authentication > Providers: button name,
+  slug, issuer, client id, encrypted client secret, scopes, user name claim, groups claim, enabled, order. The page
+  shows the redirect URI to register. A provider is not an authentication scheme registered at startup:
+  `OidcSchemeProvider` answers for `oidc-{slug}` from the database, `OidcOptionsMonitor` builds the handler's options
+  from the row and rebuilds them when its `UpdatedUtc` moves, and `UseOidcCallbacks` hands `/signin-oidc/{slug}` to that
+  handler. So a save applies at the next sign-in on every replica, with no restart. Code flow with PKCE, response mode
+  query (Lax cookies suffice), claims from the ID token and user info under their own names.
+- **Sign-in** answers to `/account/external/complete`, which decides the account (`ExternalAccountService`): a known
+  identity (`ExternalLogins`, unique per provider and subject) signs in as its account, refused when disabled; an unknown
+  one makes a new account with the user role, its name from the configured claim or the email, made unique. Never matched
+  to an existing account by name or email.
+- **Profile**: connect a provider to the signed-in account (refused when the identity belongs to another), disconnect
+  (refused for the last way to sign in). The admin's account page lists an account's providers.
+- **Sign-in page**: provider buttons with a link to the local form, or buttons only (super admin setting
+  `auth:signin-mode`); `/account/login/local` always shows the form; no enabled provider shows the form as before.
+- **Group mapping**: a FiGet group links to groups of a provider (`GroupProviderLinks`). Each sign-in with that
+  provider makes the account's memberships from that provider (`GroupMembers.ProviderKey`) match its groups claim, and
+  never touches a membership an admin added. The group page marks provider members.
+- **Behind a proxy** the redirect URI is built from `FiGet:PublicBaseUrl` on both legs of the flow.
+
+Tests: `ExternalSignInTests` on both providers run real code flows against `FakeOidcProvider`, an in-process provider that
+checks client secret, redirect URI, PKCE and nonce and signs its ID tokens: account creation and return, no automatic
+matching, connect and refusal of someone else's identity, the last-way-to-sign-in rule, disabled accounts and providers,
+group mapping with a manual member kept, a changed secret applying without restart, sign-in page modes, the providers page
+(super admin only, secret stored encrypted), user name derivation. `ExternalSignInBehindProxyTests` checks the public
+redirect URI on authorize and on code redemption. With the manual-membership guard, the last-way rule, the options rebuild
+and the public redirect URI each disabled in turn, the matching test fails. Two bugs found on the way: the shared provider
+fields bound under the wrong form prefix, so saving the form would have lost every field; and empty inputs bind as null.
+
+Authentik (on OCI): application `figet`, confidential provider "Provider for FiGet" with the mappings the other apps use
+(email verified, openid, profile - which carries `groups`), strict redirect URI
+`https://figet.example.org/signin-oidc/authentik`, bound to a new group `FiGet Users` (owner and tester). Checked: discovery
+answers, the registered redirect URI is accepted and a different one refused, and the FiGet container reaches the issuer.
+The FiGet side of the provider is entered by the owner (super admin), then a real sign-in.
+
+Suites: unit 107/0; integration 340/0 on SQLite and on SQL Server.

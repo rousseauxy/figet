@@ -92,6 +92,21 @@ super admin, and a new password required at the first sign-in before any page wo
 away on an instance anyone else can reach. Five wrong passwords lock an account for fifteen minutes. Accounts,
 roles and what is still to come are described in `docs/auth-plan.md`.
 
+### Sign-in providers
+
+OpenID Connect providers are not configuration: a super admin adds them under **Admin > Authentication > Providers**,
+and they are stored in the database, so a change applies at the next sign-in on every replica without a restart. The
+client secret is encrypted with the data-protection keys, which are also in the database; an instance that loses those
+keys shows the secret as unreadable and it has to be entered again.
+
+At the provider, register a confidential client using the authorization code flow, with the redirect URI the provider
+page shows: `{public base URL}/signin-oidc/{slug}`. Behind a reverse proxy set `FiGet:PublicBaseUrl`: the redirect
+URI sent to the provider is built from it. The provider's issuer must be HTTPS unless it runs on the same machine.
+Scopes default to `openid profile email`; for group mapping, name the claim that lists groups (`groups` for
+Authentik and Keycloak) and link provider groups on each FiGet group's page.
+
+`/account/login/local` always shows the user name and password form, whatever the sign-in page shows.
+
 ## FiGet:Limits
 
 | Key | Default | Meaning |
