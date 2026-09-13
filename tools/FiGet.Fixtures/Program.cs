@@ -11,13 +11,12 @@
 // Response bodies are never copied verbatim, so no reference server's output ends up in the repository.
 // The run fails when the output contains anything that looks like an address, a user path or a secret.
 
-using System.Globalization;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using System.Xml.Linq;
+using FiGet.Testing;
 
 var options = ParseArguments(args);
 var input = Path.GetFullPath(options.GetValueOrDefault("in") ?? throw new ArgumentException("--in is required"));
@@ -29,10 +28,6 @@ var keptRequestHeaders = new[] { "Accept", "Content-Type", "User-Agent", "X-NuGe
 var credentialHeaders = new[] { "Authorization", "X-NuGet-ApiKey", "X-ApiKey" };
 var ignoredScenarios = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "start", "cleanup", "unlabelled" };
 var json = new JsonSerializerOptions { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
-XNamespace atom = "http://www.w3.org/2005/Atom";
-XNamespace app = "http://www.w3.org/2007/app";
-XNamespace d = "http://schemas.microsoft.com/ado/2007/08/dataservices";
-XNamespace m = "http://schemas.microsoft.com/ado/2007/08/dataservices/metadata";
 
 var records = Directory.GetFiles(input, "*.json")
     .Select(f => JsonNode.Parse(File.ReadAllText(f))!)
@@ -97,7 +92,7 @@ JsonNode Digest(JsonNode record)
         ["response"] = new JsonObject
         {
             ["status"] = (int)response["status"]!,
-            ["contentType"] = MediaType(Header(responseHeaders, "Content-Type")),
+            ["contentType"] = ProtocolDigest.MediaType(Header(responseHeaders, "Content-Type")),
             ["body"] = ResponseDigest(response["body"], Header(responseHeaders, "Content-Type")),
         },
     };
@@ -115,121 +110,13 @@ JsonNode? BodyKind(JsonNode? body, string? contentType)
     return new JsonObject { ["kind"] = kind, ["length"] = length };
 }
 
-JsonNode? ResponseDigest(JsonNode? body, string? contentType)
-{
-    if (body is null)
-    {
-        return new JsonObject { ["kind"] = "empty" };
-    }
-
-    var length = (long)body["length"]!;
-    var text = (string?)body["text"];
-    if (text is null)
-    {
-        return new JsonObject { ["kind"] = "binary", ["length"] = length };
-    }
-
-    var media = MediaType(contentType) ?? "";
-    if (media.Contains("xml", StringComparison.OrdinalIgnoreCase) || media.Contains("atom", StringComparison.OrdinalIgnoreCase))
-    {
-        try
-        {
-            return XmlDigest(XDocument.Parse(text));
-        }
-        catch (System.Xml.XmlException)
-        {
-            return new JsonObject { ["kind"] = "invalid-xml", ["length"] = length };
-        }
-    }
-
-    if (media.Contains("json", StringComparison.OrdinalIgnoreCase))
-    {
-        try
-        {
-            var node = JsonNode.Parse(text);
-            return node is JsonObject obj
-                ? new JsonObject { ["kind"] = "json-object", ["properties"] = new JsonArray(obj.Select(p => (JsonNode)p.Key).OrderBy(k => (string)k!, StringComparer.Ordinal).ToArray<JsonNode?>()) }
-                : new JsonObject { ["kind"] = "json", ["length"] = length };
-        }
-        catch (JsonException)
-        {
-            return new JsonObject { ["kind"] = "invalid-json", ["length"] = length };
-        }
-    }
-
-    return new JsonObject { ["kind"] = media.Length == 0 ? "text" : media, ["length"] = length };
-}
-
-JsonNode XmlDigest(XDocument document)
-{
-    var root = document.Root!;
-    if (root.Name == app + "service")
-    {
-        return new JsonObject
-        {
-            ["kind"] = "service-document",
-            ["collections"] = new JsonArray(root.Descendants(app + "collection").Select(c => (JsonNode)(string)c.Attribute("href")!).ToArray<JsonNode?>()),
-        };
-    }
-
-    var entries = root.Name == atom + "entry" ? [root] : root.Elements(atom + "entry").ToList();
-    var digest = new JsonObject
-    {
-        ["kind"] = root.Name == atom + "entry" ? "atom-entry" : root.Name == atom + "feed" ? "atom-feed" : "xml:" + root.Name.LocalName,
-    };
-
-    if (root.Name == atom + "feed")
-    {
-        digest["entryCount"] = entries.Count;
-        digest["count"] = (string?)root.Element(m + "count");
-        digest["nextLink"] = root.Elements(atom + "link").Any(l => (string?)l.Attribute("rel") == "next");
-    }
-
-    var properties = entries
-        .SelectMany(e => e.Descendants(m + "properties").Elements())
-        .Select(p => p.Name.LocalName)
-        .Distinct(StringComparer.Ordinal)
-        .Order(StringComparer.Ordinal)
-        .Select(n => (JsonNode)n)
-        .ToArray<JsonNode?>();
-    if (properties.Length > 0)
-    {
-        digest["properties"] = new JsonArray(properties);
-    }
-
-    if (entries.Count > 0)
-    {
-        digest["entries"] = new JsonArray(entries.Select(e =>
-        {
-            var props = e.Descendants(m + "properties").FirstOrDefault();
-            string? Prop(string name) => (string?)props?.Element(d + name);
-            var entry = new JsonObject
-            {
-                ["id"] = Prop("Id") ?? (string?)e.Element(atom + "title"),
-                ["version"] = Prop("Version"),
-                ["normalizedVersion"] = Prop("NormalizedVersion"),
-                ["isLatestVersion"] = Prop("IsLatestVersion"),
-                ["isAbsoluteLatestVersion"] = Prop("IsAbsoluteLatestVersion"),
-                ["isPrerelease"] = Prop("IsPrerelease"),
-                ["listed"] = Prop("Listed"),
-                ["hasDependencies"] = !string.IsNullOrEmpty(Prop("Dependencies")),
-                ["contentSrc"] = ContentPath((string?)e.Element(atom + "content")?.Attribute("src")),
-            };
-            return (JsonNode)entry;
-        }).ToArray<JsonNode?>());
-    }
-
-    return digest;
-}
-
-static string? ContentPath(string? src) =>
-    src is null ? null : Regex.Replace(Uri.TryCreate(src, UriKind.Absolute, out var uri) ? uri.AbsolutePath : src, "^/nuget/[^/]+", "/nuget/{feed}", RegexOptions.CultureInvariant);
+JsonNode? ResponseDigest(JsonNode? body, string? contentType) =>
+    body is null
+        ? ProtocolDigest.Response(hasBody: false, text: null, length: 0, contentType)
+        : ProtocolDigest.Response(hasBody: true, (string?)body["text"], (long)body["length"]!, contentType);
 
 static string? Header(JsonObject headers, string name) =>
     headers.FirstOrDefault(h => h.Key.Equals(name, StringComparison.OrdinalIgnoreCase)).Value?.GetValue<string>();
-
-static string? MediaType(string? contentType) =>
-    contentType?.Split(';')[0].Trim().ToLowerInvariant();
 
 static void AssertClean(string text, string scenario)
 {

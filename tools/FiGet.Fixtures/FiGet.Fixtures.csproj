@@ -4,4 +4,7 @@
     <IsPackable>false</IsPackable>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\tests\FiGet.Testing\FiGet.Testing.csproj" />
+  </ItemGroup>
 </Project>
