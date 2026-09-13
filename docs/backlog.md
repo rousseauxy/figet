@@ -18,39 +18,18 @@ writer serialises what survives. The v3 path pages first.
 Not the catalogue fetch - that is cached and shared by both. Measure before changing anything: the
 suspicion is the per-row work in the filter and the writer, not the merge.
 
-### Stop the proxy compressing package downloads
-
-`Save-Module` fails for every package through the public hostname, with a zip error, because the proxy
-gzips `application/zip` and drops `Content-Length` doing it (docs/status.md, "Save-Module fails through the
-proxy"). The NuGet provider under PowerShellGet 2.2.5 - the fleet's pinned stack - cannot read that; the
-same client saves the same package from the PowerShell Gallery without trouble, and `Save-PSResource` over
-v3 succeeds against the identical compressed bytes.
-
-Nothing in this repository can fix it: the application already sends a correct length and never compresses.
-The change is one middleware exclusion in the proxy that fronts every service, so it is not ours to make
-unilaterally - but until it is made, the v2 install path is broken for exactly the clients this server
-exists to replace the commercial server for.
-
-Worth a compatibility test afterwards that drives the real 5.1 client against a running instance, since
-nothing in CI would have caught this: every protocol test here talks to the application directly, and the
-defect only exists between the proxy and an old client.
-
 ### Let the descriptions survive a restart
 
-Stale-while-revalidate is done (docs/status.md, "The catalogue outlives the request now"): the version list
-lives in the database, anything cached is served at once whatever its age, and a stale catalogue refreshes
-behind the request. A cold `PnP.PowerShell` page went from 15.02s to 0.40s, and the recurring 13-15s every
-five minutes is gone.
+Half of this is done, deliberately. What changes an *answer* now survives a restart: which versions an
+upstream hides, and what each version depends on, are stored beside the version list (docs/status.md, "The
+facts that matter now survive a restart"). A cold start no longer re-lists a hidden version, and no longer
+tells a client that a module depends on nothing.
 
-What is still in memory is the *descriptions*, and that is deliberate after one attempt at the obvious:
-persisting them took the page down with an `OutOfMemoryException`, because describing PnP's 2098 versions
-is 101 MB against 31 KB of version strings. So after a restart the first view of each package lists plainly
-until the refresh lands - correct and instant, just undetailed for a few seconds.
-
-Making that survive properly needs the volume reduced first, not the storage changed, which is why the item
-below is now the interesting one: a listing renders ten rows and a page of the full list renders fifty, and
-those are the only descriptions anyone sees. Storing what is rendered is kilobytes. Storing everything is
-not.
+What still does not survive is the text: descriptions, summaries, authors and tags. After a restart a
+listing reads plainly until the first refresh describes it - display only, never correctness. They stay in
+memory on purpose: the tags alone are what made the persisted form a hundred megabytes and an out-of-memory
+crash. If this is ever worth doing it wants a different shape - per-version rows loaded on demand, or the
+tags left out - not the single blob that failed.
 
 ### Ask upstreams only for what the caller will serve
 
@@ -67,61 +46,6 @@ for their own rows.
 One thing it cannot drop: a v2 Atom entry carries `Tags`, and PowerShellGet reads `PSEdition_Desktop` /
 `PSEdition_Core` from them to decide whether a version can run at all. Descriptions are cosmetic there;
 tags are not.
-
-### The admin area, with its own side menu
-
-Includes redoing the feed settings page, which is the worst layout in the application (noted
-2026-09-12 from using it). Specifically, and these are layout faults rather than styling ones:
-
-- **The panel grid leaves a large dead area.** Three panels of wildly unequal height sit in one row, so
-  a short Settings panel and a short Source URLs panel park beside a very tall Upstreams panel, and the
-  danger zone ends up orphaned far below with nothing beside it.
-- **Source URLs wrap mid-token**, breaking a copyable URL across three lines in the middle of a word.
-  They want their own full-width row, not a narrow column.
-- **The upstreams table scrolls sideways inside its column** rather than being given the width a table
-  needs.
-- **Adding an upstream is a seven-field form** taking up most of the page height, permanently, for
-  something done rarely. It belongs behind a control rather than always open.
-
-The shape to aim for is the same side-menu admin the sibling application uses, with each of these as its
-own section rather than four unrelated things competing for one three-column grid.
-
-The management controls sit among the public pages. Feeds, tokens, upstreams and appearance belong
-behind one navigation, leaving the public pages read-only. The stylesheet for it is already ported
-(`fg-admin-shell`, `fg-admin-nav` and friends), so this is markup and routing rather than design.
-
-### Unlist a cached copy the upstream has unlisted, not only one it has removed
-
-`ReconcileWithdrawnAsync` compares what an upstream still *offers* against the copies cached here and
-unlists the ones that have disappeared. It never asks whether the upstream still *lists* what it offers,
-so a cached copy of a version the gallery has unlisted stays listed here.
-
-Visible on the live instance (docs/status.md, "The 37th version"): the gallery advertises 36 versions of
-PnP.PowerShell and the page shows 37. The extra one is `1.9.61-nightly` — cached here, unlisted there.
-
-Both states mean "stop offering this", so the rule is half applied, and the connector now knows the flag,
-so the change itself is small. What makes it a decision rather than a fix is the argument on the other
-side: what this feed *holds* is arguably this feed's business, and an air-gapped fleet may deliberately
-keep a version the gallery has since hidden. Unlisting it here would hide it from that fleet's own
-listings, though it would stay installable by exact version.
-
-Worth settling with the admin area, where a held-but-unlisted version finally has somewhere to be seen.
-
-### Somewhere to manage a held version that is unlisted
-
-The package page now mirrors the gallery and shows no unlisted version at all (docs/status.md, "What the
-tables show"). That is right for a reader, and it leaves one thing with nowhere to live: a version this
-feed *holds* and has unlisted — either because the feed's deletion behaviour is `Unlist`, so a delete
-through the API unlists rather than removes, or because an upstream withdrew it and the connector unlisted
-the cached copy.
-
-Nothing is lost and nothing is unrecoverable: the version still downloads by exact version, and
-`POST /v3/publish/{id}/{version}` relists it. But no screen admits it exists, so the only way to find one
-is to already know its version number.
-
-Belongs in the admin area as a view over what the feed *holds* rather than what it advertises — unlisted
-copies listed, with relist and delete beside them. That is the one place where "show me everything" is the
-right default, and having it is what lets the reader-facing page stay honest about mirroring the gallery.
 
 ### A role above admin, and what a token may create
 
@@ -175,35 +99,9 @@ Four things to decide before building it, none of them obvious:
 - **Which framework group.** A .NET package has dependency groups per target framework and following
   all of them explodes; a PowerShell module has one flat set, which is the case that matters first.
 
-### Versions the gallery hides look listed for a moment after every restart
-
-Measured 2026-09-12. On start the description cache is empty - it lives in memory, which is deliberate
-after the 101 MB incident - so the first catalogue read has nothing described. `ReconcileWithdrawnAsync`
-then takes the safe branch, where `advertised` is null and only presence counts, and a cached copy the
-gallery unlists is present in the version list. So it gets listed again, until the first described refresh
-puts it back.
-
-It is wider than cached copies. Upstream versions carry their listed flag from the same descriptions, so
-while those are cold the whole listing shows versions the gallery hides. Observed deliberately on a
-restart rather than inferred: at 20:48:20, seconds after start, `PnP.PowerShell` read "1 to 50 of 2098
-versions" with no hidden line at all; at 20:48:47 the same page read "1 to 36 of 36 versions, 2062 unlisted
-hidden". Same data, same image, 27 seconds apart.
-
-Two earlier descriptions of this were wrong and are corrected here. It is not a loop - it is one cycle per
-container start, one re-list and one correction. And the window is **short**, not minutes: it opens when a
-package is first viewed after a restart and closes when that view's background refresh lands, which for the
-2098-version package took under 30 seconds.
-
-It still matters because inside that window an unlisted version can win "latest" - the one thing the
-reconcile exists to prevent, and exactly how `PowerShellGet 2.2.5.1` kept being served before it was
-written.
-
-The cheap fix is to make re-listing require positive evidence: unlist on presence alone, but only list
-again when the upstream actually described the version as listed. Null `advertised` would then mean "no
-news", not "everything is fine". The thorough fix is to let the descriptions survive a restart, which is
-its own entry above, and would close this as a side effect.
-
 ### An audit log: who changed what, and when
+
+**The console half shipped on 2026-09-13** (docs/status.md, "The flapping is fixed at the cause, and there is an audit log"): every change below is written as a line under the `FiGet.Audit` category. What remains is the database table and the admin page.
 
 Decided 2026-09-12, to be built after the current round of testing settles. Distinct from the request log
 that now exists: that one answers "did a client reach us and what did it ask for", at Information level on
@@ -235,6 +133,28 @@ upstream. It is the one thing the commercial server cannot answer - its guidance
 `time-taken` - and it is cheap here because `ConnectorService` already knows. Left out because it is the
 heaviest by volume and belongs with usage statistics and cache pruning, not with an audit trail. Worth
 doing; not yet decided when.
+
+### The rest of the pages on a phone
+
+Tables were fixed on 2026-09-13 (docs/status.md, "Tables stretched down the page on a phone"). Checked at
+390 px, three things outside tables still run past the right edge on a feed's page: the v3 source URL in
+the header, the search bar with its filter, and the "shown of" line beneath it. None are table cells, so
+the table rule does not reach them.
+
+Worth doing while there: long package ids wrap at any character, so they break mid-word -
+"Microsoft.Entra.A / pplications". Breaking after the dots would read far better on a phone and on desktop
+alike, with a `<wbr>` after each dot or an equivalent.
+
+### Add our reproduction to the PSResourceGet fix
+
+Not a change to this server. PSResourceGet chooses a download URL by substring match on the version, so a
+requested version that is a text prefix of a longer one installs the wrong package (docs/status.md, "An
+install that fetched the wrong version"). It is already open as PowerShell/PSResourceGet #1657, with an
+unmerged fix in PR #2019.
+
+That fix rests on a single private-feed report. A comment adding a reproduction against public gallery
+packages - PowerShellGet 2.2.4 against 2.2.4.1, both listed, on PSResourceGet 1.2.0 - would give it a
+public case and a current version. It is outward-facing, so it waits for a person to post it.
 
 ## Soon
 

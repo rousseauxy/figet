@@ -1653,3 +1653,101 @@ meaning into it.
 `powershellget`, holding a hidden 2.2.5.1, and `dbatools` - were viewed straight after start: **zero**
 re-list events, zero withdrawals, both hidden copies still unlisted, no errors. The previous build produced
 a re-list three seconds after the same restart, with 65 of 71 rows in a state that would repeat it.
+
+## Tables stretched down the page on a phone - 2026-09-13
+
+Reported from a phone: the feeds page showed its header, then an empty panel filling the screen, then one
+feed pinned near the bottom and the others nowhere. Same signed in and out.
+
+Reproduced at 390 px with a headless browser before changing anything. Every row was roughly a thousand
+pixels tall. "gallery" had broken into "galle / ry" and sat in the vertical middle of its own row; the
+second feed was far below, off-screen. So nothing was missing and nothing was pinned to the bottom - the
+screenshot was the top half of one enormous row.
+
+**The cause is one property doing more than it says.** `overflow-wrap: anywhere` lets text wrap, but it
+also shrinks the cell's *minimum* width to a single character, and the table's automatic layout takes that
+literally. The first column wraps anywhere on purpose - commit `912115f` added it so long module ids stop
+pushing wide tables past their container on desktop - and the v3 source URL in the last column does too.
+On a phone the four columns that never wrap claimed the whole width, those two collapsed to one character,
+and a fifty-character URL one character wide is a very tall row. `vertical-align: middle` put the name in
+its centre.
+
+The obvious fix was the wrong one. Swapping to `overflow-wrap: break-word` does not shrink min-content, so
+an unbroken id like `Microsoft.Graph.Authentication` would refuse to wrap and the desktop overflow
+`912115f` fixed would come back. Instead both columns keep wrapping but gain a floor: `min-width: 8rem` on
+a table's first cell, and `14rem` on a URL inside a table. On a phone the table is then wider than the
+screen and scrolls sideways inside its wrapper - which already had `overflow-x: auto` - rather than
+stretching downwards. The URL floor is scoped to tables, because `.fg-url` is also used in panels on the
+feed settings and tokens pages where it has no room to spare.
+
+Verified before deploying, by rendering the live page with only the two new rules added, and again live
+afterwards at 390 px on the feeds list, a feed's package list and a package's versions. Desktop at 1280 px
+is unchanged apart from a short first column being slightly wider; everything still fits on one line.
+
+**Still there, and not caused by this:** on a phone the feed page's header URL, its search bar and the
+"shown of" line run past the right edge, because they are not table cells. Long ids now wrap mid-word
+("Microsoft.Entra.A / pplications"). Both recorded in docs/backlog.md.
+
+## An install that fetched the wrong version: not ours, and already reported - 2026-09-13
+
+A colleague installed PowerShellGet over v3 with `Install-PSResource` and got a folder named `2.2.5` whose
+manifest said `ModuleVersion = '2.2.5.1'`. The same command over v2 was correct. It took most of a night to
+find, and most of the wrong turns were mine; they are recorded because they are the useful part.
+
+### What it is
+
+PSResourceGet resolves the version correctly - which is why its prompt and the folder say 2.2.5 - and then
+picks the download URL with a **substring match** on the version string. Its entries are in descending
+order, so for 2.2.5 the first URL containing the text `2.2.5` is `.../2.2.5.1/powershellget.2.2.5.1.nupkg`.
+`2.2.5` is a text prefix of `2.2.5.1`. That one comparison explains every detail observed.
+
+Reproduced on this workstation with **PSResourceGet 1.2.0 on PowerShell 7.6.5**, newer than the colleague's
+1.1.0.1 and on a different operating system, using `Save-PSResource` into a scratch folder:
+
+| requested | folder | manifest inside | the longer sibling |
+|---|---|---|---|
+| 2.2.4 | 2.2.4 | **2.2.4.1** | 2.2.4.1, **listed** |
+| 2.2.3 | 2.2.3 | 2.2.3 | none |
+| 2.2.5 | 2.2.5 | **2.2.5.1** | 2.2.5.1, unlisted |
+
+The 2.2.4 row is the one that settled it: **both versions are listed** and it still delivers the wrong
+package. The 2.2.3 row is the control that shows the harness was sound. The server log agrees from the
+other side - asking for 2.2.4 cached 2.2.4.1 here, because that is what the client actually fetched.
+
+Already open upstream: PowerShell/PSResourceGet **#1657** (same symptom, `2024.5.20.1` folder holding
+`2024.5.20.12`), **PR #2019** (unmerged, replaces the substring match with a parsed-version comparison),
+and **#2030**, filed 2026-09-10.
+
+### Why the server was not changed
+
+This server is correct on every point that could be checked, and matches nuget.org:
+
+- The registration index carries unlisted versions with `listed: false` and `published: 1900-01-01`, the
+  latter mirrored from what the gallery itself reports. nuget.org does the same (30 of 84 leaves for
+  newtonsoft.json).
+- The flat-container version list includes unlisted versions, as nuget.org's does (84 of 84), and as the
+  NuGet documentation requires: that list "contains both listed and unlisted package versions".
+- Search already honours `listed` and reports 2.2.5.
+
+A workaround was proposed - hide unlisted versions - and rejected on evidence. It would not have helped: the
+fault is prefix matching, not listedness, and 2.2.4 against 2.2.4.1 breaks with both listed. It would also
+have broken installing an unlisted version by exact version, which is what unlisting is meant to preserve,
+and taken the server off the reference implementation for no protection.
+
+The fleet's pinned stack is unaffected: PowerShellGet 2.2.5 over v2, where exact-version installs of
+2.2.5.1 resolve and download correctly. Only PSResourceGet over v3 is hit, and only when the requested
+version is a text prefix of a longer sibling.
+
+### The wrong turns, in order
+
+1. **"He was on an old build."** Wrong: the fetch was at 22:38:58 on a container started 22:11:42.
+2. **"The unlisted flag is flapping again."** Wrong: 2.2.5.1 stayed unlisted throughout.
+3. **"PSResourceGet ignores `listed`."** Plausible, consistent with every observation, and wrong - it is
+   what made "hide unlisted versions" look like a fix. It was the exact-version test, where the client
+   refused an unlisted version it had happily downloaded as "latest", that showed the flag *was* read.
+4. **"The flat-container index is where it chose."** Wrong: the client never fetched it; the choice came
+   from the registration index.
+
+The misdirection came from real evidence each time. What finally separated cause from coincidence was a
+test built to fail differently under each explanation - two listed versions - rather than another
+observation that fitted them all.
