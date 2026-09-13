@@ -76,6 +76,48 @@ public sealed class PackagePageTests(ProxyServerFixture server) : IClassFixture<
     }
 
     /// <summary>
+    /// A search on a proxy feed pages this feed's matches and the upstreams' as one list (reported by the tester, 2026-09-14): every page
+    /// used to repeat the first 50 upstream hits, so page 2 showed page 1 again and there was no page 3. Each hit appears
+    /// once across the pages, the one this feed holds is not listed again as an upstream hit, and the last page has no Next.
+    /// </summary>
+    [Fact]
+    public async Task A_search_pages_through_the_upstream_results_without_repeating_them()
+    {
+        var prefix = "Paged" + Guid.NewGuid().ToString("N")[..8];
+        var ids = Enumerable.Range(1, 120).Select(n => $"{prefix}.M{n:D3}").ToList();
+        foreach (var id in ids)
+        {
+            server.Upstream.AddVersions(id, ["1.0.0"]);
+        }
+
+        // One of them held here as well: listed once, as this feed's own.
+        using (var held = TestPackages.Create(ids[70], "1.0.0"))
+        {
+            server.Upstream.Add(ids[70], "1.0.0", held.ToArray());
+        }
+
+        using var client = server.CreateClient();
+        var lower = ids[70].ToLowerInvariant();
+        HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync($"nuget/proxy/v3/flatcontainer/{lower}/1.0.0/{lower}.1.0.0.nupkg"));
+
+        var seen = new List<string>();
+        for (var page = 1; page <= 3; page++)
+        {
+            var body = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"feeds/proxy?q={prefix}&page={page}"));
+            var onPage = System.Text.RegularExpressions.Regex.Matches(body, $"href=\"/feeds/proxy/packages/({prefix}[^\"?]*)")
+                .Select(m => m.Groups[1].Value)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            seen.AddRange(onPage);
+            Assert.Equal(page < 3, body.Contains($"feeds/proxy?page={page + 1}&amp;q={prefix}", StringComparison.Ordinal));
+            Assert.Equal(page < 3 ? 50 : 20, onPage.Count);
+        }
+
+        Assert.Equal(120, seen.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Equal(ids[70], seen[0], StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// A size nobody offered falls back to the default. The rows are rendered server-side, so without this
     /// a hand-typed <c>per=100000</c> would render every version of a package that has 2098 of them.
     /// </summary>

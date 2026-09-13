@@ -52,6 +52,21 @@ public sealed class EfPackageStore(FiGetDbContext db) : IPackageStore
         return packages;
     }
 
+    public async Task<IReadOnlySet<string>> HeldIdsAsync(int feedKey, IReadOnlyCollection<string> idsLower, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(idsLower);
+        if (idsLower.Count == 0)
+        {
+            return new HashSet<string>(StringComparer.Ordinal);
+        }
+
+        var held = await db.Packages.AsNoTracking()
+            .Where(p => p.FeedKey == feedKey && idsLower.Contains(p.IdLower))
+            .Select(p => p.IdLower)
+            .ToListAsync(cancellationToken);
+        return held.ToHashSet(StringComparer.Ordinal);
+    }
+
     public async Task<IReadOnlyList<Package>> GetPackagesAsync(IReadOnlyCollection<long> packageKeys, CancellationToken cancellationToken)
     {
         if (packageKeys.Count == 0)

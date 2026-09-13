@@ -13,6 +13,9 @@ public interface IPackageStore
     /// <summary>Several packages with all their versions, without dependencies.</summary>
     Task<IReadOnlyList<Package>> GetPackagesAsync(IReadOnlyCollection<long> packageKeys, CancellationToken cancellationToken);
 
+    /// <summary>Which of these lower-cased ids the feed holds a package for.</summary>
+    Task<IReadOnlySet<string>> HeldIdsAsync(int feedKey, IReadOnlyCollection<string> idsLower, CancellationToken cancellationToken);
+
     /// <summary>
     /// Every package the feed stores, with every version, listed or not, and no dependencies. What a
     /// management listing of a whole feed needs; a feed of a few thousand versions is one query per table.

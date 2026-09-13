@@ -404,11 +404,18 @@ public sealed class ConnectorService(
     /// row the moment the package is cached. Marked as cached because that is what it will become.
     /// </summary>
     /// <summary>
-    /// Searches every upstream of the feed, de-duplicated by id with the first upstream winning. A package
-    /// nobody has cached must still be findable, which is the whole point of putting a proxy feed in front
-    /// of a gallery. An upstream that fails is logged and skipped, so the search still answers with what
-    /// the other upstreams and the local feed hold.
+    /// Searches every upstream of the feed, de-duplicated by id with the first upstream winning, for the first
+    /// <paramref name="take"/> hits. A package nobody has cached must still be findable, which is the whole point of
+    /// putting a proxy feed in front of a gallery. An upstream that fails is logged and skipped, so the search still
+    /// answers with what the other upstreams and the local feed hold.
+    ///
+    /// Asked in chunks, because a gallery caps what one request returns: asking the PowerShell Gallery for 150 at once
+    /// is not a promise of 150. An upstream stops being asked when it returns less than a chunk, or a chunk that adds
+    /// nothing new - one that ignores the offset would otherwise be asked for ever.
     /// </summary>
+    /// <summary>Hits asked of an upstream per request: what galleries answer in one page without capping it.</summary>
+    public const int SearchChunk = 100;
+
     public async Task<IReadOnlyList<UpstreamSearchHit>> SearchUpstreamsAsync(
         Feed feed,
         string query,
@@ -422,28 +429,36 @@ public sealed class ConnectorService(
 
         foreach (var upstream in feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal))
         {
-            if (hits.Count >= take)
+            var offset = 0;
+            while (hits.Count < take)
             {
-                break;
-            }
-
-            IReadOnlyList<UpstreamSearchHit> found;
-            try
-            {
-                found = await client.SearchAsync(upstream, query, includePrerelease, 0, take, cancellationToken);
-            }
-            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-            {
-                logger.LogWarning(ex, "Upstream {Upstream} did not answer a search for {Query}.", upstream.Name, query);
-                continue;
-            }
-
-            foreach (var hit in found)
-            {
-                if (Allows(upstream, hit.Id.ToLowerInvariant()) && seen.Add(hit.Id))
+                var size = Math.Min(SearchChunk, take - hits.Count);
+                IReadOnlyList<UpstreamSearchHit> found;
+                try
                 {
-                    hits.Add(hit with { Upstream = upstream.Name });
+                    found = await client.SearchAsync(upstream, query, includePrerelease, offset, size, cancellationToken);
                 }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    logger.LogWarning(ex, "Upstream {Upstream} did not answer a search for {Query}.", upstream.Name, query);
+                    break;
+                }
+
+                var before = hits.Count;
+                foreach (var hit in found)
+                {
+                    if (hits.Count < take && Allows(upstream, hit.Id.ToLowerInvariant()) && seen.Add(hit.Id))
+                    {
+                        hits.Add(hit with { Upstream = upstream.Name });
+                    }
+                }
+
+                if (found.Count < size || (hits.Count == before && found.Count > 0 && found.All(h => seen.Contains(h.Id))))
+                {
+                    break;
+                }
+
+                offset += found.Count;
             }
         }
 

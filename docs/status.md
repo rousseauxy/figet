@@ -2691,3 +2691,23 @@ for Settings and Unlisted versions:
 Tests updated to the new addresses; `FeedPermissionTests` adds that an account with Manage gets 404 on Name and
 deletion and does not see it in the menu, `AssetDirectoryTests` that a directory's menu has its three pages and none of
 the package-only ones, and that a package-only page answers 404 for a directory.
+
+## Search results page through the upstreams - 2026-09-14
+
+Reported by the tester as "the paging does not stay in the URL: on page 4, a refresh goes back to page 1". The page
+number was in the URL all along (`?page=`, honoured on a reload); what went wrong was the list. A search on a proxy feed
+showed this feed's matches for the requested page, followed by the **first 50** upstream hits - on every page. Page 2 of
+"Az" on the live gallery feed therefore repeated page 1's gallery results, and offered no page 3 because the count it
+compared against was only this page's rows. It read exactly as paging falling back to the start.
+
+- **One list, paged together**: this feed's matches first, then the upstreams' hits from where the previous page stopped.
+  Hits for ids this feed holds are left out, so a cached package is listed once, as this feed's own; the fetch widens by
+  as many as were left out, so they neither shorten a page nor hide the next one.
+- **Next** appears when this feed has more matches or the upstreams returned one more than the page needed.
+- **Upstreams are asked in chunks of 100** (`ConnectorService.SearchChunk`), because a gallery caps one request; an
+  upstream stops being asked when it returns less than a chunk, or a chunk with nothing new (one that ignores the
+  offset would otherwise be asked for ever). A search reaches the first 500 upstream results, ten pages, and says so.
+- The result line says which page it is.
+
+Test: `PackagePageTests` - 120 upstream packages matching a search, one of them cached here: pages of 50, 50 and 20,
+each package once, the cached one first, Next on the first two pages only.

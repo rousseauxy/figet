@@ -74,7 +74,11 @@
 </div>
 
 <p class="fg-result-count">
-    @rows.Count shown@(total > rows.Count ? $" of {total}" : "")@(string.IsNullOrWhiteSpace(Q) ? "" : $" matching “{Q}”").
+    @rows.Count shown@(!upstreamSearched && total > rows.Count ? $" of {total}" : "")@(string.IsNullOrWhiteSpace(Q) ? "" : $" matching “{Q}”")@(Page > 1 ? $", page {Page}" : "").
+    @if (upstreamCapped)
+    {
+        <text>The upstreams are searched for their first @MaxUpstreamResults results; narrow the search to reach further.</text>
+    }
     @if (IsProxy && string.IsNullOrWhiteSpace(Q))
     {
         <text>Browsing shows what this feed holds; search to reach the upstreams as well.</text>
@@ -146,7 +150,7 @@ else
             <a class="fg-btn fg-btn-sm" href="@PageLink(Page - 1)">← Previous</a>
         }
         <span class="fg-pager-info">Page @Page</span>
-        @if (Page * PageSize < total)
+        @if (Page * PageSize < total || moreUpstream)
         {
             <a class="fg-btn fg-btn-sm" href="@PageLink(Page + 1)">Next →</a>
         }
@@ -156,9 +160,15 @@ else
 @code {
     private const int PageSize = 50;
 
+    /// <summary>How deep into the upstreams' results the pages reach: ten pages, which is past where anyone reads.</summary>
+    private const int MaxUpstreamResults = 500;
+
     private Feed? feed;
     private int total;
     private List<Row> rows = [];
+    private bool upstreamSearched;
+    private bool moreUpstream;
+    private bool upstreamCapped;
 
     [Parameter]
     public string Name { get; set; } = "";
@@ -277,12 +287,41 @@ else
         }
     }
 
+    /// <summary>
+    /// The upstreams' hits after this feed's own, as one list paged together. They used to be the first 50 hits on every
+    /// page, so page 2 of a search repeated page 1's gallery results and then offered no page 3 - which read as the
+    /// paging jumping back to the start. Now a page takes its place in the combined list: this feed's matches first, then
+    /// the upstreams' from where the previous page stopped, leaving out ids this feed holds so none is listed twice.
+    /// </summary>
     private async Task AddUpstreamAsync()
     {
-        var known = rows.Select(r => r.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var hits = await Connector.SearchUpstreamsAsync(feed!, Q!, includePrerelease: IncludePrerelease, PageSize, HttpContext.RequestAborted);
+        upstreamSearched = true;
+        var localTotal = Src == "upstream" ? 0 : total;
+        var skip = Math.Max(0, (Page - 1) * PageSize - localTotal);
+        var take = Math.Max(0, PageSize - rows.Count);
 
-        foreach (var hit in hits.Where(h => !known.Contains(h.Id)))
+        // One more than the page needs, to know whether there is a next page - and as many more again as turn out to be held
+        // here, because those are left out and would otherwise eat into the page and the look-ahead.
+        var wanted = Math.Min(skip + take + 1, MaxUpstreamResults);
+        IReadOnlyList<UpstreamSearchHit> hits;
+        List<UpstreamSearchHit> fresh;
+        while (true)
+        {
+            hits = await Connector.SearchUpstreamsAsync(feed!, Q!, includePrerelease: IncludePrerelease, wanted, HttpContext.RequestAborted);
+            var held = await Packages.HeldIdsAsync(feed!.Key, [.. hits.Select(h => h.Id.ToLowerInvariant())], HttpContext.RequestAborted);
+            fresh = [.. hits.Where(h => !held.Contains(h.Id.ToLowerInvariant()))];
+            if (fresh.Count > skip + take || hits.Count < wanted || wanted >= MaxUpstreamResults)
+            {
+                break;
+            }
+
+            wanted = Math.Min(wanted + (hits.Count - fresh.Count), MaxUpstreamResults);
+        }
+
+        moreUpstream = fresh.Count > skip + take;
+        upstreamCapped = !moreUpstream && wanted >= MaxUpstreamResults && hits.Count >= MaxUpstreamResults;
+
+        foreach (var hit in fresh.Skip(skip).Take(take))
         {
             rows.Add(new Row(
                 hit.Id,
@@ -294,8 +333,6 @@ else
                 Local: false,
                 Upstream: hit.Upstream));
         }
-
-        total = Math.Max(total, rows.Count);
     }
 
     /// <summary>

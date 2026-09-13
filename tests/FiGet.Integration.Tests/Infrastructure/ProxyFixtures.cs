@@ -224,6 +224,8 @@ public sealed class StubUpstreamClient : IUpstreamClient
 
         IReadOnlyList<UpstreamSearchHit> hits = packages
             .Where(p => string.IsNullOrWhiteSpace(query) || p.Key.Contains(query, StringComparison.OrdinalIgnoreCase))
+            // In a stable order, as a gallery's ranking is, so paging through it means something.
+            .OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase)
             .Select(p => new UpstreamSearchHit(
                 p.Key,
                 p.Value.Keys.Select(NuGetVersion.Parse).OrderBy(v => v).Last(),
