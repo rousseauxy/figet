@@ -26,51 +26,9 @@ the entries. Options, for a decision:
    `Find-Module -AllVersions` would show no `Includes` for old versions. User-visible.
 4. **Accept it.** The client asks for every version by design; PSResourceGet over v3 is already fast.
 
-### Let the descriptions survive a restart
-
-Half of this is done, deliberately. What changes an *answer* now survives a restart: which versions an
-upstream hides, and what each version depends on, are stored beside the version list (docs/status.md, "The
-facts that matter now survive a restart"). A cold start no longer re-lists a hidden version, and no longer
-tells a client that a module depends on nothing.
-
-What still does not survive is the text: descriptions, summaries, authors and tags. After a restart a
-listing reads plainly until the first refresh describes it - display only, never correctness. They stay in
-memory on purpose: the tags alone are what made the persisted form a hundred megabytes and an out-of-memory
-crash. If this is ever worth doing it wants a different shape - per-version rows loaded on demand, or the
-tags left out - not the single blob that failed.
-
-### Ask upstreams only for what the caller will serve
-
-**Read this first - its premise changed on 2026-09-13.** Descriptions are no longer cosmetic. The `listed`
-flag and each version's dependencies now come from the same described call, and both change what a client
-is told: skipping them brings back a first install that pulls in no dependencies, and hidden versions that
-look current. Those two facts are also persisted now, but a versions-only fetch would stop *refreshing*
-them. So "versions only" is not free for any caller that feeds a registration, a v2 entry or the
-withdrawal reconcile - which is most of them. Only the flat-container version list truly needs nothing but
-versions.
-
-It also pays off only against a **v3** upstream, and the one upstream in production is the v2 PowerShell
-Gallery, where this saves nothing. Not worth doing until a v3 upstream exists, and then only for callers that
-can prove they read neither flag.
-
----
-
-
-Raised 2026-09-12, from the observation that a client calling the API usually needs only versions. True,
-and the shapes agree: `/v3/flatcontainer/{id}/index.json` returns a bare version array, and a registration
-index above 128 versions inlines no leaves, so neither needs a description at all.
-
-Worth doing only against a **v3** upstream, where versions cost 0.17s and descriptions 3.2s. Against a v2
-gallery it saves nothing, and asking for versions alone is actually *dearer* than asking for both (13.4s
-versus 8.4s), because both come from the same paged walk. Since the feed that hurts is v2-backed this is a
-real but secondary win. Shape: a describe-what-you-render call on the port, with the four callers asking
-for their own rows.
-
-One thing it cannot drop: a v2 Atom entry carries `Tags`, and PowerShellGet reads `PSEdition_Desktop` /
-`PSEdition_Core` from them to decide whether a version can run at all. Descriptions are cosmetic there;
-tags are not.
-
 ### A role above admin, and what a token may create
+
+**Part of the SSO / authentication plan** (being written by the owner, 2026-09-13); build it with that, not before.
 
 Raised 2026-09-12. Today there is one signed-in role, and `TokenScopes` (Read, Push, Delete, Admin) says
 what a *token* may do rather than what a *person* may do. The proposal: a super admin above admin, both
@@ -91,38 +49,9 @@ move is the ceiling on minting — a signed-in admin still issues API tokens fro
 nothing in the group claim stops them issuing one above their own level. The check belongs in the token
 service regardless of where the role came from.
 
-### Sortable columns on the package grid
-
-The grid added 2026-09-12 filters and pages, but does not sort. QuickGrid sorts for free only when it is
-given an `IQueryable`; this one is fed by `IPackageStore.SearchAsync`, a port with skip, take and a
-filter but no ordering. Pointing the grid at EF directly would put queries in the composition root and
-undo the layering, so the honest fix is a sort parameter on the port plus both EF implementations.
-
-### Pull should cache the dependency closure, not one package
-
-Raised 2026-09-12. **Pull is currently the only path that does not leave a working offline copy.**
-`EnsureCachedAsync` fetches exactly one `(id, version)`, so pulling `Microsoft.Graph` from the UI caches
-one nupkg — and the air-gapped machine the pull was *for* then fails on first install.
-
-A client install already gets this right, and not because FiGet is clever: the client resolves the graph
-itself and asks for each id separately, which trips look-through per package. The phase 0 recording
-proves it — `tests/fixtures/powershellget-2.2.5/meta-save-module-old-version.json` contains **39
-downloads for one `Save-Module`**: `Microsoft.Graph` 2.30.0 and 38 sub-modules, every one pinned to
-2.30.0. So the closure gets cached when a client does it, and does not when the UI does it.
-
-Four things to decide before building it, none of them obvious:
-
-- **Dependencies are only known after the package is here**, because they are read from its nuspec. So
-  this is a walk — pull, read, resolve, pull again — not a lookup, and it wants a visible result saying
-  what it fetched.
-- **Resolving a range to a version** is a real rule, not a guess: NuGet takes the lowest version that
-  satisfies the range. Getting this wrong quietly caches something nobody will ask for.
-- **A cap.** Microsoft.Graph is 39 packages and hundreds of megabytes; something with a looser range
-  could be far worse. Depth and count limits, and a refusal that explains itself.
-- **Which framework group.** A .NET package has dependency groups per target framework and following
-  all of them explodes; a PowerShell module has one flat set, which is the case that matters first.
-
 ### An audit log: who changed what, and when
+
+**Part of the SSO / authentication plan** (2026-09-13): the admin page and sign-in events belong with it.
 
 **The console half shipped on 2026-09-13** (docs/status.md, "The flapping is fixed at the cause, and there is an audit log"): every change below is written as a line under the `FiGet.Audit` category. What remains is the database table and the admin page.
 

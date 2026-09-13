@@ -2173,3 +2173,49 @@ things never compressed.
 The backlog entry "per-version registration leaves for upstream-only versions" was stale: that was fixed on
 2026-09-12 ("A proxied package with many versions could not be found"). Checked on the live instance: the leaf
 and catalog entry of an upstream-only Pester 6.2.0-alpha2 both answer 200. Removed from the backlog.
+
+## Backlog round: sorting, pulls with dependencies, stored descriptions, versions-only listings - 2026-09-13
+
+Four backlog entries built on one afternoon, plus two rounds of tester feedback on the pages.
+
+**Sortable package list.** A sort on `PackageSearchFilter` (Package, Versions, Downloads, Last published, either
+direction), ordered by the database and always ending on the id, so a page boundary between equal values falls in
+the same place on every request. The signed-in grid uses QuickGrid's sortable headers (their black SVG arrow, invisible
+on a dark theme, is replaced by the accent arrow); the anonymous table sorts through header links with `aria-sort`.
+Upstream-only search hits have no local numbers and stay after the local rows. `PackageSortTests` runs on both
+providers, because the per-version aggregates translate differently.
+
+**A pull brings its dependencies** (`DependencyPuller`). Breadth-first from the stored package: the framework-neutral
+dependency group when there is one (every PowerShell module), otherwise every group; each range resolved to the
+lowest listed version that satisfies it, stable unless the range starts at a prerelease, an unlisted version only when
+nothing listed fits. At most 100 packages and 10 levels, reported when hit. A package already here still has its
+dependencies walked - a meta-module cached by an earlier single pull is the case this repairs. The admin button, the
+grid and the static pages report fetched, already here and unavailable; the static pages read those back as counts
+only, and a hand-edited count is ignored rather than failing the page (the first version bound them as numbers and a
+word in the link was a 500 - a test found it).
+
+**Descriptions survive a restart.** One row per version in `CachedUpstreamDescriptions`, tags in
+`CachedUpstreamTagSets` keyed by SHA-256 and stored once however many versions share them. Written only for versions
+not stored yet, in batches of 100 on a context of its own; versions the upstream stops describing are dropped with any
+tag list nothing else uses. Read back only when memory has nothing. Listed flags and dependencies still come from the
+catalogue row's facts: the existing test for the facts migration (`A_row_written_before_the_facts_existed_...`)
+failed on the first version, because a loaded description defaulted to "listed" and re-listed a hidden version. Fixed
+on the write order - descriptions are saved right after the facts, in the same call, so a package with stored
+descriptions had its facts written - and that test now builds the state the migration really leaves (no
+descriptions). The listed-flag fix of 2026-09-12 was never affected on the live instance; this was caught before
+commit. With loading disabled, the two new tests fail.
+
+**Versions-only listings.** `IUpstreamClient.GetVersionsAsync` returns versions alone where that is cheaper (a v3
+source's flat container) and null on a v2 gallery, where it saves nothing. Only the v3 flat-container version list
+uses it; it stores the version list as a catalogue that described nothing and queues the full refresh. A test holds
+every catalogue call and still gets the list back; with the shortcut disabled it times out. A registration still
+reads the full catalogue.
+
+**From the tester:** every `title` is drawn as a tooltip in the page's own style (app.js, one element in `<body>`, so a
+scrolling table cannot clip it; copy results show in it); download and pull buttons are Bootstrap Icons
+`download` and `cloud-download` (MIT), icon-only in table rows with a title and aria-label.
+
+Also stale and removed from the backlog: per-version leaves for upstream-only versions (done 2026-09-12). The role
+above admin and the audit log page are left for the SSO / authentication plan.
+
+Suites: unit 107/0; integration 280/0 on SQLite and on SQL Server.
