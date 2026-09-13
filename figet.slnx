@@ -7,6 +7,7 @@
     <Project Path="src/FiGet.Infrastructure.Sqlite/FiGet.Infrastructure.Sqlite.csproj" />
     <Project Path="src/FiGet.Infrastructure.SqlServer/FiGet.Infrastructure.SqlServer.csproj" />
     <Project Path="src/FiGet.Protocol.Assets/FiGet.Protocol.Assets.csproj" />
+    <Project Path="src/FiGet.Protocol.Management/FiGet.Protocol.Management.csproj" />
     <Project Path="src/FiGet.Protocol.V2/FiGet.Protocol.V2.csproj" />
     <Project Path="src/FiGet.Protocol.V3/FiGet.Protocol.V3.csproj" />
     <Project Path="src/FiGet.Web/FiGet.Web.csproj" />

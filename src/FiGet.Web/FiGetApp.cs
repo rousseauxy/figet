@@ -18,6 +18,7 @@ using FiGet.Infrastructure.Storage;
 using FiGet.Infrastructure.Upstream;
 using FiGet.Infrastructure;
 using FiGet.Protocol.Assets;
+using FiGet.Protocol.Management;
 using FiGet.Protocol.V2;
 using FiGet.Protocol.V3;
 using FiGet.Web.Components;
@@ -202,6 +203,7 @@ public static class FiGetApp
         app.MapNuGetV2();
         app.MapNuGetV3();
         app.MapAssetEndpoints();
+        app.MapPackageManagement();
         app.MapAccountEndpoints();
         app.MapAdminEndpoints();
         app.MapStaticAssets();

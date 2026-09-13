@@ -430,6 +430,10 @@ stores it under the path, so an installer can be "pinned" from a vendor site.
 
 ### 4.5 Management (compatibility) API
 
+> Corrected 2026-09-13 against the reference client: `latest` answers a **list** (one entry per package), the
+> version objects carry `purl`, `totalDownloads`, `size`, hashes and more, and the client also calls `GET
+> /api/packages/{feed}` before a download or delete. As built: `docs/protocol-management.md`.
+
 Minimum shape existing scripts already call against the commercial server:
 
 ```

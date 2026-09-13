@@ -272,6 +272,15 @@ public sealed class PackageIngestionService(
         return true;
     }
 
+    /// <summary>Hides a version from listings and search, whatever the feed's delete behaviour says.</summary>
+    public async Task<bool> UnlistAsync(Feed feed, string id, string version, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(feed);
+        var versionLower = NormalizeLower(version);
+        return versionLower is not null
+            && await store.SetListedAsync(feed.Key, id.ToLowerInvariant(), versionLower, listed: false, cancellationToken);
+    }
+
     public async Task<bool> RelistAsync(Feed feed, string id, string version, CancellationToken cancellationToken)
     {
         var versionLower = NormalizeLower(version);

@@ -12,6 +12,12 @@ public interface IPackageStore
     /// <summary>Several packages with all their versions, without dependencies.</summary>
     Task<IReadOnlyList<Package>> GetPackagesAsync(IReadOnlyCollection<long> packageKeys, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Every package the feed stores, with every version, listed or not, and no dependencies. What a
+    /// management listing of a whole feed needs; a feed of a few thousand versions is one query per table.
+    /// </summary>
+    Task<IReadOnlyList<Package>> ListPackagesAsync(int feedKey, CancellationToken cancellationToken);
+
     Task<PackageVersion?> GetVersionAsync(int feedKey, string idLower, string normalizedVersionLower, CancellationToken cancellationToken);
 
     Task<SearchPage> SearchAsync(int feedKey, PackageSearchFilter filter, int skip, int take, CancellationToken cancellationToken);

@@ -1983,3 +1983,28 @@ Asset directories moved out of the feed list into an **Assets** entry of their o
 lists them and `/assets/{name}` browses one. The feed list and `/feeds/{name}` are package feeds only, and a
 feed page for an asset directory answers 404, the same split the protocol endpoints already make. No redirect
 from the old address, by choice: the pages had been live for an hour.
+
+## Package management API - 2026-09-13
+
+`/api/packages/{feed}` with `versions`, `latest`, `download`, `delete`, `status` (listed only), `upload`, and the
+feed info the reference client asks for first. Shapes from the reference client's models, checked against what
+the existing scripts read; `docs/protocol-management.md` has the table and the decisions. The build plan's
+sketch had `latest` return one object; it is a list.
+
+**Tests.** `PackageManagementTests`, 9 on SQLite and 9 on SQL Server: the fields scripts read (including a
+SHA-512 equal to the package's own), newest-first ordering, whole-feed listing, `latest` with and without
+`stableOnly` and after an unlist, delete removing the file whatever the feed's delete setting, scopes
+(anonymous 401, read-only token 403, `X-ApiKey` on a private feed), status list/unlist and the refused
+deprecation, upload and download round trip, the feed info, and an asset directory answering 404. Plus
+`ProxyFeedTests.The_management_api_lists_stored_versions_and_marks_cached_ones`: pushed and cached versions
+listed, upstream-only not, the cached one with `publishedBy: SYSTEM`.
+
+**Real clients.** The reference client (2.4.2) with Newtonsoft.Json 13.0.1 and 13.0.3 from nuget.org: upload, versions, list,
+download (byte-identical), unlist (latest moves to 13.0.1), relist and delete all exit 0; deprecation is refused
+with 400 as intended. Its first run failed download and delete with 404 before either was sent - it asks for
+the feed info first - which is how that route came to exist. The two existing scripts' handling of the answers
+was replayed: the CI fallback picks 13.0.3 from `versions` sorted on `published`, and the clean-up snippet reads
+`.Version` from `latest`.
+
+Committed just before it: a file stored with the non-standard `binary/octet-stream` type, as the gallery's CDN serves
+packages, now gets its type from the extension, like `application/octet-stream` already did.

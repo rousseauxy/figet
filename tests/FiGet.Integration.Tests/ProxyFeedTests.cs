@@ -494,6 +494,31 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.0.0"));
     }
 
+    /// <summary>
+    /// The management API lists what a proxy feed stores - pushed and cached - and not what only its upstream
+    /// has, as the server being replaced does. A clean-up script there tells cached from pushed by the
+    /// publisher, which is what the cached rows carry here.
+    /// </summary>
+    [Fact]
+    public async Task The_management_api_lists_stored_versions_and_marks_cached_ones()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.Management");
+        AddUpstream(id, "1.0.0");
+        AddUpstream(id, "2.0.0");
+        using (var mine = TestPackages.Create(id, "0.9.0"))
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("proxy", mine));
+        }
+
+        using var client = server.CreateClient();
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.0.0"));
+
+        var versions = System.Text.Json.Nodes.JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"api/packages/proxy/versions?name={id}")))!.AsArray();
+        Assert.Equal(["1.0.0", "0.9.0"], versions.Select(v => (string?)v!["version"]));
+        Assert.Equal("SYSTEM", (string?)versions[0]!["publishedBy"]);
+        Assert.Null(versions[1]!["publishedBy"]);
+    }
+
     private async Task<int> UncacheAsync(string id)
     {
         await using var scope = server.Services.CreateAsyncScope();

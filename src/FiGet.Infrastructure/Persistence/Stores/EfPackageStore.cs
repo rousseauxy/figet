@@ -30,6 +30,27 @@ public sealed class EfPackageStore(FiGetDbContext db) : IPackageStore
         return package;
     }
 
+    public async Task<IReadOnlyList<Package>> ListPackagesAsync(int feedKey, CancellationToken cancellationToken)
+    {
+        var packages = await db.Packages
+            .AsNoTracking()
+            .Where(p => p.FeedKey == feedKey)
+            .Include(p => p.Versions)
+            .AsSplitQuery()
+            .OrderBy(p => p.IdLower)
+            .ToListAsync(cancellationToken);
+
+        foreach (var package in packages)
+        {
+            foreach (var version in package.Versions)
+            {
+                version.Package = package;
+            }
+        }
+
+        return packages;
+    }
+
     public async Task<IReadOnlyList<Package>> GetPackagesAsync(IReadOnlyCollection<long> packageKeys, CancellationToken cancellationToken)
     {
         if (packageKeys.Count == 0)
