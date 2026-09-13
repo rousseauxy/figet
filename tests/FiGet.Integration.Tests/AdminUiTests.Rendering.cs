@@ -71,7 +71,7 @@ public sealed partial class AdminUiTests
         Assert.Contains("data-nav-menu", page, StringComparison.Ordinal);
         Assert.Contains("<summary>", page, StringComparison.Ordinal);
         Assert.Contains("href=\"/admin/feeds\"", page, StringComparison.Ordinal);
-        Assert.Contains("href=\"/admin/tokens\"", page, StringComparison.Ordinal);
+        Assert.Contains("href=\"/account/profile\"", page, StringComparison.Ordinal);
         Assert.Contains("Sign out", page, StringComparison.Ordinal);
         Assert.Contains("fg-nav-dropdown-version", page, StringComparison.Ordinal);
 

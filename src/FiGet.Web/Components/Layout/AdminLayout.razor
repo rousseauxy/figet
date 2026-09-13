@@ -62,7 +62,8 @@
 
     private sealed record NavLink(string Label, string Href, bool Highlights = true);
 
-    private sealed record NavGroup(string Title, IReadOnlyList<NavLink> Links);
+    /// <summary>A section of the menu. A feed's own section names the feed in the closed menu bar; the fixed ones do not need to.</summary>
+    private sealed record NavGroup(string Title, IReadOnlyList<NavLink> Links, bool TitleInMenuBar = false);
 
     private IReadOnlyList<NavGroup> Groups
     {
@@ -75,10 +76,13 @@
                 [
                     new("Feeds", "/admin/feeds"),
                     new("Assets", "/admin/assets"),
+                    new("Appearance", "/admin/appearance"),
+                ]));
+                groups.Add(new("Authentication",
+                [
                     new("Users", "/admin/users"),
                     new("Groups", "/admin/groups"),
                     new("Tokens", "/admin/tokens"),
-                    new("Appearance", "/admin/appearance"),
                 ]));
             }
 
@@ -90,13 +94,13 @@
                     [
                         new("Settings", $"/admin/assets/{name}"),
                         new("Browse files", $"/assets/{name}", Highlights: false),
-                    ])
+                    ], TitleInMenuBar: true)
                     : new NavGroup(managed.Name,
                     [
                         new("Settings", $"/admin/feeds/{name}"),
                         new("Unlisted versions", $"/admin/feeds/{name}/unlisted"),
                         new("View as a reader", $"/feeds/{name}", Highlights: false),
-                    ]));
+                    ], TitleInMenuBar: true));
             }
 
             return groups;
@@ -137,6 +141,6 @@
     /// <summary>Where the menu bar says you are, so a closed menu still answers that.</summary>
     private string? CurrentLabel =>
         Groups.SelectMany(g => g.Links.Select(l => (Group: g, Link: l))).FirstOrDefault(x => IsActive(x.Link)) is { Link: not null } hit
-            ? hit.Group.Title == "Manage" ? hit.Link.Label : $"{hit.Group.Title} · {hit.Link.Label}"
+            ? hit.Group.TitleInMenuBar ? $"{hit.Group.Title} · {hit.Link.Label}" : hit.Link.Label
             : null;
 }
