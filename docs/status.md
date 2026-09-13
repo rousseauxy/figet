@@ -2065,3 +2065,24 @@ and `/api/v2/`, 200 for `/api/v2/FindPackagesById()` and for the plain root. Bec
 status assertion cannot catch this regression, so `The_api_v2_root_has_an_explicit_get_route_so_every_build_answers_404`
 checks the route table instead; with the route removed it fails. Lesson: for the status of a request that matches
 no route for its method, a Debug build is not evidence.
+
+## Error pages - 2026-09-13
+
+A person who meets an error in a browser now gets a page with the status code on it, as in CustomsHive: the code
+large and faint, then a title, what it means and what to do. Every code is covered: an unhandled exception renders
+`/error` (500, with a request id that is also in the log), and any response that ends with an error status and no
+body is re-executed to `/error/{code}`. 400, 401, 403, 404, 405, 408, 413, 429, 500, 502, 503 and 504 have their own
+wording; anything else falls back to a generic client or server error. 401 and 403 show who is signed in.
+
+Protocol paths are left alone (`/nuget`, `/endpoints`, `/api`, `/health`, `/themes` and the framework's own paths):
+a client reads FiGet's own status and body there, several answers are deliberately empty (the api/v2 probe's 404),
+and an exception there is a plain-text 500.
+
+Found while building: a page that finds nothing - `/feeds/no-such-feed` - set 404 while rendering, and .NET 10 then
+drops the page's markup. The live instance answered those with a 404 and an empty body, a blank page. They now show
+the error page too. Status-code re-execution needs `createScopeForStatusCodePages: true`; without it the re-executed
+Blazor render fails with "RemoteNavigationManager already initialized".
+
+Evidence: `ErrorPageTests` (unknown page, per-code wording and status, the three not-found pages, protocol paths
+unchanged including the empty api/v2 probe, a page failure, a protocol failure). A local Release publish answered the
+same. Suites: unit 107/0; integration 247/0 on SQLite and on SQL Server.

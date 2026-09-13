@@ -31,6 +31,7 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -167,10 +168,33 @@ public static class FiGetApp
     {
         var app = builder.Build();
 
-        if (!app.Environment.IsDevelopment())
+        // Errors a person meets in a browser get a page with the code on it, as in CustomsHive: an unhandled
+        // exception renders /error, and a response that ends with an error status and no body is re-executed to
+        // /error/{code}. That includes a page that finds nothing - an unknown feed, package or asset directory - and
+        // sets 404 while rendering: .NET 10 drops such a page's own markup, so it would otherwise be a blank page.
+        //
+        // Protocol paths are left alone. A NuGet client, the reference client or a script reads FiGet's own status and body, and
+        // several of those answers are deliberately empty - the api/v2 probe's 404 among them - so an HTML page in
+        // their place would change what a client receives. An exception there is a plain-text 500.
+        app.UseWhen(context => !IsProtocolPath(context.Request.Path), browser =>
         {
-            app.UseExceptionHandler("/error", createScopeForErrors: true);
-        }
+            browser.UseExceptionHandler("/error", createScopeForErrors: true);
+            browser.UseStatusCodePagesWithReExecute("/error/{0}", createScopeForStatusCodePages: true);
+        });
+        app.UseWhen(context => IsProtocolPath(context.Request.Path), protocol =>
+            protocol.UseExceptionHandler(new ExceptionHandlerOptions
+            {
+                ExceptionHandler = async context =>
+                {
+                    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                    context.Response.ContentType = "text/plain; charset=utf-8";
+                    await context.Response.WriteAsync($"The server failed while handling the request (request {context.TraceIdentifier}).");
+                },
+            }));
+
+        // Explicit, and after the error handling: both re-run the pipeline for /error, which needs routing to run
+        // again after them rather than having happened once before them.
+        app.UseRouting();
 
         app.UseAuthentication();
         app.UseAuthorization();
@@ -680,6 +704,20 @@ public static class FiGetApp
         pairs.Add("fetch=" + code);
         return path + "?" + string.Join('&', pairs);
     }
+
+    /// <summary>
+    /// Paths answered for clients rather than people: the protocols, the management API, health probes and the
+    /// framework's own files. Their errors are part of their contract, so no HTML error page replaces them.
+    /// </summary>
+    public static bool IsProtocolPath(PathString path) =>
+        path.StartsWithSegments("/nuget", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/endpoints", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/themes", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/_framework", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/_blazor", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWithSegments("/_content", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Back where the button was pressed, as long as that is a page on this server.</summary>
     private static IResult Back(string? returnUrl, string fallback) =>

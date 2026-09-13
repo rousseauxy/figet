@@ -929,3 +929,41 @@ legend {
   .fg-upload-list li { grid-template-columns: minmax(0, 1fr); gap: 0.15rem; }
 }
 .fg-check.fg-inline { display: inline-flex; margin-left: 0.6rem; }
+
+/* ── Error pages ────────────────────────────────────────────────── */
+/* The code as a large, faint watermark the title sits on, as in CustomsHive: recognisable at a glance, and
+   out of the way of the words that say what happened. */
+.fg-error-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 3rem 0 2rem;
+  max-width: 36rem;
+  margin: 0 auto;
+}
+.fg-error-code {
+  font-family: var(--font-mono);
+  font-size: clamp(5.5rem, 22vw, 12rem);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+  opacity: 0.14;
+  user-select: none;
+  margin-bottom: -1.2rem;
+}
+.fg-error-page h1 { margin: 0 0 0.5rem; }
+.fg-error-page p { margin: 0.25rem 0; }
+.fg-error-user {
+  margin: 1.2rem 0 0.6rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  text-align: left;
+  width: 100%;
+  max-width: 22rem;
+  font-size: 0.85rem;
+}
+.fg-error-user-label { font-weight: 600; margin-bottom: 0.2rem; }
+.fg-error-actions { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; margin-top: 1.2rem !important; }

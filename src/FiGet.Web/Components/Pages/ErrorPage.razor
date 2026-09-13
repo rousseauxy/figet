@@ -1,0 +1,115 @@
+@page "/error"
+@page "/error/{StatusCode:int}"
+@attribute [AllowAnonymous]
+@using System.Diagnostics
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Diagnostics
+@inject ILogger<ErrorPage> Logger
+
+@* One page for every error a person meets in a browser, the way CustomsHive does it: the code large enough to
+   recognise at a glance, then what it means and what to do. Reached two ways - the exception handler for an
+   unhandled failure, and status-code re-execution for a response that ended with an error status and no body.
+   Protocol paths never come here; a package client gets FiGet's own answer (FiGetApp.IsProtocolPath). *@
+
+<PageTitle>@code_ @title · FiGet</PageTitle>
+
+<div class="fg-error-page">
+    <div class="fg-error-code" aria-hidden="true">@code_</div>
+    <h1>@title</h1>
+    <p class="fg-muted">@description</p>
+    <p class="fg-muted fg-small">@hint</p>
+
+    @if (showUser && userName is not null)
+    {
+        <div class="fg-error-user">
+            <div class="fg-error-user-label">Signed in as</div>
+            <div>@userName</div>
+            <div class="fg-small fg-muted">@(isAdmin ? "Administrator" : "No administrator role")</div>
+        </div>
+    }
+
+    @if (requestId is not null)
+    {
+        <p class="fg-small fg-muted">Request id <code>@requestId</code> - quote it when reporting this; it is in the log.</p>
+    }
+
+    <p class="fg-error-actions">
+        <a href="/" class="fg-btn fg-btn-primary">Back to feeds</a>
+        @if (code_ is 401 or 403 && userName is null)
+        {
+            <a href="/account/login" class="fg-btn">Sign in</a>
+        }
+    </p>
+</div>
+
+@code {
+    [Parameter]
+    public int? StatusCode { get; set; }
+
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    // Named with a trailing underscore: "code" is taken by Razor's own @code block.
+    private int code_;
+    private string title = "Error";
+    private string description = "An unexpected error occurred.";
+    private string hint = "Try again. If it keeps happening, tell whoever runs this server.";
+    private bool showUser;
+    private string? userName;
+    private bool isAdmin;
+    private string? requestId;
+
+    protected override void OnParametersSet()
+    {
+        // Status-code re-execution passes the code in the route; the exception handler does not, and leaves 500.
+        var reExecute = HttpContext?.Features.Get<IStatusCodeReExecuteFeature>();
+        var code = StatusCode ?? reExecute?.OriginalStatusCode ?? HttpContext?.Response.StatusCode ?? 500;
+        code_ = code is >= 400 and <= 599 ? code : 500;
+
+        // The page answers with the status it describes, including when someone opens /error/404 directly.
+        if (HttpContext is not null && !HttpContext.Response.HasStarted)
+        {
+            HttpContext.Response.StatusCode = code_;
+        }
+
+        if (code_ >= 500)
+        {
+            requestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+            var failure = HttpContext?.Features.Get<IExceptionHandlerFeature>();
+            var path = failure?.Path ?? reExecute?.OriginalPath ?? HttpContext?.Request.Path.Value ?? "/";
+            var user = HttpContext?.User.Identity?.Name ?? "anonymous";
+            if (failure?.Error is { } error)
+            {
+                Logger.LogError(error, "HTTP {StatusCode} for {User} at {Path} (request {RequestId})", code_, user, path, requestId);
+            }
+            else
+            {
+                Logger.LogError("HTTP {StatusCode} for {User} at {Path} (request {RequestId})", code_, user, path, requestId);
+            }
+        }
+
+        (title, description, hint, showUser) = code_ switch
+        {
+            400 => ("Bad request", "The server could not make sense of the request.", "Check the address or what was submitted, and try again.", false),
+            401 => ("Sign-in required", "This page needs you to be signed in.", "Sign in with a token that is allowed here.", true),
+            403 => ("Access denied", "Your sign-in does not allow this page.", "Sign in with an administrator token, or ask for one.", true),
+            404 => ("Page not found", "There is nothing at this address.", "It may have moved, been deleted, or never existed. Feeds and asset directories that need a token are not shown without one.", false),
+            405 => ("Method not allowed", "This address does not accept that kind of request.", "If you followed a link or a bookmark, go back and try again from the page.", false),
+            408 => ("Request timeout", "The server gave up waiting for the request.", "Try again.", false),
+            413 => ("Too large", "The upload is larger than this server accepts.", "The limits are set by whoever runs this server.", false),
+            429 => ("Too many requests", "Too many requests arrived in a short time.", "Wait a moment and try again.", false),
+            500 => ("Something went wrong", "The server failed while handling the request. The error has been logged.", "Try again. If it keeps happening, report it with the request id below.", false),
+            502 => ("Bad gateway", "A server FiGet depends on answered with an error.", "Try again in a moment.", false),
+            503 => ("Service unavailable", "The server is temporarily unable to handle the request.", "Try again shortly.", false),
+            504 => ("Gateway timeout", "A server FiGet depends on did not answer in time.", "Try again in a moment.", false),
+            >= 500 => ("Server error", "The server failed while handling the request. The error has been logged.", "Try again. If it keeps happening, report it with the request id below.", false),
+            _ => ("Error", "The request could not be completed.", "Try again, or go back to the feeds.", false),
+        };
+
+        if (showUser && HttpContext?.User.Identity?.IsAuthenticated == true)
+        {
+            userName = HttpContext.User.Identity.Name;
+            isAdmin = HttpContext.User.HasClaim(ClaimTypes.Role, "admin");
+        }
+    }
+}
