@@ -12,11 +12,19 @@ Ordered roughly by when it is likely to be worth doing, not by importance.
 ### Find-Module is slow for a package with thousands of versions
 
 `Find-Module PnP.PowerShell` took 44s over v2 where `Find-PSResource` took 3.1s over v3 (2026-09-12).
-The v2 path builds a merged row for all 2098 versions, then filters, orders and pages them, and the Atom
-writer serialises what survives. The v3 path pages first.
 
-Not the catalogue fetch - that is cached and shared by both. Measure before changing anything: the
-suspicion is the per-row work in the filter and the writer, not the merge.
+Measured 2026-09-13 (docs/status.md, "Find-Module on a package with thousands of versions"): not the merge,
+not `$skip`. A page costs what its response size costs, and tags are 92-96% of every response - about 80 MB
+for one `Find-Module`. Gzip shrinks the wire size 88% but not the time, so the cost is building and writing
+the entries. Options, for a decision:
+
+1. **Profile the writer first** (no behaviour change). Find out whether the time is the Atom writer, the row
+   building or the string handling, and make that part cheaper. Safe; the size of the win is unknown.
+2. **Enable response compression** for `/nuget` regardless. Does not fix the time measured on a fast link,
+   but 80 MB to 10 MB matters to servers on a slow line. Low risk.
+3. **Trim tags on older versions only** (keep them on the latest few). Cuts the payload most, but
+   `Find-Module -AllVersions` would show no `Includes` for old versions. User-visible.
+4. **Accept it.** The client asks for every version by design; PSResourceGet over v3 is already fast.
 
 ### Let the descriptions survive a restart
 

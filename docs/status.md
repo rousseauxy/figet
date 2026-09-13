@@ -1801,3 +1801,32 @@ encoding taken out that test fails; restored, it passes.
 The same screenshot - taken through a 390 px iframe, not a cropped window - is also the visual confirmation
 of the correction above: the feed page's header URL wraps with its Copy button in view, the search bar and
 its filter fit, and the result count wraps onto a second line. Nothing reaches past the edge.
+
+## Find-Module on a package with thousands of versions: measured - 2026-09-13
+
+The backlog entry said to measure before changing anything. Against the live feed, PnP.PowerShell (2098
+versions), paging the way PowerShellGet does with `$top=40`:
+
+    first run            53 pages, 44.3 s; first pages ~200 ms, last ~1400 ms
+    shuffled page order  skip=0 ~1100 ms, skip=2080 ~1150 ms (descriptions already warm)
+
+The first run looked like cost growing with `$skip`. It was not: that run started just after a restart, and
+the descriptions landed part way through, so page position and "is this version described yet" were the same
+variable. Asked in random order with everything described, a page costs what its *response size* costs, not
+where it sits. That matches the code: `Page()` skips over an already materialised list, which is cheap.
+
+**What a page is made of.** Tags are 92-96% of each response. The heaviest page (skip=2040) is 2541 KB, of
+which 2447 KB is the `Tags` element: PnP.PowerShell lists every cmdlet as a `PSCommand_*` and `PSCmdlet_*`
+tag, on every version. One `Find-Module PnP.PowerShell` moves about 80 MB.
+
+**Compression does not fix it.** With `Accept-Encoding: gzip` the same page arrives as 331 KB (offline gzip:
+313 KB, 88% smaller), but it still takes ~1430 ms against ~1480 ms without. Transfer is not where the time
+goes; building and writing tag-heavy entries on the server is.
+
+**Not measured, and not claimed:** where inside the server that time sits (row building, the Atom writer, or
+the tag text itself). An attempt to read it from the request log was discarded as unreliable.
+
+**Why nothing was changed.** The cheap-looking fix - send fewer tags - is user-visible. PowerShellGet builds
+`Find-Module`'s `Includes` (Function, Cmdlet, Command) from exactly those `PSCommand_*` / `PSFunction_*`
+tags and needs the `PSEdition_*` ones, so trimming them silently changes what people see. That is a decision,
+not an overnight change. The options are in the backlog entry.
