@@ -859,7 +859,10 @@ public static class FiGetApp
                 AccountOutcome.PasswordTooShort => "short-password",
                 _ => "not-found",
             };
-            return Results.Redirect("/admin/users?done=" + code);
+            // Back to the account's own page, where the change was made - except after a delete, which leaves nothing there.
+            return Results.Redirect(action == "delete" && outcome == AccountOutcome.Done
+                ? "/admin/users?done=delete"
+                : $"/admin/users/{key}?done={code}");
         });
 
         admin.MapPost("/feeds/{feed}/upstreams/move", async (

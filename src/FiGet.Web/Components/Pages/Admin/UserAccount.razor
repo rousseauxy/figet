@@ -1,0 +1,154 @@
+@page "/admin/users/{Key:int}"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@layout AdminLayout
+@using FiGet.Application.Accounts
+@using FiGet.Web.Components.Pages.Account
+@inject IUserStore Users
+
+@*
+    One account, one page. The changes were on the list, folded into a cell of each row, and opening one widened the
+    table until it scrolled sideways and cut its own fields off. Here each change has a panel of its own. Buttons post to
+    /admin/users/{key}/... and come back with a fixed outcome code, so nothing from the address bar is shown as text.
+*@
+
+<PageTitle>@(user?.UserName ?? "User") · admin · FiGet</PageTitle>
+
+<p class="fg-crumbs"><a href="/admin/users">Users</a> <span class="fg-crumb-sep">/</span> <span>@(user?.UserName ?? "Unknown")</span></p>
+
+@if (user is null)
+{
+    <h1>No such account</h1>
+    <p class="fg-muted">It may have been deleted. <a href="/admin/users">Back to users</a>.</p>
+    return;
+}
+
+<div class="fg-page-head">
+    <h1>@user.UserName</h1>
+    @if (user.IsDisabled)
+    {
+        <span class="fg-badge fg-badge-danger">Disabled</span>
+    }
+    else if (user.MustChangePassword)
+    {
+        <span class="fg-badge fg-badge-info">New password pending</span>
+    }
+</div>
+
+@if (Message is { } shown)
+{
+    <div class="fg-alert @(shown.Error ? "fg-alert-danger" : "fg-alert-ok")" role="status">@shown.Text</div>
+}
+
+<section class="fg-panel">
+    <h2>Account</h2>
+    <dl class="fg-facts">
+        <dt>Display name</dt><dd>@(string.IsNullOrEmpty(user.DisplayName) ? Display.None : user.DisplayName)</dd>
+        <dt>Email</dt><dd>@(string.IsNullOrEmpty(user.Email) ? Display.None : user.Email)</dd>
+        <dt>Role</dt><dd>@Profile.RoleName(user.Role)</dd>
+        <dt>Created</dt><dd class="fg-num">@user.CreatedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) UTC</dd>
+        <dt>Last sign-in</dt><dd class="fg-num">@(user.LastSignInUtc?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? Display.None)</dd>
+        <dt>Password</dt><dd>@(user.PasswordHash is null ? "None (signs in through a provider)" : "Set")</dd>
+    </dl>
+</section>
+
+@if (IsSelf)
+{
+    <p class="fg-muted">This is your own account. Change your details and password on <a href="/account/profile">your profile</a>; your role and access are changed by another super admin.</p>
+    return;
+}
+
+@if (!Manageable)
+{
+    <p class="fg-muted">Accounts with the @Profile.RoleName(user.Role).ToLowerInvariant() role are managed by a super admin.</p>
+    return;
+}
+
+<section class="fg-panel">
+    <h2>Role</h2>
+    <form method="post" action="/admin/users/@user.Key/role" class="fg-form">
+        <AntiforgeryToken />
+        <div class="fg-field">
+            <label for="role">Role</label>
+            <select id="role" name="role">
+                @foreach (var role in AssignableRoles)
+                {
+                    <option value="@role" selected="@(user.Role == role)">@Profile.RoleName(role)</option>
+                }
+            </select>
+        </div>
+        <p class="fg-muted fg-small">A change signs the account out everywhere, so the new role applies at once.</p>
+        <button type="submit" class="fg-btn fg-btn-primary">Save role</button>
+    </form>
+</section>
+
+<section class="fg-panel">
+    <h2>Reset password</h2>
+    <form method="post" action="/admin/users/@user.Key/password" class="fg-form">
+        <AntiforgeryToken />
+        <div class="fg-field">
+            <label for="new-password">New password (at least @AccountService.MinimumPasswordLength characters)</label>
+            <input id="new-password" type="password" name="password" autocomplete="new-password" minlength="@AccountService.MinimumPasswordLength" required />
+        </div>
+        <p class="fg-muted fg-small">They choose their own at their next sign-in. A reset also unlocks a locked account.</p>
+        <button type="submit" class="fg-btn">Reset password</button>
+    </form>
+</section>
+
+<section class="fg-panel fg-panel-danger">
+    <h2>Access</h2>
+    <div class="fg-row">
+        <form method="post" action="/admin/users/@user.Key/@(user.IsDisabled ? "enable" : "disable")">
+            <AntiforgeryToken />
+            <button type="submit" class="fg-btn">@(user.IsDisabled ? "Enable account" : "Disable account")</button>
+        </form>
+        <form method="post" action="/admin/users/@user.Key/delete">
+            <AntiforgeryToken />
+            <button type="submit" class="fg-btn fg-btn-danger">Delete account</button>
+        </form>
+    </div>
+    <p class="fg-muted fg-small">Disabling signs the account out and keeps it; deleting removes it for good.</p>
+</section>
+
+@code {
+    private User? user;
+    private AccountActor? actor;
+
+    [Parameter]
+    public int Key { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery(Name = "done")]
+    private string? Done { get; set; }
+
+    private bool IsSelf => actor?.Key == user?.Key;
+
+    private bool Manageable => actor is not null && user is not null && AccountService.CanManage(actor, user.Role);
+
+    private IEnumerable<UserRole> AssignableRoles =>
+        Enum.GetValues<UserRole>().Where(r => actor is not null && AccountService.CanManage(actor, r));
+
+    /// <summary>What the last change did, from a fixed set of codes.</summary>
+    private (string Text, bool Error)? Message => Done switch
+    {
+        "role" => ("Role saved.", false),
+        "password" => ("Password reset. They choose a new one at their next sign-in.", false),
+        "disable" => ("Account disabled and signed out.", false),
+        "enable" => ("Account enabled.", false),
+        "forbidden" => ("That account, or that role, is not yours to change.", true),
+        "last-superadmin" => ("That would leave no enabled super admin.", true),
+        "short-password" => ($"Use at least {AccountService.MinimumPasswordLength} characters.", true),
+        _ => null,
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        actor = FiGetApp.Actor(HttpContext.User);
+        user = await Users.FindAsync(Key, HttpContext.RequestAborted);
+        if (user is null)
+        {
+            HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+        }
+    }
+}

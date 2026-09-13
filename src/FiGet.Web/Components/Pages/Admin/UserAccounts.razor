@@ -8,9 +8,8 @@
 @inject FiGet.Http.AuditLog Audit
 
 @*
-    Accounts. An admin manages accounts with the user role; a super admin manages every account. Buttons on a row
-    post to /admin/users/{key}/... and come back here with a fixed outcome code, so nothing from the address bar is
-    ever shown as text.
+    Accounts. An admin manages accounts with the user role; a super admin manages every account. Changes to one
+    account are made on its own page, /admin/users/{key}; this list only says who is here and links there.
 *@
 
 <PageTitle>Users · admin · FiGet</PageTitle>
@@ -50,25 +49,7 @@
                             <div class="fg-small fg-muted">@user.DisplayName @(string.IsNullOrEmpty(user.Email) ? "" : $"<{user.Email}>")</div>
                         }
                     </td>
-                    <td>
-                        @if (manageable)
-                        {
-                            <form method="post" action="/admin/users/@user.Key/role" class="fg-row fg-inline-form">
-                                <AntiforgeryToken />
-                                <select name="role" aria-label="Role of @user.UserName" data-autosubmit>
-                                    @foreach (var role in AssignableRoles)
-                                    {
-                                        <option value="@role" selected="@(user.Role == role)">@FiGet.Web.Components.Pages.Account.Profile.RoleName(role)</option>
-                                    }
-                                </select>
-                                <noscript><button type="submit" class="fg-btn fg-btn-sm">Set</button></noscript>
-                            </form>
-                        }
-                        else
-                        {
-                            <span class="fg-badge">@FiGet.Web.Components.Pages.Account.Profile.RoleName(user.Role)</span>
-                        }
-                    </td>
+                    <td><span class="fg-badge">@FiGet.Web.Components.Pages.Account.Profile.RoleName(user.Role)</span></td>
                     <td>
                         @if (user.IsDisabled)
                         {
@@ -89,33 +70,13 @@
                     </td>
                     <td class="fg-num">@(user.LastSignInUtc?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? Display.None)</td>
                     <td class="fg-cell-actions">
-                        @if (manageable)
-                        {
-                            <details class="fg-more fg-row-actions">
-                                <summary>Manage</summary>
-                                <div class="fg-stack">
-                                    <form method="post" action="/admin/users/@user.Key/password" class="fg-row">
-                                        <AntiforgeryToken />
-                                        <input type="password" name="password" autocomplete="new-password" minlength="@AccountService.MinimumPasswordLength" required
-                                               placeholder="New password" aria-label="New password for @user.UserName" />
-                                        <button type="submit" class="fg-btn fg-btn-sm">Reset password</button>
-                                    </form>
-                                    <div class="fg-row">
-                                        <form method="post" action="/admin/users/@user.Key/@(user.IsDisabled ? "enable" : "disable")">
-                                            <AntiforgeryToken />
-                                            <button type="submit" class="fg-btn fg-btn-sm">@(user.IsDisabled ? "Enable" : "Disable")</button>
-                                        </form>
-                                        <form method="post" action="/admin/users/@user.Key/delete">
-                                            <AntiforgeryToken />
-                                            <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Delete</button>
-                                        </form>
-                                    </div>
-                                </div>
-                            </details>
-                        }
-                        else if (user.Key == actor?.Key)
+                        @if (user.Key == actor?.Key)
                         {
                             <a class="fg-btn fg-btn-sm" href="/account/profile">Your profile</a>
+                        }
+                        else
+                        {
+                            <a class="fg-btn fg-btn-sm" href="/admin/users/@user.Key">@(manageable ? "Edit" : "View")</a>
                         }
                     </td>
                 </tr>

@@ -87,7 +87,7 @@ public sealed partial class AccountTests(SqliteServerFixture server) : IClassFix
         HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(admin));
         var key = (await FindAsync(name))!.Key;
         var disabled = await PostUserActionAsync(admin, key, "disable");
-        Assert.Equal("/admin/users?done=disable", disabled.Headers.Location!.ToString());
+        Assert.Equal($"/admin/users/{key}?done=disable", disabled.Headers.Location!.ToString());
 
         var after = await user.GetAsync("/account/profile");
         HttpAssert.Status(HttpStatusCode.Redirect, after);
@@ -127,17 +127,21 @@ public sealed partial class AccountTests(SqliteServerFixture server) : IClassFix
         using var client = CreateBrowser();
         HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client, adminName, Password));
 
-        var promote = await PostUserActionAsync(client, (await FindAsync(plain))!.Key, "role", ("role", nameof(UserRole.Admin)));
-        Assert.Equal("/admin/users?done=forbidden", promote.Headers.Location!.ToString());
+        var promoteKey = (await FindAsync(plain))!.Key;
+        var promote = await PostUserActionAsync(client, promoteKey, "role", ("role", nameof(UserRole.Admin)));
+        Assert.Equal($"/admin/users/{promoteKey}?done=forbidden", promote.Headers.Location!.ToString());
 
-        var disableAdmin = await PostUserActionAsync(client, (await FindAsync(otherAdmin))!.Key, "disable");
-        Assert.Equal("/admin/users?done=forbidden", disableAdmin.Headers.Location!.ToString());
+        var disableAdminKey = (await FindAsync(otherAdmin))!.Key;
+        var disableAdmin = await PostUserActionAsync(client, disableAdminKey, "disable");
+        Assert.Equal($"/admin/users/{disableAdminKey}?done=forbidden", disableAdmin.Headers.Location!.ToString());
 
-        var self = await PostUserActionAsync(client, (await FindAsync(adminName))!.Key, "role", ("role", nameof(UserRole.SuperAdmin)));
-        Assert.Equal("/admin/users?done=forbidden", self.Headers.Location!.ToString());
+        var selfKey = (await FindAsync(adminName))!.Key;
+        var self = await PostUserActionAsync(client, selfKey, "role", ("role", nameof(UserRole.SuperAdmin)));
+        Assert.Equal($"/admin/users/{selfKey}?done=forbidden", self.Headers.Location!.ToString());
 
-        var reset = await PostUserActionAsync(client, (await FindAsync(plain))!.Key, "password", ("password", "reset-by-an-admin-01"));
-        Assert.Equal("/admin/users?done=password", reset.Headers.Location!.ToString());
+        var resetKey = (await FindAsync(plain))!.Key;
+        var reset = await PostUserActionAsync(client, resetKey, "password", ("password", "reset-by-an-admin-01"));
+        Assert.Equal($"/admin/users/{resetKey}?done=password", reset.Headers.Location!.ToString());
         Assert.True((await FindAsync(plain))!.MustChangePassword);
     }
 
@@ -197,6 +201,37 @@ public sealed partial class AccountTests(SqliteServerFixture server) : IClassFix
                 await users.UpdateAsync(other, CancellationToken.None);
             }
         }
+    }
+
+    /// <summary>
+    /// The list links to each account and carries no controls of its own; the changes are on the account's page, which
+    /// offers them only when they are the viewer's to make.
+    /// </summary>
+    [Fact]
+    public async Task Each_account_is_changed_on_its_own_page()
+    {
+        var plain = await CreateUserAsync(UserRole.User);
+        var superAdmin = await CreateUserAsync(UserRole.SuperAdmin);
+        var adminName = await CreateUserAsync(UserRole.Admin);
+        using var client = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client, adminName, Password));
+
+        var list = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/users"));
+        var plainKey = (await FindAsync(plain))!.Key;
+        var superKey = (await FindAsync(superAdmin))!.Key;
+        Assert.Contains($"href=\"/admin/users/{plainKey}\"", list, StringComparison.Ordinal);
+        Assert.DoesNotContain("name=\"password\"", list, StringComparison.Ordinal);
+        Assert.DoesNotContain("action=\"/admin/users/", list, StringComparison.Ordinal);
+
+        var editable = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/admin/users/{plainKey}"));
+        Assert.Contains($"action=\"/admin/users/{plainKey}/password\"", editable, StringComparison.Ordinal);
+        Assert.Contains($"action=\"/admin/users/{plainKey}/delete\"", editable, StringComparison.Ordinal);
+
+        var readOnly = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/admin/users/{superKey}"));
+        Assert.DoesNotContain("action=\"/admin/users/", readOnly, StringComparison.Ordinal);
+        Assert.Contains("managed by a super admin", readOnly, StringComparison.Ordinal);
+
+        HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync("/admin/users/999999"));
     }
 
     [Fact]
@@ -269,7 +304,7 @@ public sealed partial class AccountTests(SqliteServerFixture server) : IClassFix
     /// <summary>A row button on the users page, posted with the antiforgery token that page carries.</summary>
     private static async Task<HttpResponseMessage> PostUserActionAsync(HttpClient client, int key, string action, params (string Name, string Value)[] extra)
     {
-        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/users"));
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/admin/users/{key}"));
         var token = AntiforgeryToken().Match(page);
         Assert.True(token.Success, "The users page carries no antiforgery token.");
         var fields = new Dictionary<string, string> { ["__RequestVerificationToken"] = WebUtility.HtmlDecode(token.Groups["value"].Value) };
