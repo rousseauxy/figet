@@ -556,6 +556,76 @@ pre code { padding: 0; background: none; }
   white-space: nowrap;
 }
 
+/* ── Accordion ───────────────────────────────────────────────────
+   A header bar with a chevron that turns, tinted while open, the body on the surface below it. Neighbours join into one
+   block with a shared border, as a set of accordion items does. */
+details.fg-accordion {
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+  margin-block: 1rem;
+  overflow: hidden;
+}
+.fg-panel details.fg-accordion { box-shadow: none; }
+details.fg-accordion > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.1rem;
+  list-style: none;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text);
+  user-select: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+details.fg-accordion > summary::-webkit-details-marker { display: none; }
+details.fg-accordion > summary::after {
+  content: "";
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  opacity: 0.7;
+  transform: translateY(-25%) rotate(45deg);
+  transition: transform 0.2s ease;
+}
+details.fg-accordion > summary:hover { background: var(--hover); }
+details.fg-accordion > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+details.fg-accordion[open] > summary {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  border-bottom: 1px solid var(--border);
+}
+details.fg-accordion[open] > summary::after { transform: translateY(25%) rotate(-135deg); }
+.fg-accordion-body { padding: 1rem 1.1rem; }
+.fg-accordion-body > :first-child { margin-top: 0; }
+.fg-accordion-body > :last-child { margin-bottom: 0; }
+details.fg-accordion:has(+ details.fg-accordion) {
+  margin-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+details.fg-accordion + details.fg-accordion {
+  margin-top: 0;
+  border-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  details.fg-accordion > summary,
+  details.fg-accordion > summary::after { transition: none; }
+}
+
+/* A form of one or two fields and its button on one line: adding a member, a grant, an alternate name. */
+.fg-form.fg-form-inline { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem 0.75rem; max-width: none; }
+.fg-form-inline .fg-field { margin-bottom: 0; min-width: 12rem; }
+.fg-form-inline > .fg-muted { flex-basis: 100%; margin: 0; }
+
+/* "Show more" inside content - the generated tags of a package - stays a light link rather than a bar. */
 details.fg-more { margin-top: 0.6rem; }
 details.fg-more > summary { cursor: pointer; color: var(--accent); font-size: 0.8rem; }
 details.fg-more[open] > summary { margin-bottom: 0.5rem; }
@@ -1189,7 +1259,6 @@ input[type=date] { color-scheme: inherit; }
 
 /* Instructions: a caption above the commands it introduces, and the disclosure that holds them on the feed page. */
 .fg-instruction-caption { margin: 0.8rem 0 0.25rem; font-size: 0.78rem; color: var(--text-2); font-weight: 600; }
-.fg-connect { margin: 0.25rem 0 1rem; }
 textarea.fg-mono { font-family: var(--font-mono); font-size: 0.8rem; }
 
 /* The prerelease switch sits in the search bar beside the button. */

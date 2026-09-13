@@ -155,6 +155,38 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         Assert.DoesNotContain("/feeds/public/settings", page, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A create form sits in an accordion: closed while there is a list to read, opened by a link, and reopened by its own
+    /// refused post so the reason is in view; a create that succeeds closes it and says so above it.
+    /// </summary>
+    [Fact]
+    public async Task A_create_accordion_opens_on_a_link_and_on_a_refused_post_and_closes_on_success()
+    {
+        using var client = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
+        await CreateFeedAsync("accordion-neighbour", anonymousRead: true);
+
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/feeds"));
+        Assert.Contains("<details class=\"fg-accordion\" id=\"create\">", page, StringComparison.Ordinal);
+        Assert.Contains("<details class=\"fg-accordion\" id=\"create\" open", await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/feeds?open=create")), StringComparison.Ordinal);
+
+        async Task<string> PostAsync(string name)
+        {
+            var form = FormBlock(page, "create-feed");
+            var fields = HiddenFields(form);
+            fields[FieldName(form, "feed-name")] = name;
+            using var content = new FormUrlEncodedContent(fields);
+            return await HttpAssert.SuccessBodyAsync(await client.PostAsync("/admin/feeds", content));
+        }
+
+        var refused = await PostAsync("not a name");
+        Assert.Contains("<details class=\"fg-accordion\" id=\"create\" open", refused, StringComparison.Ordinal);
+
+        var created = await PostAsync("accordion-" + Guid.NewGuid().ToString("N")[..8]);
+        Assert.Contains("<details class=\"fg-accordion\" id=\"create\">", created, StringComparison.Ordinal);
+        Assert.Contains("fg-alert fg-alert-ok", created, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Feed_settings_can_be_changed()
     {

@@ -69,8 +69,7 @@ else
     </div>
 }
 
-<h2>Add a provider</h2>
-<div class="fg-panel">
+<Accordion Id="create" Title="Add a provider" Open="@(providers.Count == 0)" FormName="create-provider">
     <EditForm Model="NewProvider!" FormName="create-provider" OnValidSubmit="CreateAsync" method="post" class="fg-form">
         <DataAnnotationsValidator />
         <ProviderFields Model="NewProvider!" />
@@ -80,7 +79,7 @@ else
         }
         <button type="submit" class="fg-btn fg-btn-primary">Add provider</button>
     </EditForm>
-</div>
+</Accordion>
 
 @code {
     private IReadOnlyList<OidcProvider> providers = [];

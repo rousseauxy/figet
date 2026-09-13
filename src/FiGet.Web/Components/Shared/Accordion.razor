@@ -1,0 +1,58 @@
+@*
+    A bar that opens to show a form or a set of instructions. A <details> element rather than a scripted collapse, because
+    these pages ship no framework: the browser opens and closes it, with the keyboard too, and a screen reader announces it
+    as expandable. Accordions next to each other join into one block; with the same Group only one of them is open at a time.
+
+    Open when the page asks (a list with nothing in it yet), when the address says ?open={Id}, and when its own form was
+    just posted and did not succeed - so what was typed and why it was refused are in view. A form that succeeded closes.
+*@
+<details class="fg-accordion" id="@Id" name="@Group" open="@IsOpen">
+    <summary>@Title</summary>
+    <div class="fg-accordion-body">
+        @ChildContent
+    </div>
+</details>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = "";
+
+    /// <summary>The element id, which a link opens with ?open={Id}#{Id}.</summary>
+    [Parameter]
+    public string? Id { get; set; }
+
+    /// <summary>Accordions sharing a group close each other.</summary>
+    [Parameter]
+    public string? Group { get; set; }
+
+    [Parameter]
+    public bool Open { get; set; }
+
+    /// <summary>The form name of the form inside, when there is one: a post of that form reopens the accordion.</summary>
+    [Parameter]
+    public string? FormName { get; set; }
+
+    /// <summary>Whether the form inside was posted and did what it was asked, which closes the accordion again.</summary>
+    [Parameter]
+    public bool Succeeded { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    [SupplyParameterFromQuery(Name = "open")]
+    private string? OpenQuery { get; set; }
+
+    private bool IsOpen =>
+        Open
+        || (Id is not null && string.Equals(OpenQuery, Id, StringComparison.Ordinal))
+        || (FormName is not null && !Succeeded && PostedHere);
+
+    private bool PostedHere =>
+        HttpContext is { } http
+        && HttpMethods.IsPost(http.Request.Method)
+        && http.Request.HasFormContentType
+        && string.Equals(http.Request.Form["_handler"], FormName, StringComparison.Ordinal);
+}

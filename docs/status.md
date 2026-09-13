@@ -2642,3 +2642,23 @@ application's goods overview), and **Add upstream** is a button that opens the e
 static, so opening is a link (`?edit={key}#upstream-{key}`, `?edit=new`) rather than a script; a refused save reopens the
 same form with the reason inside it. The configuration note in the Name panel is now a muted line under the rename
 checkbox instead of a warning shown on every visit.
+
+## Create forms and instructions in accordions - 2026-09-14
+
+Asked by the owner: the create and add blocks, and the "Connect a client" style disclosures, as a proper accordion.
+Not Bootstrap - neither sibling application uses it, and its collapse needs script these pages do not ship - but one
+`Accordion` component on a `<details>` element, styled as one: a header bar with a chevron that turns, tinted in the
+accent while open, neighbours joined into one block, keyboard focus ring, no motion when the reader asks for none.
+
+- **Where**: create a feed or directory, a user, a group, a service token, a provider, a personal key; Connect a
+  client on a feed page; Download from a script, Fetch from a URL and New folder on a directory page (one group, so
+  opening one closes the others). "N command and function tags" on a package page stays a light "show more" link:
+  it is content, not an action.
+- **When it is open**: when the page asks (the list is still empty), when the address says `?open={id}`, and when its
+  own form was just posted and refused, so what was typed and why are in view. A create that succeeds closes it; the
+  feeds page's confirmation moved above it, and a new token or key keeps being shown above, outside the accordion.
+- A one-field add (a group member) is one row, field and button side by side, rather than an accordion that saves no
+  space.
+
+Test: `AdminUiTests` - the create accordion on the feeds page is closed with feeds listed, opened by `?open=create`,
+reopened by a refused create, and closed by a successful one with the confirmation shown.

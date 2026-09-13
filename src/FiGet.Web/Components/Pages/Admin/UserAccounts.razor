@@ -85,8 +85,7 @@
     </table>
 </div>
 
-<h2>Create a user</h2>
-<div class="fg-panel">
+<Accordion Id="create" Title="Create a user" FormName="create-user" Succeeded="@createdUser">
     <EditForm Model="NewUser!" FormName="create-user" OnValidSubmit="CreateAsync" method="post" class="fg-form">
         <DataAnnotationsValidator />
         <div class="fg-field">
@@ -122,10 +121,11 @@
         }
         <button type="submit" class="fg-btn fg-btn-primary">Create user</button>
     </EditForm>
-</div>
+</Accordion>
 
 @code {
     private IReadOnlyList<User> users = [];
+    private bool createdUser;
     private AccountActor? actor;
     private string? error;
     private DateTime now = DateTime.UtcNow;
@@ -180,6 +180,7 @@
 
         if (user is not null)
         {
+            createdUser = true;
             Audit.Record(HttpContext, "user.create", user.UserName, $"role={user.Role}");
             NewUser = new();
             users = await Users.ListAsync(HttpContext.RequestAborted);

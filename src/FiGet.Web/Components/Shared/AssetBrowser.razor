@@ -53,10 +53,9 @@
     <button type="button" class="fg-copy" data-copy="@BaseUrl" title="Copy this URL" aria-label="Copy the download URL of this folder">Copy</button>
 </p>
 
-<details class="fg-more fg-connect">
-    <summary>Download from a script</summary>
+<Accordion Id="download" Title="Download from a script" Group="asset-actions">
     <Instructions Lines="@FiGet.Domain.Feeds.InstructionTemplates.Render(Feed.FileInstructions, FiGet.Domain.Feeds.InstructionTemplates.DefaultFiles, new Dictionary<string, string> { ["directory"] = Feed.Name, ["folderUrl"] = BaseUrl })" />
-</details>
+</Accordion>
 
 @if (missing)
 {
@@ -83,8 +82,7 @@
         <ul class="fg-upload-list" data-asset-progress aria-live="polite"></ul>
     </section>
 
-    <details class="fg-more">
-        <summary>Fetch from a URL</summary>
+    <Accordion Id="fetch" Title="Fetch from a URL" Group="asset-actions" Open="@(FetchMessage is { Ok: false })">
         <form method="post" action="/admin/assets/@Uri.EscapeDataString(Feed.Name)/fetch" class="fg-form">
             <AntiforgeryToken />
             <input type="hidden" name="parent" value="@Folder.Value" />
@@ -101,10 +99,9 @@
             <p class="fg-muted fg-small">The server downloads it once and keeps it here; the page waits until it is done.</p>
             <button type="submit" class="fg-btn fg-btn-primary">Fetch</button>
         </form>
-    </details>
+    </Accordion>
 
-    <details class="fg-more">
-        <summary>New folder</summary>
+    <Accordion Id="new-folder" Title="New folder" Group="asset-actions">
         <form method="post" action="/admin/assets/@Uri.EscapeDataString(Feed.Name)/folders" class="fg-form">
             <AntiforgeryToken />
             <input type="hidden" name="parent" value="@Folder.Value" />
@@ -115,7 +112,7 @@
             </div>
             <button type="submit" class="fg-btn fg-btn-primary">Create folder</button>
         </form>
-    </details>
+    </Accordion>
 }
 
 <p class="fg-result-count">

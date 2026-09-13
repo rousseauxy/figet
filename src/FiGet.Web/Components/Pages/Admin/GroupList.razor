@@ -50,8 +50,7 @@ else
     </div>
 }
 
-<h2>Create a group</h2>
-<div class="fg-panel">
+<Accordion Id="create" Title="Create a group" Open="@(groups.Count == 0)" FormName="create-group" Succeeded="@createdGroup">
     <EditForm Model="NewGroup!" FormName="create-group" OnValidSubmit="CreateAsync" method="post" class="fg-form">
         <DataAnnotationsValidator />
         <div class="fg-field">
@@ -69,10 +68,11 @@ else
         }
         <button type="submit" class="fg-btn fg-btn-primary">Create group</button>
     </EditForm>
-</div>
+</Accordion>
 
 @code {
     private IReadOnlyList<GroupSummary> groups = [];
+    private bool createdGroup;
     private string? error;
 
     [CascadingParameter]
@@ -108,6 +108,7 @@ else
             return;
         }
 
+        createdGroup = true;
         Audit.Record(HttpContext, "group.create", name);
         NewGroup = new();
         groups = await Groups.ListAsync(HttpContext.RequestAborted);

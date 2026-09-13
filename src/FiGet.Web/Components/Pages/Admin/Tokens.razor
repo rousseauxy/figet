@@ -147,8 +147,9 @@ else
     </div>
 }
 
-<h2>Create a service token</h2>
-<div class="fg-panel">
+@* The new secret is shown above, outside the accordion, which closes once the token exists: a secret shown once must not
+   sit in a box that can be folded away. *@
+<Accordion Id="create" Title="Create a service token" Open="@(!tokens.Any(t => t.UserKey is null))" FormName="create-token" Succeeded="@(created is not null)">
     <EditForm Model="NewToken!" FormName="create-token" OnValidSubmit="CreateAsync" method="post" class="fg-form">
         <DataAnnotationsValidator />
         <div class="fg-field">
@@ -190,7 +191,7 @@ else
         }
         <button type="submit" class="fg-btn fg-btn-primary">Create service token</button>
     </EditForm>
-</div>
+</Accordion>
 
 @code {
     private IReadOnlyList<AccessToken> tokens = [];

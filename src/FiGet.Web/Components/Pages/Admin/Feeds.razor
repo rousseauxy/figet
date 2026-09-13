@@ -89,8 +89,12 @@ else
     </div>
 }
 
-<h2>@(IsAssets ? "Create an asset directory" : "Create a feed")</h2>
-<div class="fg-panel">
+@if (message is not null && !messageIsError)
+{
+    <div class="fg-alert fg-alert-ok" role="status">@message</div>
+}
+
+<Accordion Id="create" Title="@(IsAssets ? "Create an asset directory" : "Create a feed")" Open="@(feeds.Count == 0)" FormName="create-feed" Succeeded="@(message is not null && !messageIsError)">
     <EditForm Model="NewFeed!" FormName="create-feed" OnValidSubmit="CreateAsync" method="post" class="fg-form">
         <DataAnnotationsValidator />
         <div class="fg-field">
@@ -114,13 +118,13 @@ else
             </div>
         }
 
-        @if (message is not null)
+        @if (message is not null && messageIsError)
         {
-            <p class="@(messageIsError ? "fg-error" : "fg-ok")">@message</p>
+            <p class="fg-error">@message</p>
         }
         <button type="submit" class="fg-btn fg-btn-primary">@(IsAssets ? "Create directory" : "Create feed")</button>
     </EditForm>
-</div>
+</Accordion>
 
 @code {
     private IReadOnlyList<Feed> feeds = [];
