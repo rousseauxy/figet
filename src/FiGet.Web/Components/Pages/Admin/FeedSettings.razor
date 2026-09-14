@@ -4,6 +4,8 @@
 @layout AdminLayout
 @inherits FeedAdminPage
 @using FiGet.Domain.Feeds
+@inject IShareFolders Shares
+@inject Microsoft.Extensions.Options.IOptions<FiGet.Web.Configuration.FiGetOptions> Options
 @inject FiGet.Http.AuditLog Audit
 
 <PageTitle>@Name settings · FiGet</PageTitle>
@@ -87,8 +89,20 @@
                 <dd>
                     <code>@feed.FolderRoot</code>
                     <div class="fg-small fg-muted">
-                        The files are this folder on the server, read as it is; set in the server configuration (<code>FiGet:Feeds</code>),
-                        applied on every start. Writes through FiGet are @(feed.FolderWritable ? "on" : "off") for it.
+                        The files are this folder on the server, read as it is;
+                        @if (FolderFromConfiguration)
+                        {
+                            <text>set in the server configuration (<code>FiGet:Feeds</code>), applied on every start.</text>
+                        }
+                        else if (ShowsFolderForm)
+                        {
+                            <text>chosen under <em>Content</em> below.</text>
+                        }
+                        else
+                        {
+                            <text>chosen by an administrator.</text>
+                        }
+                        Writes through FiGet are @(feed.FolderWritable ? "on" : "off") for it.
                     </div>
                 </dd>
             }
@@ -119,6 +133,54 @@
             <button type="submit" class="fg-btn fg-btn-primary">Save networks</button>
         </EditForm>
     </Accordion>
+
+    @* The content of an asset directory: FiGet's own storage, or one sub-folder of the shares mount, chosen by name. Admins
+       only, and not for a directory whose folder configuration sets, since the next start would put that back. *@
+    @if (ShowsFolderForm)
+    {
+        <Accordion Id="folder" Title="@FolderTitle" FormName="feed-folder" Succeeded="@folderSaved">
+            @if (!Shares.IsConfigured)
+            {
+                <p class="fg-muted fg-small">
+                    A directory backed by a folder on the server needs the shares mount (<code>FiGet:Assets:SharesRoot</code>) or
+                    the server configuration (<code>FiGet:Feeds:N:Folder</code>); see docs/configuration.md.
+                </p>
+            }
+            else if (shares.Count == 0)
+            {
+                <p class="fg-muted fg-small">No folders under <code>@Shares.Root</code> yet: each share mounted as a sub-folder there can be a directory's content.</p>
+            }
+            else
+            {
+                <EditForm Model="Folder!" FormName="feed-folder" OnValidSubmit="SaveFolderAsync" method="post" class="fg-form">
+                    <div class="fg-field">
+                        <label for="folder-share">Content</label>
+                        <InputSelect id="folder-share" @bind-Value="Folder!.Share">
+                            <option value="">FiGet's own storage (uploads)</option>
+                            @foreach (var share in shares)
+                            {
+                                <option value="@share.Name">Folder @share.Name on the shares mount, read as it is</option>
+                            }
+                        </InputSelect>
+                        <span class="fg-small fg-muted">
+                            Nothing is copied either way: a folder is read as it is, and moving the directory off a folder leaves
+                            it on FiGet's own storage, empty until something is uploaded, with the folder untouched.
+                            @if (feed.IsFolderBacked && CurrentShare.Length == 0)
+                            {
+                                <text>Its current folder <code>@feed.FolderRoot</code> is not under the shares mount; saving picks one from the list or moves off it.</text>
+                            }
+                        </span>
+                    </div>
+                    <label class="fg-check"><InputCheckbox id="folder-writes" @bind-Value="Folder!.Writes" /> Uploads and deletes through FiGet act on the folder (the share's own permissions still apply)</label>
+                    @if (folderError is not null)
+                    {
+                        <p class="fg-error">@folderError</p>
+                    }
+                    <button type="submit" class="fg-btn fg-btn-primary">Save content</button>
+                </EditForm>
+            }
+        </Accordion>
+    }
 
     @if (IsAssets)
     {
@@ -181,6 +243,30 @@
     private string? networksError;
     private bool networksSaved;
 
+    [SupplyParameterFromForm(FormName = "feed-folder")]
+    private FolderForm? Folder { get; set; }
+
+    private string? folderError;
+    private bool folderSaved;
+    private IReadOnlyList<ShareFolder> shares = [];
+
+    /// <summary>Named in FiGet:Feeds with a Folder: the start re-applies it, so a choice made here would not survive.</summary>
+    private bool FolderFromConfiguration =>
+        Options.Value.Feeds.Any(seed =>
+            !string.IsNullOrWhiteSpace(seed.Folder)
+            && (string.Equals(seed.Name, Target?.Name, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(seed.Name, Name, StringComparison.OrdinalIgnoreCase)));
+
+    private bool ShowsFolderForm => IsAssets && IsAdmin && !FolderFromConfiguration;
+
+    /// <summary>The listed folder the directory is on now, by name; empty on FiGet's own storage or a folder outside the mount.</summary>
+    private string CurrentShare =>
+        shares.FirstOrDefault(share => string.Equals(share.Path, Target?.FolderRoot, StringComparison.Ordinal))?.Name ?? "";
+
+    private string FolderTitle => Target is not { IsFolderBacked: true }
+        ? "Content: FiGet's own storage"
+        : CurrentShare.Length > 0 ? $"Content: folder {CurrentShare} on the shares mount" : "Content: a folder on the server";
+
     private string FeedUrl => PublicUrls.Feed(HttpContext, Target!.Name);
 
     private string V3Url => $"{FeedUrl}/v3/index.json";
@@ -205,6 +291,46 @@
             ? new SettingsForm()
             : new SettingsForm { AnonymousRead = feed.AnonymousRead, AnonymousList = feed.AnonymousList, AllowOverwrite = feed.AllowOverwrite, DeletionBehavior = feed.DeletionBehavior, MergePushedIdsWithUpstreams = feed.MergePushedIdsWithUpstreams, ChartColor = feed.ChartColor ?? 0 };
         Networks ??= new NetworksForm { Text = Target?.AllowedNetworks ?? "" };
+        shares = IsAssets && Shares.IsConfigured ? Shares.List() : [];
+        Folder ??= new FolderForm { Share = CurrentShare, Writes = Target?.FolderWritable ?? false };
+    }
+
+    private async Task SaveFolderAsync()
+    {
+        if (Target is not { } feed)
+        {
+            return;
+        }
+
+        // The form is not shown to a manager or for a configured directory, but a form can be posted by hand.
+        if (!ShowsFolderForm || !Shares.IsConfigured)
+        {
+            folderError = "The content of this directory is not chosen here.";
+            return;
+        }
+
+        var name = (Folder!.Share ?? "").Trim();
+        string? root = null;
+        if (name.Length > 0 && (root = Shares.Resolve(name)) is null)
+        {
+            folderError = $"'{name}' is not a folder on the shares mount.";
+            return;
+        }
+
+        var writes = root is not null && Folder.Writes;
+
+        // False means nothing changed, not that the directory is gone: that is what the reload below says.
+        var changed = await Feeds.UpdateFolderAsync(feed.Key, root, writes, HttpContext.RequestAborted);
+        if (changed)
+        {
+            Audit.Record(HttpContext, "feed.folder", feed.Name, $"folder={(root is null ? "none" : name)} folderWrites={writes}");
+        }
+
+        await LoadAsync();
+        folderSaved = Target is not null;
+        (message, messageIsError) = Target is null
+            ? ($"This {Noun} no longer exists.", true)
+            : (changed ? "Content saved." : "Content unchanged.", false);
     }
 
     private async Task SaveNetworksAsync()
@@ -276,6 +402,14 @@
     private sealed class NetworksForm
     {
         public string? Text { get; set; }
+    }
+
+    private sealed class FolderForm
+    {
+        /// <summary>Empty for FiGet's own storage, else the name of a sub-folder of the shares mount. A name, never a path.</summary>
+        public string Share { get; set; } = "";
+
+        public bool Writes { get; set; }
     }
 
     private sealed class SettingsForm
