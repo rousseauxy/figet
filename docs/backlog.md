@@ -96,6 +96,42 @@ Decide alongside it whether the runtime pin is worth the maintenance: pinning me
 releases by hand, and the sibling's comment records a case where the runtime image *was* the fix for a
 set of CVEs in an assembly the app never ships itself.
 
+### Phase 6: what the review left for the cluster deployment
+
+From `docs/reviews/2026-09-14-architecture-security.md`, with the OpenShift admins' answers of the same day: secrets
+come through ESO, the chart is Helm, storage may be S3 or a ReadWriteMany volume.
+
+- **The Helm chart** must set `FiGet:PublicBaseUrl`, `Database:ExpectedReplicas`, `FiGet__DataProtection__MasterKey`
+  from an ESO-synced Secret (FiGet refuses to start with more than one replica without it), upstream credentials as
+  `FIGET_UPSTREAM_*` variables from the same kind of Secret, `Storage:TempPath` on the volume or an `emptyDir`, and a
+  proxy body limit of at least `MaxAssetSizeMB`.
+- **Trust only the ingress for forwarded headers** (S10.3): `ASPNETCORE_FORWARDEDHEADERS_ENABLED` trusts every peer, so
+  either configure `KnownNetworks` to the ingress range or keep the pod reachable only through it with a NetworkPolicy.
+- **Storage: start on a ReadWriteMany volume.** It needs nothing new: the file-system storage already writes
+  atomically and is keyed by feed. S3 would need the storage ports to take a byte range (a download is served with
+  Range from a seekable stream today) before an adapter; not worth doing unless the platform prefers S3.
+- **Secrets stay environment variables.** ESO syncs into a Secret the pod reads as variables, which is what
+  `CredentialRef` and the connection string already use; a separate secret-source port (mounted files) is not needed.
+
+### Smaller items from the 2026-09-14 review
+
+Each is Low, and none is reachable without an account that already has rights; ids refer to the review.
+
+- **S6.1, S6.3** Cap the nuspec entry read into memory at a few megabytes, and stream symbol PDBs to storage instead
+  of holding each one whole.
+- **S6.4** Validate an asset's content type set through the metadata call (`MediaTypeHeaderValue`, length cap); a
+  line break in it is a 500 today. Harmless to the browser since assets are served with a sandbox policy.
+- **S9.2** A sweep or `figet verify` that lists files no row names: a failed delete or two concurrent replaces of an
+  asset leave one.
+- **Name uniqueness across feeds and alternate names** is a check in the store, not an index: a `Names` table with the
+  unique index, written by both paths.
+- **Hash verification on v2 cache fill** (the v2 client library exposes the hash; v3 does not).
+- **S1.3** Locked-out and disabled answers say a name exists after five attempts; **S5.1** four more reserved IPv4 ranges
+  in the fetch-by-URL guard; **S7.2** rate limits are per replica; the two connector display divergences (review 3.4);
+  the appearance page's "Reload packs" acts on one replica.
+- **A download attempt for an id no upstream lists** is still made per upstream. Kept on purpose: a package published a
+  minute ago can be downloadable before a gallery's listing shows it, and the attempts are bounded by the rate limit.
+
 ## Later
 
 - **History tab** on a version: the audit log exists now (filter by feed on its page); a per-version view of it is not built.

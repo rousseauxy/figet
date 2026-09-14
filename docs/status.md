@@ -2711,3 +2711,57 @@ compared against was only this page's rows. It read exactly as paging falling ba
 
 Test: `PackagePageTests` - 120 upstream packages matching a search, one of them cached here: pages of 50, 50 and 20,
 each package once, the cached one first, Next on the first two pages only.
+
+## Architecture and security review, and its fixes - 2026-09-14
+
+An outside review read the whole repository at `09013cf` and wrote `docs/reviews/2026-09-14-architecture-security.md`,
+with probe tests that failed until each finding was fixed. The owner decided: an upstream's URL and credential are an
+admin's, the provider allow list is built, the probes become regression tests, and both the fixes before publishing
+and those before phase 6 are done now. Each fix below is its own commit with a test that was seen to fail without it.
+
+Before publishing the repository:
+
+- **S6.2 The v2 `$filter` parser is bounded**: 32 levels of nesting (parentheses, `not`, function arguments) and 2,048
+  characters; recorded clients send at most two levels in 144 characters. Nesting past that answers 400 instead of
+  overflowing the stack and ending the process, which one anonymous request could do.
+- **S5.3 Upstream credentials name only `FIGET_UPSTREAM_*` variables**, checked on save, on start for `FiGet:Feeds`, and
+  when the client reads it. An upstream's URL, protocol and credential are an admin's; a feed manager edits name,
+  patterns and switch, and adds one of the known public galleries (nuget.org, the PowerShell Gallery). The review had
+  shown a manager could read any environment variable of the process by pointing an upstream at a server of their own.
+- **S6.7 Asset downloads cannot run as the site**: `nosniff` and a sandbox policy on every download, and
+  `Content-Disposition: attachment` for everything but raster images, plain text and JSON.
+- **S7.1 The audit caller is the connection address**, as resolved by the forwarded-headers middleware, not the
+  client-written `X-Forwarded-For`.
+- **S1.2 Failed sign-ins are counted in the database**; thirty overlapping wrong passwords had left the count at one.
+  **S1.1** the decoy hash for an unknown name is made once, so it costs one verification like a wrong password.
+- **S10.3 The proxy documentation is corrected**: the forwarded-headers switch honours For and Proto, not Host;
+  `PublicBaseUrl` is required behind a proxy.
+- **S3.1** four characters of an operator-chosen bootstrap token are shown, and an older row is cut down on start;
+  **S4.1** one return-URL rule for every redirect, refusing `/\host` and control characters; **S2.5** the sign-in
+  callback's query is left out of the request log; `LayerBoundaryTests` covers the Http and protocol projects.
+
+Before phase 6:
+
+- **S8.1 The data-protection key ring can be encrypted** with `FiGet:DataProtection:MasterKey` (AES-GCM; 32 bytes from a
+  secret). Keys stored before are encrypted in place on the next start, so sessions and provider secrets survive;
+  without a master key the start logs a warning, and with `ExpectedReplicas` above 1 it refuses to start.
+- **S2.3 Sign-in providers limit who gets an account**: allowed email domains (a verified address in one of them) and a
+  "make an account at a first sign-in" switch, off for a provider added from now on and on for the existing ones.
+  Neither applies to an identity already connected to an account. **S2.4** a plain-http issuer off loopback is refused
+  on save; **S2.2** an address marked unverified does not count for the domains.
+- **S5.2 Upstream URLs are absolute http or https**, and never a link-local address, for admins too.
+- **S7.4 An id no upstream holds is remembered in memory** for the refresh window (bounded at 10,000), instead of as a
+  stored catalogue row per made-up id. **S7.3** a search takes at most 500 hits and five pages from each upstream.
+- **S10.1 Pages cannot be framed** (`X-Frame-Options`, `frame-ancestors 'none'`, `nosniff`, referrer policy);
+  **S10.2** sign-in cookies are Secure whenever `PublicBaseUrl` is https. The antiforgery cookie is not forced: the
+  framework refuses to issue one marked Always on a request it does not see as HTTPS.
+- **Jobs on one replica**: retention, the audit prune and the upload sweep take a lease (`JobLeases`, one row per job,
+  compare-and-set) for one interval before running. **S9.1** a storage folder the start-up move cannot move now is
+  logged and left for the next start instead of ending the process. Upstream downloads buffer under
+  `Storage:TempPath`.
+
+Not done, with the reason in `docs/backlog.md`: the smaller Low items, the S3 byte-range port and a secret-source port
+(the OpenShift admins offered a ReadWriteMany volume and ESO-synced variables, which need neither), and `KnownNetworks`
+for the ingress, which belongs in the chart.
+
+Suites after the fixes: unit 148, integration 432, on SQLite and SQL Server.
