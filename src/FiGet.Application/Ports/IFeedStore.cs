@@ -48,6 +48,9 @@ public interface IFeedStore
     /// </summary>
     Task<bool> UpdateFolderAsync(int key, string? folderRoot, bool folderWritable, CancellationToken cancellationToken);
 
+    /// <summary>The addresses the feed may be reached from, as <c>FeedNetworks.Normalise</c> left them; null for any.</summary>
+    Task<bool> UpdateAllowedNetworksAsync(int key, string? allowedNetworks, CancellationToken cancellationToken);
+
     /// <summary>Changes the feed's retention and cache pruning. Returns false when the feed no longer exists.</summary>
     Task<bool> UpdateRetentionAsync(int key, RetentionRules rules, CancellationToken cancellationToken);
 

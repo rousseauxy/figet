@@ -37,6 +37,9 @@ configuration, with one exception: `Folder` and `FolderWrites` of an asset direc
 the mount is the operator's to provide and to take away. If no feed exists after seeding, a feed named `default` is
 created.
 
+What is not here is set on a feed's settings page: retention, instructions, access grants, and the addresses a feed
+may be reached from (*Allowed networks*, under the settings; empty means any).
+
 A configured feed renamed on its settings page keeps existing as long as its old name is kept as an alternate name: the
 name is then taken, nothing is created, and the start logs a warning to rename it here too. Without the alternate name,
 the next start creates a new, empty feed of the configured name.
@@ -151,7 +154,8 @@ browsers, are not limited (sign-in attempts are, signed in or not).
 
 A refused protocol request gets `429` with `Retry-After`. The address is the connection's, as the forwarded-headers
 middleware resolves it behind a trusted proxy (`ASPNETCORE_FORWARDEDHEADERS_ENABLED=true`, or known proxies configured);
-the `X-Forwarded-For` header is never read directly. **Behind a CDN or a shared egress** many clients arrive from few
+the `X-Forwarded-For` header is never read directly. A feed's *Allowed networks* (its settings page) use the same address,
+so behind a proxy without that switch every client is the proxy's own address and a list would admit all or none. **Behind a CDN or a shared egress** many clients arrive from few
 addresses: raise the limits, or configure the forwarded headers so the real client address is used. A garbage key does
 not get around the limit: a request is counted as anonymous after its key has been checked.
 

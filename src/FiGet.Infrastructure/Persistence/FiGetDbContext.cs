@@ -1,4 +1,5 @@
 using FiGet.Domain.Entities;
+using FiGet.Domain.Feeds;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -84,6 +85,7 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.Property(x => x.ClientBaseUrl).HasMaxLength(512);
             e.Property(x => x.FolderRoot).HasMaxLength(1024);
             e.Ignore(x => x.IsFolderBacked);
+            e.Property(x => x.AllowedNetworks).HasMaxLength(FeedNetworks.MaxLength);
             e.Property(x => x.PackageInstructions).HasMaxLength(4000);
             e.Property(x => x.FeedInstructions).HasMaxLength(4000);
             e.Property(x => x.FileInstructions).HasMaxLength(4000);

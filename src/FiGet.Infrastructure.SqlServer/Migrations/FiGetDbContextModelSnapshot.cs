@@ -458,6 +458,13 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.Property<bool>("AllowOverwrite")
                         .HasColumnType("bit");
 
+                    b.Property<string>("AllowedNetworks")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<bool>("AnonymousList")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("AnonymousRead")
                         .HasColumnType("bit");
 

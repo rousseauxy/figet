@@ -25,10 +25,10 @@ public static partial class BrowserSignIn
         return await client.PostAsync("/account/login/local", content);
     }
 
-    /// <summary>The generated name of the input with this id; Blazor derives it from the model path.</summary>
+    /// <summary>The generated name of the input, textarea or select with this id; Blazor derives it from the model path.</summary>
     public static string InputName(string html, string id)
     {
-        var match = Regex.Match(html, $"<input[^>]*id=\"{id}\"[^>]*name=\"(?<name>[^\"]+)\"|<input[^>]*name=\"(?<name>[^\"]+)\"[^>]*id=\"{id}\"");
+        var match = Regex.Match(html, $"<(?:input|textarea|select)[^>]*id=\"{id}\"[^>]*name=\"(?<name>[^\"]+)\"|<(?:input|textarea|select)[^>]*name=\"(?<name>[^\"]+)\"[^>]*id=\"{id}\"");
         if (!match.Success)
         {
             throw new InvalidOperationException($"No input with id '{id}' in the page.");

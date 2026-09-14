@@ -48,7 +48,8 @@ Two anonymous switches, not one. *Download without credentials* covers `GET /con
 `/metadata/{path}`; *list without credentials* covers `/dir/`, `/export/`, a folder's `/metadata/` and the browse page.
 With the first on and the second off - the setting the device-management consumers get - a client that knows its
 paths downloads, and a stranger learns nothing: `/dir/` and `/export/` answer 401 with a Basic challenge, a folder's
-metadata is the same 404 as a wrong path.
+metadata is the same 404 as a wrong path. A directory limited to listed networks (its settings page, *Allowed
+networks*) answers 403 from anywhere else, before any credential is looked at.
 
 A directory backed by a folder on the server (`FiGet:Feeds:N:Folder`) answers the same routes from the folder itself,
 with these differences: an item has no hashes, its `ETag` is size and modified time, its type comes from its extension,

@@ -94,6 +94,6 @@ else
         // Asset directories have their own page; this one is the package feeds.
         var packageFeeds = all.Where(f => f.Kind != FeedKind.Assets).ToList();
         var levels = await Access.LevelsAsync(packageFeeds, FiGetApp.Actor(HttpContext.User), HttpContext.RequestAborted);
-        feeds = packageFeeds.Where(f => levels[f.Key] >= FeedAccessLevel.Read).ToList();
+        feeds = packageFeeds.Where(f => levels[f.Key] >= FeedAccessLevel.Read && FiGet.Http.FeedAccess.ReachableFrom(HttpContext, f)).ToList();
     }
 }

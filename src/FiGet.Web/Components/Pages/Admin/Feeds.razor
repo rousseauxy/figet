@@ -43,7 +43,7 @@ else if (IsAssets)
                 {
                     <tr>
                         <td><a href="/admin/assets/@directory.Name">@directory.Name</a></td>
-                        <td>@(directory.AnonymousRead ? (directory.AnonymousList ? "Anonymous" : "Anonymous, no listing") : "Token")@(directory.IsFolderBacked ? " · folder" : "")</td>
+                        <td>@(directory.AnonymousRead ? (directory.AnonymousList ? "Anonymous" : "Anonymous, no listing") : "Token")@(directory.AllowedNetworks is null ? "" : ", listed networks")@(directory.IsFolderBacked ? " · folder" : "")</td>
                         <td class="fg-cell-actions">
                             <a class="fg-btn fg-btn-sm" href="/assets/@directory.Name">Browse</a>
                             <a class="fg-btn fg-btn-sm" href="/admin/assets/@directory.Name">Settings</a>
@@ -75,7 +75,7 @@ else
                     <tr>
                         <td><a href="/admin/feeds/@feed.Name">@feed.Name</a></td>
                         <td><span class="fg-badge">@Display.Kind(feed.Kind)</span></td>
-                        <td>@(feed.AnonymousRead ? "Anonymous" : "Token")</td>
+                        <td>@(feed.AnonymousRead ? "Anonymous" : "Token")@(feed.AllowedNetworks is null ? "" : ", listed networks")</td>
                         <td>@(feed.AllowOverwrite ? "Overwrite" : "Reject (409)")</td>
                         <td>@feed.DeletionBehavior.ToString()</td>
                         <td class="fg-num">@(feed.Upstreams.Count == 0 ? Display.None : feed.Upstreams.Count.ToString(CultureInfo.InvariantCulture))</td>

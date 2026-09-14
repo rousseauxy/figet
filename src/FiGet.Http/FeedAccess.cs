@@ -4,6 +4,7 @@ using FiGet.Application.Accounts;
 using FiGet.Application.Ports;
 using FiGet.Application.Tokens;
 using FiGet.Domain.Entities;
+using FiGet.Domain.Feeds;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -47,6 +48,18 @@ public static class FeedAccess
     public static Task<(FeedRequest? Request, IResult? Error)> ResolveAssetsAsync(HttpContext http, string directoryName, TokenScopes required, CancellationToken cancellationToken, bool listing = false) =>
         ResolveAsync(http, directoryName, required, assets: true, listing, cancellationToken);
 
+    /// <summary>
+    /// Whether the feed may be reached from the address this request came from (<see cref="Feed.AllowedNetworks"/>). The
+    /// address is the connection's, as the forwarded-headers middleware resolves it behind a trusted proxy; the pages
+    /// apply the same rule as the protocol endpoints, so a feed hidden from a network is hidden on the site too.
+    /// </summary>
+    public static bool ReachableFrom(HttpContext http, Feed feed)
+    {
+        ArgumentNullException.ThrowIfNull(http);
+        ArgumentNullException.ThrowIfNull(feed);
+        return FeedNetworks.Allows(feed.AllowedNetworks, http.Connection.RemoteIpAddress);
+    }
+
     /// <summary>Whether the request proved nothing about who sent it: no accepted token and no signed-in account.</summary>
     public static bool IsAnonymous(HttpContext http, FeedRequest request)
     {
@@ -65,6 +78,21 @@ public static class FeedAccess
         if (feed is null || (feed.Kind == FeedKind.Assets) != assets)
         {
             return (null, Results.NotFound(new { error = assets ? $"Asset directory '{feedName}' does not exist." : $"Feed '{feedName}' does not exist." }));
+        }
+
+        // Before any credential is looked at: the limit is on where the request comes from, and a key does not move it.
+        // A 403 that says so, not a 404: the client is on the wrong network, and the one thing that helps whoever runs
+        // it is being told that.
+        if (!ReachableFrom(http, feed))
+        {
+            http.RequestServices.GetRequiredService<AuditLog>().RecordThrottled(
+                http,
+                $"feed.network.refused|{feed.Key}|{RequestActor.Caller(http)}",
+                TimeSpan.FromMinutes(10),
+                "feed.network.refused",
+                feed.Name,
+                $"path={http.Request.Path}");
+            return (null, Results.Json(new { error = $"This {(assets ? "asset directory" : "feed")} is not reachable from your network address." }, statusCode: StatusCodes.Status403Forbidden));
         }
 
         var tokens = http.RequestServices.GetRequiredService<AccessTokenService>();

@@ -64,6 +64,14 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
             .ExecuteUpdateAsync(s => s.SetProperty(f => f.FolderRoot, root).SetProperty(f => f.FolderWritable, writable), cancellationToken) > 0;
     }
 
+    public async Task<bool> UpdateAllowedNetworksAsync(int key, string? allowedNetworks, CancellationToken cancellationToken)
+    {
+        var networks = string.IsNullOrWhiteSpace(allowedNetworks) ? null : allowedNetworks;
+        return await db.Feeds
+            .Where(f => f.Key == key)
+            .ExecuteUpdateAsync(s => s.SetProperty(f => f.AllowedNetworks, networks), cancellationToken) > 0;
+    }
+
     public async Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool anonymousList, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, bool mergePushedIdsWithUpstreams, int? chartColor, CancellationToken cancellationToken)
     {
         var feed = await db.Feeds.FirstOrDefaultAsync(f => f.Key == key, cancellationToken);

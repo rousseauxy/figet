@@ -37,6 +37,14 @@ public sealed class Feed
     /// <summary>Whether the files come from a folder on the server rather than from FiGet's own storage.</summary>
     public bool IsFolderBacked => !string.IsNullOrWhiteSpace(FolderRoot);
 
+    /// <summary>
+    /// Addresses and ranges the feed may be reached from, one per line in CIDR notation (<c>FeedNetworks</c>); null means
+    /// any. A request from elsewhere is refused with 403 whatever credentials it carries, and the feed is not on the
+    /// public pages. The admin pages are not limited: an administrator locked out of a feed's settings by the feed's own
+    /// setting would have no way back in.
+    /// </summary>
+    public string? AllowedNetworks { get; set; }
+
     /// <summary>When true, pushing an existing id and version replaces it instead of answering 409.</summary>
     public bool AllowOverwrite { get; set; }
 

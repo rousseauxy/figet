@@ -3,6 +3,7 @@
 @attribute [Authorize]
 @layout AdminLayout
 @inherits FeedAdminPage
+@using FiGet.Domain.Feeds
 @inject FiGet.Http.AuditLog Audit
 
 <PageTitle>@Name settings · FiGet</PageTitle>
@@ -92,6 +93,29 @@
         </dl>
     </section>
 
+    @* Under a bar of its own, closed until asked: most feeds are open to the whole network, and the bar says when one
+       is not. It reopens on a post that was refused, with the entry that was refused named. *@
+    <Accordion Id="networks" Title="@NetworksTitle" FormName="feed-networks" Succeeded="@networksSaved">
+        <EditForm Model="Networks!" FormName="feed-networks" OnValidSubmit="SaveNetworksAsync" method="post" class="fg-form">
+            <div class="fg-field">
+                <label for="allowed-networks">Addresses this @Noun can be reached from (empty: any)</label>
+                <InputTextArea id="allowed-networks" @bind-Value="Networks!.Text" rows="4" class="fg-mono" placeholder="10.0.0.0/8&#10;192.168.1.25&#10;2001:db8::/32" />
+                <span class="fg-small fg-muted">
+                    One address or range per line, CIDR notation. A request from anywhere else gets 403 whatever key or
+                    account it carries, and the @Noun is not on the public pages there; these settings pages are not limited.
+                    IPv4 and IPv6 are separate: a client that comes both ways is listed twice. Behind a reverse proxy the
+                    address is the one the proxy forwards (<code>ASPNETCORE_FORWARDEDHEADERS_ENABLED</code>); without that,
+                    every client is the proxy's own address.
+                </span>
+            </div>
+            @if (networksError is not null)
+            {
+                <p class="fg-error">@networksError</p>
+            }
+            <button type="submit" class="fg-btn fg-btn-primary">Save networks</button>
+        </EditForm>
+    </Accordion>
+
     @if (IsAssets)
     {
         <section class="fg-panel">
@@ -147,6 +171,12 @@
     [SupplyParameterFromForm(FormName = "feed-settings")]
     private SettingsForm? Settings { get; set; }
 
+    [SupplyParameterFromForm(FormName = "feed-networks")]
+    private NetworksForm? Networks { get; set; }
+
+    private string? networksError;
+    private bool networksSaved;
+
     private string FeedUrl => PublicUrls.Feed(HttpContext, Target!.Name);
 
     private string V3Url => $"{FeedUrl}/v3/index.json";
@@ -158,6 +188,10 @@
 
     private string AssetListUrl => $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(Target!.Name)}/dir/";
 
+    private string NetworksTitle => Target?.AllowedNetworks is null
+        ? "Allowed networks: any"
+        : $"Allowed networks: {FeedNetworks.Count(Target.AllowedNetworks).ToString(CultureInfo.InvariantCulture)} listed";
+
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
@@ -166,6 +200,38 @@
         Settings ??= Target is not { } feed
             ? new SettingsForm()
             : new SettingsForm { AnonymousRead = feed.AnonymousRead, AnonymousList = feed.AnonymousList, AllowOverwrite = feed.AllowOverwrite, DeletionBehavior = feed.DeletionBehavior, MergePushedIdsWithUpstreams = feed.MergePushedIdsWithUpstreams, ChartColor = feed.ChartColor ?? 0 };
+        Networks ??= new NetworksForm { Text = Target?.AllowedNetworks ?? "" };
+    }
+
+    private async Task SaveNetworksAsync()
+    {
+        if (Target is not { } feed)
+        {
+            return;
+        }
+
+        if ((Networks!.Text ?? "").Length > FeedNetworks.MaxLength)
+        {
+            networksError = $"The list is longer than {FeedNetworks.MaxLength} characters.";
+            return;
+        }
+
+        if (!FeedNetworks.TryParse(Networks.Text, out _, out var invalid))
+        {
+            networksError = $"'{invalid}' is not an address or a range in CIDR notation (10.0.0.0/8; a range starts at its own boundary).";
+            return;
+        }
+
+        var normalised = FeedNetworks.Normalise(Networks.Text);
+        networksSaved = await Feeds.UpdateAllowedNetworksAsync(feed.Key, normalised, HttpContext.RequestAborted);
+        if (networksSaved)
+        {
+            // The list itself: "who opened this feed to that network" is what the audit log is asked.
+            Audit.Record(HttpContext, "feed.networks", feed.Name, $"networks={(normalised is null ? "any" : normalised.Replace('\n', ' '))}");
+        }
+
+        (message, messageIsError) = networksSaved ? ("Allowed networks saved.", false) : ($"This {Noun} no longer exists.", true);
+        await LoadAsync();
     }
 
     private async Task LoadAsync()
@@ -201,6 +267,11 @@
 
         (message, messageIsError) = saved ? ("Settings saved.", false) : ("This feed no longer exists.", true);
         await LoadAsync();
+    }
+
+    private sealed class NetworksForm
+    {
+        public string? Text { get; set; }
     }
 
     private sealed class SettingsForm
