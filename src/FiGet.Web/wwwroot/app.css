@@ -1007,10 +1007,34 @@ legend {
    sitting on top of the first fact. */
 :not(.fg-panel-grid) > .fg-panel + .fg-panel { margin-top: 1rem; }
 h2 + .fg-panel { margin-top: 0.5rem; }
-.fg-panel .fg-form + .fg-facts {
+.fg-panel :is(.fg-form, .fg-form-actions) + .fg-facts {
   margin-top: 1rem;
   padding-top: 0.9rem;
   border-top: 1px solid var(--border);
+}
+.fg-panel-grid + .fg-panel { margin-top: 1rem; }
+
+/* A row of buttons under a form, when one of them belongs to another form (form="...") or opens a popover. */
+.fg-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin-top: 0.75rem; }
+
+/* A small form that opens beside the button that asks for it - the password change on the profile - as a <details>,
+   like the signed-in menu: no script, and it stays open across a post that was refused. The body floats over what is
+   below rather than pushing it down, so the page keeps its shape while the form is open. */
+.fg-popover { position: relative; display: inline-block; }
+.fg-popover > summary { list-style: none; }
+.fg-popover > summary::-webkit-details-marker { display: none; }
+.fg-popover[open] > summary { background: var(--hover); }
+.fg-popover-body {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 1080;
+  width: min(24rem, calc(100vw - 3rem));
+  padding: 0.9rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-2);
 }
 
 /* The phone menu: hidden on a wide screen, where the column above does the job. */

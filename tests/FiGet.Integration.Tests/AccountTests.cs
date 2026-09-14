@@ -97,6 +97,36 @@ public sealed partial class AccountTests(SqliteServerFixture server) : IClassFix
         Assert.True(user!.LockedUntilUtc > DateTime.UtcNow, $"Not locked after {attempts} overlapping attempts: FailedSignIns={user.FailedSignIns}.");
     }
 
+    /// <summary>
+    /// The password changes on the profile page itself, in a popover beside the profile form: a refusal comes back with
+    /// the popover open and the reason inside; a change signs the account in again and leaves by redirect. The key
+    /// accordion below stays closed until asked, also with no key yet.
+    /// </summary>
+    [Fact]
+    public async Task The_password_changes_on_the_profile_page()
+    {
+        var name = await CreateUserAsync(UserRole.User);
+        using var client = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client, name, Password));
+
+        var profile = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/account/profile"));
+        Assert.Contains("<details class=\"fg-popover\" id=\"password\">", profile, StringComparison.Ordinal);
+        Assert.Contains("form=\"profile-form\"", profile, StringComparison.Ordinal);
+        Assert.Contains("<details class=\"fg-accordion\" id=\"create-key\">", profile, StringComparison.Ordinal);
+
+        var refused = await ChangePasswordAsync(client, "not-the-password", "a-proper-new-password", "/account/profile");
+        Assert.Contains("The current password is not right.", refused, StringComparison.Ordinal);
+        Assert.Contains("<details class=\"fg-popover\" id=\"password\" open>", refused, StringComparison.Ordinal);
+
+        var changed = await ChangePasswordAsync(client, Password, "a-proper-new-password", "/account/profile");
+        Assert.Contains("Password changed.", changed, StringComparison.Ordinal);
+        Assert.DoesNotContain("fg-error", changed, StringComparison.Ordinal);
+
+        using var other = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.OK, await BrowserSignIn.SignInAsync(other, name, Password));
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(other, name, "a-proper-new-password"));
+    }
+
     /// <summary>A disabled account is signed out on its next request, not when its cookie would have expired.</summary>
     [Fact]
     public async Task Disabling_an_account_ends_its_session()
@@ -308,9 +338,10 @@ public sealed partial class AccountTests(SqliteServerFixture server) : IClassFix
         return await scope.ServiceProvider.GetRequiredService<IUserStore>().FindByUserNameAsync(name, CancellationToken.None);
     }
 
-    private static async Task<string> ChangePasswordAsync(HttpClient client, string current, string next)
+    /// <summary>Posts the change-password form of a page: the full page for a forced change, or the profile's popover.</summary>
+    private static async Task<string> ChangePasswordAsync(HttpClient client, string current, string next, string path = "/account/password")
     {
-        var page = FormElement().Matches(await HttpAssert.SuccessBodyAsync(await client.GetAsync("/account/password")))
+        var page = FormElement().Matches(await HttpAssert.SuccessBodyAsync(await client.GetAsync(path)))
             .Select(m => m.Value)
             .Single(f => f.Contains("value=\"change-password\"", StringComparison.Ordinal));
         var fields = HiddenInput().Matches(page).ToDictionary(m => WebUtility.HtmlDecode(m.Groups["name"].Value), m => WebUtility.HtmlDecode(m.Groups["value"].Value));
@@ -318,7 +349,7 @@ public sealed partial class AccountTests(SqliteServerFixture server) : IClassFix
         fields[BrowserSignIn.InputName(page, "new-password")] = next;
         fields[BrowserSignIn.InputName(page, "confirm-password")] = next;
         using var content = new FormUrlEncodedContent(fields);
-        var response = await client.PostAsync("/account/password", content);
+        var response = await client.PostAsync(path, content);
         return response.StatusCode == HttpStatusCode.Redirect
             ? await HttpAssert.SuccessBodyAsync(await client.GetAsync(response.Headers.Location))
             : await response.Content.ReadAsStringAsync();

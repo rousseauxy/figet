@@ -12,10 +12,16 @@
 @inject TimeProvider Time
 @inject IOidcProviderStore Providers
 @inject IExternalLoginStore Logins
+@inject NavigationManager Navigation
 @inject FiGet.Http.AuditLog Audit
 
 @*
     The signed-in account's own page: profile, password, sign-in providers and personal API keys.
+
+    The password changes here, in a popover beside "Save profile", rather than on a page of its own: a <details> the
+    browser opens, so it works with no script, and it stays open when the change was refused so the reason is in view.
+    The separate page remains for the one case that needs it - an account that must choose a password before anything
+    else - where nothing but that form may be reachable. Sign-in providers sit beside the profile when there are any.
 
     Connecting a provider is the only way a provider identity joins an existing account: sign-in never matches one by name
     or email (docs/auth-plan.md). Disconnecting the last way to sign in - no password, one provider - is refused.
@@ -42,9 +48,11 @@
     <div class="fg-alert fg-alert-danger" role="alert">@problem</div>
 }
 
+@* One grid whatever the count: with the profile alone in it, the single column fills the row. *@
+<div class="fg-panel-grid">
 <section class="fg-panel">
     <h2>Profile</h2>
-    <EditForm Model="Input!" FormName="profile" OnValidSubmit="SaveAsync" method="post" class="fg-form">
+    <EditForm Model="Input!" FormName="profile" OnValidSubmit="SaveAsync" method="post" class="fg-form" id="profile-form">
         <div class="fg-field">
             <label for="display-name">Display name</label>
             <InputText id="display-name" @bind-Value="Input!.DisplayName" maxlength="128" />
@@ -53,26 +61,55 @@
             <label for="email">Email</label>
             <InputText id="email" type="email" @bind-Value="Input!.Email" maxlength="256" />
         </div>
-        <button type="submit" class="fg-btn fg-btn-primary">Save profile</button>
     </EditForm>
+
+    @* The save button stands outside its form (form="profile-form", plain HTML) so the password popover - a form of
+       its own, which cannot nest inside the profile's - can sit on the same row. *@
+    <div class="fg-form-actions">
+        <button type="submit" form="profile-form" class="fg-btn fg-btn-primary">Save profile</button>
+        @if (user.PasswordHash is null)
+        {
+            <span class="fg-muted fg-small">Signs in through a sign-in provider; there is no password here.</span>
+        }
+        else
+        {
+            <details class="fg-popover" id="password" open="@passwordOpen">
+                <summary class="fg-btn">Change password</summary>
+                <div class="fg-popover-body">
+                    <EditForm Model="Password!" FormName="change-password" OnValidSubmit="ChangePasswordAsync" method="post" class="fg-form">
+                        <DataAnnotationsValidator />
+                        <p class="fg-muted fg-small">At least @AccountService.MinimumPasswordLength characters. Every other session of this account is signed out.</p>
+                        <div class="fg-field">
+                            <label for="current-password">Current password</label>
+                            <InputText id="current-password" type="password" autocomplete="current-password" @bind-Value="Password!.Current" />
+                            <ValidationMessage For="() => Password!.Current" />
+                        </div>
+                        <div class="fg-field">
+                            <label for="new-password">New password</label>
+                            <InputText id="new-password" type="password" autocomplete="new-password" @bind-Value="Password!.New" />
+                            <ValidationMessage For="() => Password!.New" />
+                        </div>
+                        <div class="fg-field">
+                            <label for="confirm-password">New password again</label>
+                            <InputText id="confirm-password" type="password" autocomplete="new-password" @bind-Value="Password!.Confirm" />
+                            <ValidationMessage For="() => Password!.Confirm" />
+                        </div>
+                        @if (passwordError is not null)
+                        {
+                            <p class="fg-error">@passwordError</p>
+                        }
+                        <button type="submit" class="fg-btn fg-btn-primary">Save password</button>
+                    </EditForm>
+                </div>
+            </details>
+        }
+    </div>
 
     <dl class="fg-facts">
         <dt>Role</dt><dd>@RoleName(user.Role)</dd>
         <dt>Member since</dt><dd class="fg-num">@user.CreatedUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</dd>
         <dt>Last sign-in</dt><dd class="fg-num">@(user.LastSignInUtc?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? Display.None)</dd>
     </dl>
-</section>
-
-<section class="fg-panel">
-    <h2>Password</h2>
-    @if (user.PasswordHash is null)
-    {
-        <p class="fg-muted fg-small">This account signs in through a sign-in provider and has no password here.</p>
-    }
-    else
-    {
-        <p><a class="fg-btn" href="/account/password">Change password</a></p>
-    }
 </section>
 
 @if (providerRows.Count > 0)
@@ -120,6 +157,7 @@
         </div>
     </section>
 }
+</div>
 
 <section class="fg-panel" id="keys">
     <h2>API keys</h2>
@@ -191,7 +229,8 @@
         </div>
     }
 
-    <Accordion Id="create-key" Title="Create a key" Open="@(keys.Count == 0)" FormName="create-key" Succeeded="@(createdKey is not null)">
+    @* Closed until asked, also with no key yet: most accounts never need one, and an open form is a nudge to make one. *@
+    <Accordion Id="create-key" Title="Create a key" FormName="create-key" Succeeded="@(createdKey is not null)">
     <EditForm Model="NewKey!" FormName="create-key" OnValidSubmit="CreateKeyAsync" method="post" class="fg-form">
         <DataAnnotationsValidator />
         <div class="fg-field">
@@ -238,6 +277,8 @@
     private IReadOnlyList<Feed> readableFeeds = [];
     private CreatedToken? createdKey;
     private string? keyError;
+    private string? passwordError;
+    private bool passwordOpen;
     private DateTime now;
 
     [CascadingParameter]
@@ -248,6 +289,9 @@
 
     [SupplyParameterFromForm(FormName = "create-key")]
     private KeyInput? NewKey { get; set; }
+
+    [SupplyParameterFromForm(FormName = "change-password")]
+    private PasswordInput? Password { get; set; }
 
     [SupplyParameterFromQuery(Name = "saved")]
     private string? Saved { get; set; }
@@ -261,6 +305,13 @@
     protected override async Task OnInitializedAsync()
     {
         NewKey ??= new();
+        Password ??= new();
+
+        // Posted and not yet redirected away: the change was refused, or a field was missing, and the popover stays open
+        // with the reason in it. A change that succeeded leaves by redirect and arrives closed.
+        passwordOpen = HttpMethods.IsPost(HttpContext.Request.Method)
+            && HttpContext.Request.HasFormContentType
+            && string.Equals(HttpContext.Request.Form["_handler"], "change-password", StringComparison.Ordinal);
         await LoadAsync();
         Input ??= new ProfileInput { DisplayName = user?.DisplayName ?? "", Email = user?.Email ?? "" };
         if (Saved == "password")
@@ -308,6 +359,40 @@
         Audit.Record(HttpContext, "account.profile", user.UserName);
         message = "Profile saved.";
         await LoadAsync();
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        if (Password!.New != Password.Confirm)
+        {
+            passwordError = "The two new passwords are not the same.";
+            return;
+        }
+
+        var actor = FiGetApp.Actor(HttpContext.User)!;
+        var outcome = await Accounts.ChangeOwnPasswordAsync(actor.Key, Password.Current, Password.New, HttpContext.RequestAborted);
+        switch (outcome)
+        {
+            case AccountOutcome.Done:
+                break;
+            case AccountOutcome.WrongPassword:
+                passwordError = "The current password is not right.";
+                return;
+            case AccountOutcome.PasswordTooShort:
+                passwordError = $"Use at least {AccountService.MinimumPasswordLength} characters, different from the current password.";
+                return;
+            default:
+                passwordError = "The password could not be changed.";
+                return;
+        }
+
+        // The stamp moved with the password, which ends every session of this account - including this one, so it is
+        // signed in again with the new stamp rather than sent to the sign-in page. Then a redirect: a reload of the
+        // page must not post the old password again.
+        var changed = await Users.FindAsync(actor.Key, HttpContext.RequestAborted);
+        await FiGetApp.SignInUserAsync(HttpContext, changed!);
+        Audit.Record(HttpContext, "account.password", changed!.UserName);
+        Navigation.NavigateTo("/account/profile?saved=password");
     }
 
     private async Task CreateKeyAsync()
@@ -385,5 +470,17 @@
         public string DisplayName { get; set; } = "";
 
         public string Email { get; set; } = "";
+    }
+
+    private sealed class PasswordInput
+    {
+        [Required(ErrorMessage = "Enter your current password.")]
+        public string Current { get; set; } = "";
+
+        [Required(ErrorMessage = "Enter a new password.")]
+        public string New { get; set; } = "";
+
+        [Required(ErrorMessage = "Enter the new password again.")]
+        public string Confirm { get; set; } = "";
     }
 }
