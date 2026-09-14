@@ -9,7 +9,7 @@ secret files.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `FiGet:PublicBaseUrl` | empty | Absolute base URL used in every URL the protocols emit, for example `https://packages.example.org`. Empty: derived from the request. Behind a reverse proxy either set this, or set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` so `X-Forwarded-Proto` and `X-Forwarded-Host` are honoured. |
+| `FiGet:PublicBaseUrl` | empty | Absolute base URL used in every URL the protocols emit, for example `https://packages.example.org`. Empty: derived from the request's scheme and `Host` header. **Required behind a reverse proxy**: the forwarded-headers switch below corrects the scheme and the client address but not the host, so without this every protocol URL, the sign-in redirect URI and the copy boxes carry the name the proxy used to reach the container. |
 | `FiGet:CompressProtocolResponses` | `true` | Brotli or gzip, at the fastest level, for XML, JSON and text answers under `/nuget` and `/api/packages` when the client sends `Accept-Encoding`. Package and symbol downloads (already zips) and browser pages are never compressed. Turn off when a reverse proxy in front already compresses. |
 | `FiGet:Version` | empty | What the signed-in menu shows as the running version, for example the image tag a deployment built (`docker-1.2.3`). Empty: the assembly's informational version, or `version not set` when the build stamped none — the SDK's default `1.0.0` counts as none, so an unstamped build does not announce itself as a release. |
 
@@ -213,7 +213,7 @@ back, so listings stay described.
 | Setting | Meaning |
 |---|---|
 | `ASPNETCORE_HTTP_PORTS` | Listening port; `8080` in the image. |
-| `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | `true` behind a reverse proxy that sets `X-Forwarded-*`. |
+| `ASPNETCORE_FORWARDEDHEADERS_ENABLED` | `true` behind a reverse proxy. Honours `X-Forwarded-For` (the address rate limits and the audit log use) and `X-Forwarded-Proto`; not `X-Forwarded-Host`, so set `FiGet:PublicBaseUrl` as well. It trusts whoever connects, so only the proxy may be able to reach the container's port: a client that reaches it directly chooses its own address. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | When set, traces and metrics are exported over OTLP. |
 | `OTEL_SERVICE_NAME` | Overrides the service name `figet`. |
 
