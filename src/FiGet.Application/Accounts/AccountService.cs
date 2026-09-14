@@ -53,8 +53,15 @@ public sealed partial class AccountService(IUserStore users, IPasswordHasher has
 
     public const string FirstAdminUserName = "admin";
 
-    /// <summary>Hashed once and checked against when the user does not exist, so a missing name costs the same time as a wrong password.</summary>
-    private static readonly Lazy<string> DecoyHash = new(() => Convert.ToHexString(RandomNumberGenerator.GetBytes(16)));
+    /// <summary>
+    /// A hash of a random password, made once and checked against when the user does not exist, so a missing name costs one
+    /// verification like a wrong password does. Hashing it on every attempt made a missing name cost twice as long, which
+    /// told an outsider which names exist.
+    /// </summary>
+    private static string? decoyHash;
+
+    /// <summary>The decoy, hashed by the first attempt that needs it; a race hashes it twice and either one serves.</summary>
+    private string DecoyHash() => decoyHash ??= hasher.Hash(Convert.ToHexString(RandomNumberGenerator.GetBytes(16)));
 
     public async Task<SignInResult> SignInAsync(string userName, string password, CancellationToken cancellationToken)
     {
@@ -62,7 +69,7 @@ public sealed partial class AccountService(IUserStore users, IPasswordHasher has
         var user = string.IsNullOrWhiteSpace(userName) ? null : await users.FindByUserNameAsync(userName.Trim(), cancellationToken);
         if (user?.PasswordHash is null)
         {
-            hasher.Verify(hasher.Hash(DecoyHash.Value), password ?? "");
+            hasher.Verify(DecoyHash(), password ?? "");
             return new SignInResult(SignInStatus.Invalid);
         }
 
