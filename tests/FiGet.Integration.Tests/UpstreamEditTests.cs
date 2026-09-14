@@ -145,7 +145,10 @@ public sealed partial class UpstreamEditTests(ProxyServerFixture server) : IClas
         Assert.Equal(("https://www.powershellgallery.com/api/v2", UpstreamKind.V2, (string?)null), (saved[1].Url, saved[1].Kind, saved[1].CredentialRef));
     }
 
-    /// <summary>A credential reference names a variable under the upstream prefix, for an admin too: nothing else of the process's environment.</summary>
+    /// <summary>
+    /// A credential reference names a variable under the upstream prefix, for an admin too: nothing else of the process's
+    /// environment. And a URL is an http or https gallery, never the link-local block where metadata services answer.
+    /// </summary>
     [Fact]
     public async Task A_credential_outside_the_upstream_prefix_is_refused_even_for_an_admin()
     {
@@ -157,6 +160,12 @@ public sealed partial class UpstreamEditTests(ProxyServerFixture server) : IClas
         {
             using var refused = await PostAsync(admin, feed, "update", ("key", Key(upstream)), ("name", "stub"), ("url", upstream.Url), ("kind", "V3"), ("credentialRef", reference), ("enabled", "true"));
             Assert.Equal($"/admin/feeds/{feed}/upstreams?edit={Key(upstream)}&upstream=credential#upstream-{Key(upstream)}", refused.Headers.Location?.OriginalString);
+        }
+
+        foreach (var url in new[] { "ftp://gallery.invalid/", "file:///etc/passwd", "gallery.invalid/v3/index.json", "http://169.254.169.254/latest/meta-data", "http://[fe80::1]/v3/index.json", "http://[::ffff:169.254.169.254]/" })
+        {
+            using var refused = await PostAsync(admin, feed, "update", ("key", Key(upstream)), ("name", "stub"), ("url", url), ("kind", "V3"), ("enabled", "true"));
+            Assert.Equal($"/admin/feeds/{feed}/upstreams?edit={Key(upstream)}&upstream=url#upstream-{Key(upstream)}", refused.Headers.Location?.OriginalString);
         }
 
         using (var added = await PostAsync(admin, feed, "add", ("name", "other"), ("url", "https://other.invalid/v3/index.json"), ("credentialRef", "PATH")))

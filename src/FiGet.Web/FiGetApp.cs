@@ -1285,7 +1285,7 @@ public static class FiGetApp
 
             // A refused edit reopens its form, so what was typed is corrected where it was typed.
             var upstreams = $"/admin/feeds/{Uri.EscapeDataString(target.Name)}/upstreams";
-            return Results.Redirect(code is "taken" or "invalid" or "credential" or "admin-only"
+            return Results.Redirect(code is "taken" or "invalid" or "credential" or "url" or "admin-only"
                 ? $"{upstreams}?edit={before!.Key}&upstream={code}#upstream-{before.Key}"
                 : $"{upstreams}?upstream={code}");
         });
@@ -1363,6 +1363,16 @@ public static class FiGetApp
         if (!FeedUpstream.IsAllowedCredentialRef(upstream.CredentialRef))
         {
             return "credential";
+        }
+
+        // For an admin too: a gallery is an absolute http or https address, and never on the link-local block, where cloud
+        // metadata services answer. A host name is not resolved here; the name an admin typed is theirs to vouch for.
+        if (!Uri.TryCreate(upstream.Url, UriKind.Absolute, out var address)
+            || address.Scheme is not ("http" or "https")
+            || (address.HostNameType is UriHostNameType.IPv4 or UriHostNameType.IPv6
+                && !Infrastructure.Assets.HttpRemoteFileSource.IsAllowed(System.Net.IPAddress.Parse(address.IdnHost.Trim('[', ']')), allowPrivateNetworks: true)))
+        {
+            return "url";
         }
 
         if (http.User.IsInRole(AdminRole))
