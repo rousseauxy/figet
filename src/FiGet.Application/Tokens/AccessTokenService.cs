@@ -69,6 +69,8 @@ public sealed record TokenCreation(TokenCreateStatus Status, CreatedToken? Creat
 public sealed class AccessTokenService(IAccessTokenStore store, IUserStore users, FeedAccessService access, TimeProvider time)
 {
     private const string SecretPrefix = "figet_";
+
+    public const int BootstrapPrefixLength = 4;
     private static readonly TimeSpan TouchInterval = TimeSpan.FromMinutes(5);
 
     /// <summary>
@@ -111,9 +113,17 @@ public sealed class AccessTokenService(IAccessTokenStore store, IUserStore users
     /// <summary>Registers a secret chosen by the operator (the bootstrap admin token), unless it already exists.</summary>
     public async Task EnsureAsync(string name, string secret, TokenScopes scopes, CancellationToken cancellationToken)
     {
+        // Four characters to recognise it by. A minted token shows six random ones after its fixed "figet_"; this secret has no
+        // fixed part, and the twelve it used to show were most of a short one. A row stored that way is cut down on start.
+        var prefix = secret[..Math.Min(BootstrapPrefixLength, secret.Length)];
         var hash = HashSecret(secret);
-        if (await store.FindByHashAsync(hash, cancellationToken) is not null)
+        if (await store.FindByHashAsync(hash, cancellationToken) is { } existing)
         {
+            if (existing.Prefix.Length > prefix.Length)
+            {
+                await store.SetPrefixAsync(existing.Key, prefix, cancellationToken);
+            }
+
             return;
         }
 
@@ -122,7 +132,7 @@ public sealed class AccessTokenService(IAccessTokenStore store, IUserStore users
             {
                 Name = name,
                 Hash = hash,
-                Prefix = secret.Length > 12 ? secret[..12] : secret[..Math.Min(4, secret.Length)],
+                Prefix = prefix,
                 Scopes = scopes,
                 CreatedUtc = time.GetUtcNow().UtcDateTime,
             },

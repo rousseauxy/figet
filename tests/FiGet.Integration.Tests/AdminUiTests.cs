@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.RegularExpressions;
 using FiGet.Integration.Tests.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace FiGet.Integration.Tests;
 
@@ -120,6 +121,27 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
             HttpAssert.Status(HttpStatusCode.OK, response);
             Assert.Contains("The user name or password is not right.", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
         }
+    }
+
+    /// <summary>
+    /// Found by the 2026-09-14 review: the tokens page showed twelve characters of the operator's bootstrap token, most of a
+    /// short one. It shows four, and a row stored with more is cut down at the next start.
+    /// </summary>
+    [Fact]
+    public async Task The_bootstrap_token_shows_four_characters_and_an_older_row_is_cut_down()
+    {
+        await using var scope = server.Services.CreateAsyncScope();
+        var store = scope.ServiceProvider.GetRequiredService<FiGet.Application.Ports.IAccessTokenStore>();
+        var tokens = scope.ServiceProvider.GetRequiredService<FiGet.Application.Tokens.AccessTokenService>();
+        Assert.Equal(FiGetServerFixture.AdminToken[..4], (await store.ListAsync(CancellationToken.None)).Single(t => t.Name == "bootstrap").Prefix);
+
+        var secret = "operator-chosen-" + Guid.NewGuid().ToString("N");
+        await tokens.EnsureAsync("older", secret, FiGet.Domain.Entities.TokenScopes.Read, CancellationToken.None);
+        var older = (await store.ListAsync(CancellationToken.None)).Single(t => t.Name == "older");
+        await store.SetPrefixAsync(older.Key, secret[..12], CancellationToken.None);
+
+        await tokens.EnsureAsync("older", secret, FiGet.Domain.Entities.TokenScopes.Read, CancellationToken.None);
+        Assert.Equal(secret[..4], (await store.FindAsync(older.Key, CancellationToken.None))!.Prefix);
     }
 
     [Fact]

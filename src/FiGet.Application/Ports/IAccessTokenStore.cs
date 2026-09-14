@@ -23,5 +23,7 @@ public interface IAccessTokenStore
 
     Task TouchAsync(int tokenKey, DateTime utcNow, CancellationToken cancellationToken);
 
+    Task SetPrefixAsync(int tokenKey, string prefix, CancellationToken cancellationToken);
+
     Task<bool> AnyActiveAdminAsync(DateTime utcNow, CancellationToken cancellationToken);
 }

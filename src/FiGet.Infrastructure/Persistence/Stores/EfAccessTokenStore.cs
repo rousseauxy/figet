@@ -40,6 +40,11 @@ public sealed class EfAccessTokenStore(FiGetDbContext db) : IAccessTokenStore
             .Where(t => t.Key == tokenKey)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.LastUsedUtc, utcNow), cancellationToken);
 
+    public Task SetPrefixAsync(int tokenKey, string prefix, CancellationToken cancellationToken) =>
+        db.AccessTokens
+            .Where(t => t.Key == tokenKey)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.Prefix, prefix), cancellationToken);
+
     public Task<bool> AnyActiveAdminAsync(DateTime utcNow, CancellationToken cancellationToken) =>
         db.AccessTokens.AnyAsync(
             t => t.RevokedUtc == null
