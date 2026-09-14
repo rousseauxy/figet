@@ -1,8 +1,9 @@
 # Stand-alone FiGet: one container, SQLite and files on a volume.
 #
-#   FIGET_ADMIN_TOKEN=$(openssl rand -hex 32) docker compose -f deploy/compose.example.yml up -d --build
+#   docker compose -f deploy/compose.example.yml up -d --build
 #
-# Then sign in at http://localhost:8080 with that token. No image is published yet, so this builds locally.
+# Then sign in at http://localhost:8080 as admin / admin and choose a new password. No image is published yet, so this
+# builds locally.
 
 services:
   figet:
@@ -13,10 +14,11 @@ services:
     ports:
       - "8080:8080"
     environment:
-      # The URL clients use. Behind a reverse proxy, set the public https URL here
-      # (or set ASPNETCORE_FORWARDEDHEADERS_ENABLED=true and leave this empty).
+      # The URL clients use. Behind a reverse proxy, the public https URL - and ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
+      # too, for the client's address; the switch does not replace this setting.
       FiGet__PublicBaseUrl: "http://localhost:8080"
-      FiGet__Auth__BootstrapAdminToken: "${FIGET_ADMIN_TOKEN:?Set FIGET_ADMIN_TOKEN to a long random secret}"
+      # Optional: a service token for automation from the first start, a long random secret.
+      # FiGet__Auth__BootstrapAdminToken: "${FIGET_ADMIN_TOKEN}"
       FiGet__Feeds__0__Name: "modules"
       FiGet__Feeds__0__AnonymousRead: "true"
       FiGet__Feeds__1__Name: "internal"
@@ -28,7 +30,7 @@ services:
       # FiGet__Assets__SharesRoot: "/shares"
     volumes:
       - figet-data:/data
-      # - /srv/shares/intune:/shares/intune:ro
+      # - /srv/shares/scripts:/shares/scripts:ro
     restart: unless-stopped
 
 volumes:

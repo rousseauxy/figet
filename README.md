@@ -1,12 +1,76 @@
 # FiGet
 
-**Files + Get.** A self-hosted package server for shops that live on PowerShell and .NET:
-NuGet **v2 and v3**, so the Windows PowerShell 5.1 fleet and the newest tooling both work;
-proxy feeds with caching; asset directories for installers and scripts; OpenID Connect against
-any provider.
+**Files + Get.** A self-hosted package server for PowerShell and .NET shops: NuGet **v2 and v3**, so Windows PowerShell
+5.1 and the newest tooling both work; proxy feeds that cache the PowerShell Gallery and nuget.org for servers without
+internet access; asset directories for installers and scripts; and sign-in with the identity provider you already have.
 
-> Status: phase 1 done (NuGet v3, curated feeds, symbols, tokens, admin UI, SQL Server and SQLite). Not released.
-> See [docs/status.md](docs/status.md) for what works and how it was verified, and [docs/build-plan.md](docs/build-plan.md) for the plan.
+> **Status:** feature-complete for a first release and running on a test instance; not released yet.
+> What was verified, and how, is in [docs/status.md](docs/status.md).
+
+## Why it exists
+
+We started on a self-hosted NuGet.Server: a v2 feed and a drop folder. It served modules, and nothing else. It had no
+proxy, so a server without internet access could not install from the PowerShell Gallery. There was no place for the
+installers and scripts that go with the modules, no accounts, and it ran on .NET Framework only.
+
+A mixed fleet needs more than that, and all of it at once:
+
+- **Both NuGet protocols, exactly.** Windows PowerShell 5.1 with PowerShellGet 2.x speaks NuGet v2 OData, and most fleets
+  are pinned to it. PSResourceGet, dotnet and nuget.exe speak v3. A server that answers one of them almost right breaks
+  `Find-Module` or `Install-Module` in ways that are hard to trace.
+- **A proxy that tells the truth.** Once part of a module is cached, a proxy must still return one version list with one
+  latest version. Otherwise `Update-Module` fails, and a meta-module that pins its dependencies to exact versions, such as
+  Microsoft.Graph, cannot install.
+- **Files next to packages**, downloadable by a plain `GET`, including folders applications already write to.
+- **Sign-in with the existing identity provider**, and rights per feed.
+- **One container** that runs on a NAS with SQLite and on OpenShift with SQL Server and several replicas.
+
+The open-source servers we looked at each covered part of that list. FiGet exists to cover all of it, and nothing more.
+
+## What sets it apart
+
+- **Both protocols, recorded from the real clients.** The v2 surface was built from the requests Windows PowerShell 5.1,
+  PSResourceGet and nuget.exe actually send, recorded against a working server, and those recordings run as tests. An
+  expression FiGet does not understand is refused with an error that names it, never answered with an empty list that
+  reads as "not found".
+- **Proxy feeds with one version list per package.** Local and upstream versions are merged and sorted before any paging,
+  and exactly one is flagged latest. The first upstream in a feed's order that holds a package serves all of it, so two
+  different packages that share a name are never mixed. Every upstream version can be fetched on demand, and a pull
+  brings its dependencies along.
+- **Asset directories.** Installers and scripts by path, with `Range` and `ETag`. Upload by drag and drop, a script, an
+  archive, or a URL the server fetches. A directory can also be a folder on the server, such as an existing share, served
+  as it is. Downloading and listing can each be opened to anonymous clients separately, and cache headers are set per
+  folder.
+- **Accounts and sign-in.** Local accounts, and OpenID Connect against any provider (Entra ID, Authentik, Google,
+  Keycloak), several at once, configured on the admin pages without a restart. Groups, Read, Publish and Manage per feed,
+  provider groups feeding FiGet groups, and personal API keys that never do more than their owner may.
+- **Safe to put in front of a fleet.**
+  - Nothing uploaded can run as part of the site.
+  - Anonymous clients are rate-limited.
+  - A feed can be limited to listed networks.
+  - Every change is audited with who, what, when and from where.
+  - The key ring that protects sessions is encrypted with a master key from a secret.
+
+## At a glance
+
+- NuGet v3: service index, registration, flat container, search, autocomplete, push, delete, symbols
+- NuGet v2 OData: the subset the clients send, on both `/nuget/{feed}` and `/nuget/{feed}/api/v2`
+- Curated feeds with retention rules, previewed before they run, and pruning of cached copies nobody uses
+- Browse and search in the web UI, download any version, per-feed install instructions you can edit
+- A usage graph per feed; download counts and last use per version
+- A management API for listing versions, finding the latest and deleting, as existing scripts call it
+- Audit log with an admin page; health endpoints; OpenTelemetry metrics and traces
+- SQLite or SQL Server; local or shared storage; one image, non-root, arbitrary UID
+
+## Tested with
+
+| Client | Protocol |
+|---|---|
+| Windows PowerShell 5.1 with PowerShellGet 2.2.5 and PackageManagement 1.4.8.1 | v2 (and v3 through PackageManagement's NuGet provider) |
+| PowerShell 7 with PSResourceGet | v2 and v3 |
+| nuget.exe and the dotnet CLI | v3 |
+| Ansible `win_psrepository` and `win_get_url` | v2 and asset directories |
+| curl and `Invoke-WebRequest`, including resumed downloads | asset directories |
 
 ## Run it
 
@@ -14,39 +78,25 @@ any provider.
 dotnet run --project src/FiGet.Web
 ```
 
-The first start creates a SQLite database and a feed under `src/FiGet.Web/data` and writes a one-time admin token to the
-log. Sign in at http://localhost:5555 with it. Every setting is in [docs/configuration.md](docs/configuration.md);
-`deploy/compose.example.yml` runs the container.
+The first start creates a SQLite database under `src/FiGet.Web/data`. Sign in at http://localhost:5555 as `admin` /
+`admin`: the first thing FiGet asks is a new password. `deploy/compose.example.yml` runs the container.
 
-## Why
+Behind a reverse proxy, with more than one replica, or with secrets and shares to wire in, the settings that matter are
+in [docs/configuration.md](docs/configuration.md).
 
-Air-gapped or egress-restricted servers still need `Install-Module` and a place to fetch
-installers from. The commercial answer works but costs a licence and carries features nobody
-uses. The open-source NuGet servers speak only v3 and break PowerShellGet; the git forges speak
-v2 but fail `Find-Module -Name X`, and none of them proxies an upstream. FiGet exists to close
-that gap and nothing else.
+## Documentation
 
-## What it will do
-
-- NuGet v3: service index, registration, flat container, search, autocomplete, push, delete,
-  symbols. Registration JSON shaped like nuget.org, including the `@type` markers the
-  PowerShell 5.1 client requires.
-- NuGet v2 OData: the subset the real clients emit, recorded from live traffic. Unparsed
-  filters fail loudly.
-- Proxy feeds: any number of upstreams per feed, look-through on miss, cached afterwards. One
-  merged version list per package; a cached copy never shadows a newer upstream release. The first
-  upstream in priority order that holds an id serves it, and an id pushed to the feed is served only
-  from the feed, so two different packages that share a name are never mixed.
-- Curated feeds with retention rules.
-- Asset directories: path-addressed files, plain `GET` by path.
-- OIDC against any provider, several at once; API keys and personal access tokens for clients.
-- One container image that runs stand-alone with SQLite or on Kubernetes/OpenShift with SQL
-  Server and shared storage.
+| Document | What is in it |
+|---|---|
+| [docs/configuration.md](docs/configuration.md) | Every setting |
+| [docs/status.md](docs/status.md) | What was built and how it was verified, dated |
+| [docs/protocol-v2.md](docs/protocol-v2.md), [protocol-v3.md](docs/protocol-v3.md), [protocol-assets.md](docs/protocol-assets.md), [protocol-management.md](docs/protocol-management.md) | The protocol surfaces and the decisions behind them |
+| [docs/auth-plan.md](docs/auth-plan.md) | Accounts, groups, permissions, keys and sign-in |
+| [docs/backlog.md](docs/backlog.md) | What is not built, and why |
 
 ## Name
 
-"Fi" for files, "Get" because that is what the ecosystem calls a NuGet-compatible server
-(MyGet, BaGet, LiGet). Yes, it sounds like fidget.
+"Fi" for files, "Get" because that is what the ecosystem calls a NuGet-compatible server. Yes, it sounds like fidget.
 
 ## Licence
 
