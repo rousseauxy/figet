@@ -72,13 +72,15 @@
             <label class="fg-dropzone-pick">choose files<input type="file" multiple data-asset-files /></label>.
         </p>
         <p class="fg-muted fg-small">
-            An existing file is only replaced after you confirm. Up to @Display.Size(MaxAssetBytes) per file.
+            Up to @Display.Size(MaxAssetBytes) per file. A file that already exists is kept, unless you choose to replace it
+            in its row as it comes up.
         </p>
         <p class="fg-dropzone-prompt fg-small">
             Or <label class="fg-dropzone-pick">import a .zip or .tar.gz<input type="file" accept=".zip,.tgz,.gz" data-asset-archive /></label>
             and unpack it here, keeping its folders.
-            <label class="fg-check fg-inline"><input type="checkbox" data-asset-archive-overwrite /> replace files that already exist</label>
         </p>
+        @* One switch for both ways in: a dropped file and an unpacked archive entry meet the same existing file. *@
+        <label class="fg-check fg-small"><input type="checkbox" data-asset-overwrite /> Replace files that already exist without asking, for dropped files and imports alike</label>
         <ul class="fg-upload-list" data-asset-progress aria-live="polite"></ul>
     </section>
 

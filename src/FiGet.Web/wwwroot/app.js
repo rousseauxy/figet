@@ -471,49 +471,126 @@
         return row;
     }
 
-    function uploadAll(zone, files) {
-        if (!files || files.length === 0 || zone.classList.contains("fg-uploading")) {
+    // One queue per zone, worked one job at a time. Files dropped or picked while something is uploading join the
+    // end of it and take their turn - a 400 MB installer used to make every drop after it vanish without a word -
+    // and an archive import waits in the same line. The listing is server-rendered, so it is reloaded once the
+    // queue is empty and no row is still asking whether to replace a file.
+
+    var queues = new WeakMap();
+
+    function queueOf(zone) {
+        var state = queues.get(zone);
+        if (!state) {
+            state = { jobs: [], running: false, changed: false, asking: 0 };
+            queues.set(zone, state);
+        }
+
+        return state;
+    }
+
+    function replaceWanted(zone) {
+        var box = zone.querySelector("input[data-asset-overwrite]");
+        return !!(box && box.checked);
+    }
+
+    function enqueue(zone, job) {
+        var state = queueOf(zone);
+        state.jobs.push(job);
+        if (!state.running) {
+            state.running = true;
+            zone.classList.add("fg-uploading");
+            runNext(zone, state);
+        }
+    }
+
+    function settle(zone, state) {
+        if (state.jobs.length > 0) {
+            runNext(zone, state);
             return;
         }
 
-        zone.classList.add("fg-uploading");
-        var queue = Array.prototype.slice.call(files);
-        var changed = false;
+        state.running = false;
+        zone.classList.remove("fg-uploading");
+        if (state.changed && state.asking === 0) {
+            window.location.reload();
+        }
+    }
 
-        function next() {
-            var file = queue.shift();
-            if (!file) {
-                zone.classList.remove("fg-uploading");
-                if (changed) {
-                    // The listing is server-rendered; a reload is the honest way to show what is there now.
-                    window.location.reload();
-                }
-                return;
-            }
-
-            var row = progressRow(zone, file);
-            var status = row.querySelector("[data-status]");
-            uploadOne(zone, file, false, row).then(function (result) {
-                if (result.status === 409 && window.confirm("\"" + file.name + "\" already exists here. Replace it?")) {
-                    return uploadOne(zone, file, true, row);
-                }
-                return result;
-            }).then(function (result) {
+    function runNext(zone, state) {
+        var job = state.jobs.shift();
+        var row = job.row || progressRow(zone, job.file);
+        var status = row.querySelector("[data-status]");
+        var finished;
+        if (job.kind === "import") {
+            finished = importArchive(zone, job.file, job.overwrite, row).then(function (changed) {
+                state.changed = state.changed || changed;
+            });
+        } else {
+            finished = uploadOne(zone, job.file, job.overwrite, row).then(function (result) {
                 if (result.status === 201) {
-                    changed = true;
-                    status.textContent = "Done";
+                    state.changed = true;
+                    status.textContent = job.overwrite ? "Replaced" : "Done";
                     row.classList.add("fg-upload-ok");
+                } else if (result.status === 409 && !job.overwrite) {
+                    askToReplace(zone, state, job, row);
                 } else if (result.status === 409) {
                     status.textContent = "Kept the existing file";
                 } else {
                     status.textContent = result.message || ("Failed (" + result.status + ")");
                     row.classList.add("fg-upload-failed");
                 }
-                next();
             });
         }
 
-        next();
+        finished.then(function () {
+            settle(zone, state);
+        });
+    }
+
+    // The question is asked in the file's own row, with two buttons, not in a browser dialog: the other files carry
+    // on meanwhile, and a person can leave a row unanswered for as long as they like.
+    function askToReplace(zone, state, job, row) {
+        var status = row.querySelector("[data-status]");
+        state.asking++;
+        status.textContent = "Already exists here.";
+        var choice = document.createElement("span");
+        choice.className = "fg-upload-choice";
+        var replace = document.createElement("button");
+        replace.type = "button";
+        replace.className = "fg-btn fg-btn-sm fg-btn-danger";
+        replace.textContent = "Replace";
+        var keep = document.createElement("button");
+        keep.type = "button";
+        keep.className = "fg-btn fg-btn-sm";
+        keep.textContent = "Keep";
+        choice.appendChild(replace);
+        choice.appendChild(keep);
+        status.appendChild(choice);
+
+        replace.addEventListener("click", function () {
+            state.asking--;
+            status.textContent = "Waiting";
+            enqueue(zone, { kind: "upload", file: job.file, overwrite: true, row: row });
+        });
+
+        keep.addEventListener("click", function () {
+            state.asking--;
+            status.textContent = "Kept the existing file";
+            if (!state.running) {
+                settle(zone, state);
+            }
+        });
+    }
+
+    function uploadAll(zone, files) {
+        if (!files || files.length === 0) {
+            return;
+        }
+
+        var overwrite = replaceWanted(zone);
+        for (var i = 0; i < files.length; i++) {
+            enqueue(zone, { kind: "upload", file: files[i], overwrite: overwrite });
+        }
     }
 
     document.addEventListener("change", function (event) {
@@ -528,15 +605,20 @@
     // An archive is imported in one request, body and all, and unpacked by the server into this folder. What
     // it did comes back as counts; a failure list stays on screen instead of being lost to a reload.
 
-    function importArchive(zone, file, overwrite) {
+    function importArchive(zone, file, overwrite, row) {
+        // Resolved with whether the listing changed, so the queue knows whether a reload is due.
+        var finished;
+        var done = new Promise(function (resolve) {
+            finished = resolve;
+        });
         var name = file.name.toLowerCase();
         var format = /\.zip$/.test(name) ? "zip" : (/\.(tgz|tar\.gz)$/.test(name) ? "tgz" : null);
-        var row = progressRow(zone, file);
         var status = row.querySelector("[data-status]");
         if (!format) {
             status.textContent = "Not a .zip, .tgz or .tar.gz file";
             row.classList.add("fg-upload-failed");
-            return;
+            finished(false);
+            return done;
         }
 
         var folder = zone.getAttribute("data-folder") || "";
@@ -570,6 +652,7 @@
             if (!result || typeof result.imported !== "number") {
                 status.textContent = (result && result.error) || ("Failed (" + request.status + ")");
                 row.classList.add("fg-upload-failed");
+                finished(false);
                 return;
             }
 
@@ -577,32 +660,36 @@
             status.textContent = "Imported " + result.imported + ", skipped " + result.skipped + (failed.length ? ", failed " + failed.length : "")
                 + (request.status === 413 ? " (stopped: larger than this server accepts)" : "");
             if (failed.length || request.status !== 200) {
+                // The failure list stays on screen: a reload would lose it, so an import with failures is not
+                // counted as a change even when part of it went in.
                 row.classList.add("fg-upload-failed");
                 var details = document.createElement("span");
                 details.className = "fg-small fg-muted";
                 details.textContent = failed.join("; ");
                 row.appendChild(details);
+                finished(false);
             } else {
                 row.classList.add("fg-upload-ok");
-                window.location.reload();
+                finished(result.imported > 0);
             }
         });
 
         request.addEventListener("error", function () {
             status.textContent = "The connection failed.";
             row.classList.add("fg-upload-failed");
+            finished(false);
         });
 
         status.textContent = "Uploading";
         request.send(file);
+        return done;
     }
 
     document.addEventListener("change", function (event) {
         var input = event.target.closest ? event.target.closest("input[data-asset-archive]") : null;
         var zone = input ? input.closest("[data-asset-upload]") : null;
         if (zone && input.files && input.files.length) {
-            var overwrite = zone.querySelector("input[data-asset-archive-overwrite]");
-            importArchive(zone, input.files[0], !!(overwrite && overwrite.checked));
+            enqueue(zone, { kind: "import", file: input.files[0], overwrite: replaceWanted(zone) });
             input.value = "";
         }
     });

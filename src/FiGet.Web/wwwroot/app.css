@@ -1117,6 +1117,8 @@ h2 + .fg-panel { margin-top: 0.5rem; }
 .fg-upload-list progress { width: 100%; accent-color: var(--accent); }
 .fg-upload-ok [data-status] { color: var(--ok); }
 .fg-upload-failed [data-status] { color: var(--danger); }
+/* The replace-or-keep question, asked in the row rather than in a browser dialog. */
+.fg-upload-choice { display: inline-flex; gap: 0.3rem; margin-left: 0.5rem; vertical-align: middle; }
 
 @media (max-width: 600px) {
   .fg-upload-list li { grid-template-columns: minmax(0, 1fr); gap: 0.15rem; }
