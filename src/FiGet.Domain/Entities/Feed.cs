@@ -23,8 +23,9 @@ public sealed class Feed
 
     /// <summary>
     /// Asset directories only: when set, the directory's content is this folder on the server - a mounted share - read
-    /// as it is, with no copy and no row per file. Comes from configuration (<c>FiGet:Feeds:N:Folder</c>), never from a
-    /// page, because the operator provides the mount. Null: files are stored by FiGet under random ids.
+    /// as it is, with no copy and no row per file. Comes from configuration (<c>FiGet:Feeds:N:Folder</c>, any path, the
+    /// operator's), or from a page as one of the sub-folders of the shares mount (<c>FiGet:Assets:SharesRoot</c>); a
+    /// page never takes a path, since one could name the database folder. Null: files are stored by FiGet under random ids.
     /// </summary>
     public string? FolderRoot { get; set; }
 

@@ -31,6 +31,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IAssetStore, EfAssetStore>();
         services.AddScoped<IAssetCachePolicyStore, EfAssetCachePolicyStore>();
         services.AddSingleton<IFolderAssets, Storage.SharedFolderAssets>();
+        services.AddSingleton<IShareFolders, Storage.ShareFolders>();
         return services;
     }
 }

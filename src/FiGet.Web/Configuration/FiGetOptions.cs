@@ -229,6 +229,14 @@ public sealed class AssetOptions
     /// <summary>How long the parts of a multipart upload wait for their completion before they are removed.</summary>
     public TimeSpan IncompleteUploadExpiry { get; set; } = TimeSpan.FromHours(24);
 
+    /// <summary>
+    /// A folder on the server whose direct sub-folders an administrator may choose, on the pages, as the content of an
+    /// asset directory: one mount per sub-folder (a compose volume, a PVC), for example <c>/shares</c>. The pages offer
+    /// names from this folder and never take a path, so nothing outside it can be served. Empty: the pages offer no
+    /// folders, and a folder-backed directory comes only from <c>Feeds:N:Folder</c>.
+    /// </summary>
+    public string? SharesRoot { get; set; }
+
     public RemoteFetchOptions RemoteFetch { get; set; } = new();
 }
 
