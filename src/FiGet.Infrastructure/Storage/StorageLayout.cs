@@ -70,6 +70,13 @@ public static partial class StorageLayout
                 {
                     // Another replica starting at the same moment moved it first.
                 }
+                catch (IOException ex)
+                {
+                    // Also a replica starting at the same moment: it made the target between the check and the rename, or moved
+                    // a file this one was about to. Found by the 2026-09-14 review to end the process; a folder left for the
+                    // next start costs nothing, a start that fails costs the pod.
+                    LogNotMoved(logger, Path.Combine(area, name), ex.Message);
+                }
             }
 
             TryRemoveIfEmpty(old);
@@ -131,6 +138,9 @@ public static partial class StorageLayout
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Moved {Count} storage folder(s) from folders named by feed name to folders named by feed key.")]
     private static partial void LogMoved(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Storage folder {Folder} was not moved this time ({Reason}); the next start tries again.")]
+    private static partial void LogNotMoved(ILogger logger, string folder, string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Storage folder {Folder} belongs to no feed of that name and was not moved. Its files are not served; remove it once nobody needs them.")]
     private static partial void LogUnclaimed(ILogger logger, string folder);

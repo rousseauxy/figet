@@ -34,6 +34,25 @@ public sealed class StorageLayoutTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// A folder that cannot be moved this time - here because a file stands where its folder should go, the way another
+    /// replica starting at the same moment can make the target appear between the check and the rename - is logged and
+    /// left for the next start, and the rest still moves. It used to end the process.
+    /// </summary>
+    [Fact]
+    public void A_folder_that_cannot_be_moved_now_does_not_stop_the_start()
+    {
+        Write("packages/blocked/pkg/1.0.0/pkg.1.0.0.nupkg", "blocked");
+        Write("feeds/5/packages", "a file where the folder should be");
+        Write("packages/modules/pkg/1.0.0/pkg.1.0.0.nupkg", "nupkg");
+
+        var moved = StorageLayout.MoveNameFoldersToKeyFolders(root, [(5, "blocked"), (3, "modules")], NullLogger.Instance);
+
+        Assert.Equal(1, moved);
+        Assert.Equal("nupkg", Read("feeds/3/packages/pkg/1.0.0/pkg.1.0.0.nupkg"));
+        Assert.Equal("blocked", Read("packages/blocked/pkg/1.0.0/pkg.1.0.0.nupkg"));
+    }
+
     [Fact]
     public void A_second_run_finds_nothing_to_move()
     {
