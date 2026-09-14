@@ -29,15 +29,12 @@ public static class RequestActor
         return user?.IsAuthenticated == true && !string.IsNullOrEmpty(user.Name) ? "user:" + user.Name : "anonymous";
     }
 
-    /// <summary>The address the request came from, preferring what a trusted proxy forwarded.</summary>
-    public static string Caller(HttpContext? context)
-    {
-        if (context is null)
-        {
-            return "-";
-        }
-
-        var forwarded = context.Request.Headers["X-Forwarded-For"].ToString();
-        return forwarded.Length > 0 ? forwarded : context.Connection.RemoteIpAddress?.ToString() ?? "-";
-    }
+    /// <summary>
+    /// The address the request came from: the connection's, which the forwarded-headers middleware replaces with the one a
+    /// trusted proxy saw. Never the <c>X-Forwarded-For</c> header itself - the client writes it, and behind a proxy that
+    /// appends, what is left of it after the middleware took the proxy's entry is exactly the part the client wrote. The
+    /// rate limiter keys on the same address.
+    /// </summary>
+    public static string Caller(HttpContext? context) =>
+        context?.Connection.RemoteIpAddress?.ToString() ?? "-";
 }
