@@ -245,20 +245,16 @@ Each is Low, and none is reachable without an account that already has rights; i
 
 ## Later
 
-- **A picture on the account** (suggested 2026-09-14, "maybe integrate gravatar"). Not built, because it is a decision
-  rather than work: a Gravatar is an image the *browser* fetches from gravatar.com by a hash of the account's email, so
-  every page with the menu bar would tell a third party which hashed addresses use this server, from every client, and
-  would show a broken image on a network without internet. If wanted: an opt-in switch on the appearance page (off by
-  default), the SHA-256 of the trimmed lower-cased email, `?d=mp` so an address without one gets a silhouette, the
-  picture in the signed-in menu and on the profile, and the email carried as a claim so the menu bar reads no row for
-  it. An hour or two. The alternative that sends nothing anywhere is initials in a coloured circle, from the display
-  name and the account key's colour.
 - **History tab** on a version: the audit log exists now (filter by feed on its page); a per-version view of it is not built.
 - **Usage per version.** Usage per feed is counted since 2026-09-14 (`FeedUsage`, the graph under the feed lists). What is
   not: which versions are used, and whether a download came from the cache or the upstream. That needs per-version
   records, heaviest by volume, and belongs apart from both the per-feed counts and the audit log.
 
 ## Decided against
+
+- **A picture on the account** (Gravatar, suggested and dropped 2026-09-14). The owner sees no place it would be used, and
+  a Gravatar is an image the browser fetches from gravatar.com by a hash of the account's email: every page with the menu
+  bar would tell a third party which hashed addresses use this server, and show a broken image without internet.
 
 - **Promotion between feeds** (dropped by the owner, 2026-09-13). The server being replaced has it; nothing in the
   fleet uses it, and pushing the same package to the other feed does the job.
