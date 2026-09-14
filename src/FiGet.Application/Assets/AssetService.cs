@@ -44,6 +44,9 @@ public enum AssetOutcome
     /// <summary>A multipart request whose numbers do not add up, or a completion with parts missing.</summary>
     InvalidUpload,
 
+    /// <summary>A metadata call naming a content type that is not a media type, or one too long to store.</summary>
+    InvalidContentType,
+
     /// <summary>
     /// The directory's files are a folder on the server that FiGet does not write to: writes are off for it, or the
     /// operation has nowhere to keep what it would write (metadata, multipart parts).
@@ -440,7 +443,14 @@ public sealed class AssetService(IAssetStore store, IAssetStorage storage, IFold
         // A folder has no content type of its own; the API ignores one sent for it rather than refusing.
         if (!existing.IsDirectory && !string.IsNullOrWhiteSpace(change.ContentType))
         {
-            existing.ContentType = change.ContentType.Trim();
+            // Checked before it is stored: it becomes a response header, so a line break in it would fail every
+            // download of the file, and the column is 256 wide, so anything longer failed the save with a 500.
+            if (!TryParseContentType(change.ContentType, out var contentType))
+            {
+                return AssetOutcome.InvalidContentType;
+            }
+
+            existing.ContentType = contentType;
         }
 
         if (change.UserMetadata is not null)
@@ -465,6 +475,30 @@ public sealed class AssetService(IAssetStore store, IAssetStorage storage, IFold
         existing.ModifiedUtc = time.GetUtcNow().UtcDateTime;
         await store.UpdateAsync(existing, cancellationToken);
         return AssetOutcome.Updated;
+    }
+
+    /// <summary>The longest content type stored, which is the column's width.</summary>
+    public const int MaxContentTypeLength = 256;
+
+    /// <summary>A media type as a header may carry it: type and subtype, optional parameters, nothing else.</summary>
+    public static bool TryParseContentType(string? text, out string contentType)
+    {
+        contentType = "";
+        var trimmed = (text ?? "").Trim();
+        if (trimmed.Length == 0 || trimmed.Length > MaxContentTypeLength || trimmed.Any(char.IsControl))
+        {
+            return false;
+        }
+
+        if (!System.Net.Http.Headers.MediaTypeHeaderValue.TryParse(trimmed, out var parsed)
+            || string.IsNullOrEmpty(parsed.MediaType)
+            || !parsed.MediaType.Contains('/', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        contentType = parsed.ToString();
+        return contentType.Length <= MaxContentTypeLength;
     }
 
     /// <summary>The user-defined metadata of an item; empty when there is none or it cannot be read.</summary>

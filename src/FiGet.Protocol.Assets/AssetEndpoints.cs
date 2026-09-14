@@ -348,6 +348,11 @@ public static partial class AssetEndpoints
             return Results.Text(MetadataNotFound, "text/plain", statusCode: StatusCodes.Status404NotFound);
         }
 
+        if (outcome == AssetOutcome.InvalidContentType)
+        {
+            return Results.Text($"The type is not a media type, or is longer than {AssetService.MaxContentTypeLength} characters.", "text/plain", statusCode: StatusCodes.Status400BadRequest);
+        }
+
         if (outcome == AssetOutcome.ReadOnly)
         {
             return ToResult(outcome);
