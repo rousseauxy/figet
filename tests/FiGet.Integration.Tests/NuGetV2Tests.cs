@@ -255,6 +255,19 @@ public abstract class NuGetV2Tests
         var broken = await client.GetAsync("nuget/public/Search()?$filter=Id eq");
         HttpAssert.Status(HttpStatusCode.BadRequest, broken);
 
+        // Nesting and length are bounded: the parser recurses per level, and an unbounded depth overflowed the stack and ended the process.
+        var nested = await client.GetAsync($"nuget/public/Search()?$filter={new string('(', 40)}Id eq 'x'{new string(')', 40)}");
+        HttpAssert.Status(HttpStatusCode.BadRequest, nested);
+        var negated = await client.GetAsync($"nuget/public/Search()?$filter={string.Concat(Enumerable.Repeat("not ", 40))}IsPrerelease");
+        HttpAssert.Status(HttpStatusCode.BadRequest, negated);
+        var functions = await client.GetAsync($"nuget/public/Search()?$filter={string.Concat(Enumerable.Repeat("tolower(", 40))}Id{new string(')', 40)} eq 'x'");
+        HttpAssert.Status(HttpStatusCode.BadRequest, functions);
+        var deep = await client.GetAsync($"nuget/public/Search()?$filter={new string('(', 3000)}Id eq 'x'{new string(')', 3000)}");
+        HttpAssert.Status(HttpStatusCode.BadRequest, deep);
+
+        // Ten levels, far beyond any recorded client, still parse.
+        HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync($"nuget/public/FindPackagesById()?id='{missing}'&$filter={new string('(', 10)}IsLatestVersion{new string(')', 10)}"));
+
         // A supported filter over an id with no rows stays a plain empty feed.
         var empty = await HttpAssert.SuccessBodyAsync(
             await client.GetAsync($"nuget/public/FindPackagesById()?id='{missing}'&$filter=IsLatestVersion"));

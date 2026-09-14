@@ -392,8 +392,14 @@ internal sealed class ODataFunction(string name, IReadOnlyList<ODataExpression> 
 /// </summary>
 internal sealed class ODataParser
 {
+    /// <summary>Recorded clients send at most 144 characters nested two deep; these leave wide room and keep the stack bounded.</summary>
+    public const int MaxLength = 2048;
+
+    public const int MaxDepth = 32;
+
     private readonly string text;
     private int position;
+    private int depth;
 
     public ODataParser(string text)
     {
@@ -403,6 +409,11 @@ internal sealed class ODataParser
 
     public ODataExpression ParseFilter()
     {
+        if (text.Length > MaxLength)
+        {
+            throw new ODataFilterException($"The filter is longer than {MaxLength} characters.", text[..64] + "...");
+        }
+
         var expression = ParseOr();
         SkipWhitespace();
         if (position < text.Length)
@@ -413,15 +424,26 @@ internal sealed class ODataParser
         return expression;
     }
 
+    /// <summary>Every nesting (parenthesis, function argument, <c>not</c>) passes through here or <see cref="ParseUnary"/>, so one counter bounds the recursion.</summary>
     private ODataExpression ParseOr()
     {
+        Enter();
         var left = ParseAnd();
         while (TryKeyword("or"))
         {
             left = new ODataLogical("or", left, ParseAnd());
         }
 
+        depth--;
         return left;
+    }
+
+    private void Enter()
+    {
+        if (++depth > MaxDepth)
+        {
+            throw new ODataFilterException($"The filter nests deeper than {MaxDepth} levels.", text.Length > 64 ? text[..64] + "..." : text);
+        }
     }
 
     private ODataExpression ParseAnd()
@@ -435,7 +457,18 @@ internal sealed class ODataParser
         return left;
     }
 
-    private ODataExpression ParseUnary() => TryKeyword("not") ? new ODataNot(ParseUnary()) : ParseComparison();
+    private ODataExpression ParseUnary()
+    {
+        if (!TryKeyword("not"))
+        {
+            return ParseComparison();
+        }
+
+        Enter();
+        var operand = ParseUnary();
+        depth--;
+        return new ODataNot(operand);
+    }
 
     private ODataExpression ParseComparison()
     {
