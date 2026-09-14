@@ -248,6 +248,15 @@ pre code { padding: 0; background: none; }
 }
 .fg-navbar a.active { background: var(--chrome-hover); color: var(--chrome-text); }
 
+/* A phone: tighter padding and a long account name cut short, so the brand and the links share one row where they fit. */
+@media (max-width: 600px) {
+  .fg-navbar { padding: 0 1rem; }
+  .fg-navbar-inner { gap: 0.25rem 0.75rem; }
+  .fg-navbar-brand { letter-spacing: 0.08em; }
+  .fg-nav-links { gap: 0.1rem; }
+  .fg-navbar a:not(.fg-navbar-brand) { padding: 0.3rem 0.45rem; }
+  .fg-nav-dropdown > summary > span:first-child { max-width: 7.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
 
 .fg-navbar .fg-signed-in { display: flex; align-items: center; gap: 0.6rem; }
 .fg-navbar .fg-signed-in .fg-who { color: var(--chrome-muted); font-size: 0.8rem; }
