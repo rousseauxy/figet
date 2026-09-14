@@ -74,15 +74,7 @@ public sealed partial class AccountService(IUserStore users, IPasswordHasher has
         var check = hasher.Verify(user.PasswordHash, password ?? "");
         if (check == PasswordCheck.Failed)
         {
-            user.FailedSignIns++;
-            var locked = user.FailedSignIns >= MaxFailedSignIns;
-            if (locked)
-            {
-                user.LockedUntilUtc = now + LockoutDuration;
-                user.FailedSignIns = 0;
-            }
-
-            await users.UpdateAsync(user, cancellationToken);
+            var locked = await users.RecordFailedSignInAsync(user.Key, MaxFailedSignIns, now + LockoutDuration, cancellationToken);
             return new SignInResult(locked ? SignInStatus.LockedOut : SignInStatus.Invalid);
         }
 

@@ -25,6 +25,12 @@ public interface IUserStore
     /// <summary>Writes every field of an account read earlier. False when it no longer exists.</summary>
     Task<bool> UpdateAsync(User user, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Counts a wrong password in the database itself, so attempts that overlap each count, and locks the account until
+    /// <paramref name="lockedUntilUtc"/> once the count reaches <paramref name="maxFailures"/>. True when this call locked it.
+    /// </summary>
+    Task<bool> RecordFailedSignInAsync(int key, int maxFailures, DateTime lockedUntilUtc, CancellationToken cancellationToken);
+
     Task<bool> DeleteAsync(int key, CancellationToken cancellationToken);
 }
 

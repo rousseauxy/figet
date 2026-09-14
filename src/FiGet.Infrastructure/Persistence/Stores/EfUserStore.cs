@@ -80,6 +80,25 @@ public sealed class EfUserStore(FiGetDbContext db) : IUserStore
                 cancellationToken) > 0;
     }
 
+    /// <summary>
+    /// Two statements, each atomic on both providers. Reading the count and writing back one more lost every attempt that
+    /// overlapped: thirty wrong passwords sent at once left the count at one and the account open.
+    /// </summary>
+    public async Task<bool> RecordFailedSignInAsync(int key, int maxFailures, DateTime lockedUntilUtc, CancellationToken cancellationToken)
+    {
+        await db.Users
+            .Where(u => u.Key == key)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.FailedSignIns, u => u.FailedSignIns + 1), cancellationToken);
+
+        return await db.Users
+            .Where(u => u.Key == key && u.FailedSignIns >= maxFailures)
+            .ExecuteUpdateAsync(
+                s => s
+                    .SetProperty(u => u.LockedUntilUtc, lockedUntilUtc)
+                    .SetProperty(u => u.FailedSignIns, 0),
+                cancellationToken) > 0;
+    }
+
     /// <summary>The account with its grants, memberships, personal keys and provider links.</summary>
     public async Task<bool> DeleteAsync(int key, CancellationToken cancellationToken)
     {

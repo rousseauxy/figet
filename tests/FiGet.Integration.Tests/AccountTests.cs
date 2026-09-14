@@ -74,6 +74,29 @@ public sealed partial class AccountTests(SqliteServerFixture server) : IClassFix
         Assert.Contains("Too many failed attempts", await locked.Content.ReadAsStringAsync(), StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Found by the 2026-09-14 review: the count was read, raised in memory and written back, so attempts that overlapped all
+    /// wrote the same "one more". Thirty at once left it at one, and the account open.
+    /// </summary>
+    [Fact]
+    public async Task Overlapping_wrong_passwords_still_lock_the_account()
+    {
+        var name = await CreateUserAsync(UserRole.User);
+        const int attempts = 30;
+        var clients = Enumerable.Range(0, attempts).Select(_ => CreateBrowser()).ToList();
+        try
+        {
+            await Task.WhenAll(clients.Select(c => BrowserSignIn.SignInAsync(c, name, "wrong-password-xx")));
+        }
+        finally
+        {
+            clients.ForEach(c => c.Dispose());
+        }
+
+        var user = await FindAsync(name);
+        Assert.True(user!.LockedUntilUtc > DateTime.UtcNow, $"Not locked after {attempts} overlapping attempts: FailedSignIns={user.FailedSignIns}.");
+    }
+
     /// <summary>A disabled account is signed out on its next request, not when its cookie would have expired.</summary>
     [Fact]
     public async Task Disabling_an_account_ends_its_session()
