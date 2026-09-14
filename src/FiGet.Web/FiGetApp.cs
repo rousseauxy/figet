@@ -222,6 +222,23 @@ public static class FiGetApp
 
         // First, so it wraps everything written for these paths. Browser pages are not compressed here: they are
         // small, and the interactive runtime's own traffic is not HTTP bodies.
+        // Pages may not be framed by another site, and nothing on them is sniffed into another type. Protocol answers and
+        // theme files are left out: clients ignore these headers, and the asset and theme routes set a stricter policy of
+        // their own. A full content policy would need a nonce for the inline theme script; framing is the one that matters.
+        app.Use((context, next) =>
+        {
+            if (!IsProtocolPath(context.Request.Path))
+            {
+                var headers = context.Response.Headers;
+                headers.XContentTypeOptions = "nosniff";
+                headers.XFrameOptions = "DENY";
+                headers.ContentSecurityPolicy = "frame-ancestors 'none'";
+                headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+            }
+
+            return next(context);
+        });
+
         if (app.Services.GetRequiredService<IOptions<FiGetOptions>>().Value.CompressProtocolResponses)
         {
             app.UseWhen(
