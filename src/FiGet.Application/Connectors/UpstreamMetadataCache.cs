@@ -34,6 +34,47 @@ public sealed class UpstreamMetadataCache(int maxPackages = UpstreamMetadataCach
 
     private readonly int maxPackages = maxPackages > 0 ? maxPackages : DefaultMaxPackages;
 
+    /// <summary>
+    /// Ids an upstream answered it does not hold, and when. Kept here rather than as a stored catalogue row, because any
+    /// client can ask a proxy feed about any id: found by the 2026-09-14 review, three made-up ids left three rows, and at
+    /// the anonymous rate that is over a million rows a day. Bounded like the descriptions, and cheap to lose - a lost
+    /// entry costs one more question to the upstream.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, DateTime> misses = new(StringComparer.Ordinal);
+
+    public const int MaxMisses = 10_000;
+
+    /// <summary>Whether the upstream said, less than <paramref name="maxAge"/> ago, that it holds nothing under this id.</summary>
+    public bool IsMissing(int upstreamKey, string idLower, DateTime nowUtc, TimeSpan maxAge)
+    {
+        var key = Key(upstreamKey, idLower);
+        if (misses.TryGetValue(key, out var answered))
+        {
+            if (nowUtc - answered < maxAge)
+            {
+                return true;
+            }
+
+            misses.TryRemove(key, out _);
+        }
+
+        return false;
+    }
+
+    public void SetMissing(int upstreamKey, string idLower, DateTime nowUtc)
+    {
+        misses[Key(upstreamKey, idLower)] = nowUtc;
+        if (misses.Count > MaxMisses)
+        {
+            foreach (var old in misses.OrderBy(e => e.Value).Take(misses.Count - (MaxMisses / 2)).Select(e => e.Key).ToList())
+            {
+                misses.TryRemove(old, out _);
+            }
+        }
+    }
+
+    public int MissCount => misses.Count;
+
     /// <summary>The remembered metadata, or null when nothing was stored or it is older than the age given.</summary>
     public IReadOnlyList<UpstreamMetadata>? Get(int upstreamKey, string idLower, DateTime nowUtc, TimeSpan maxAge)
     {
@@ -83,7 +124,11 @@ public sealed class UpstreamMetadataCache(int maxPackages = UpstreamMetadataCach
     /// Exists so a test can reproduce that state without restarting anything: the version list stays in
     /// the database, the descriptions go, and what the server answers next is the thing worth asserting.
     /// </summary>
-    public void Forget(int upstreamKey, string idLower) => entries.TryRemove(Key(upstreamKey, idLower), out _);
+    public void Forget(int upstreamKey, string idLower)
+    {
+        entries.TryRemove(Key(upstreamKey, idLower), out _);
+        misses.TryRemove(Key(upstreamKey, idLower), out _);
+    }
 
     /// <summary>
     /// Forgets everything remembered from one upstream, when it now points somewhere else. This replica only; another one
@@ -95,6 +140,11 @@ public sealed class UpstreamMetadataCache(int maxPackages = UpstreamMetadataCach
         foreach (var key in entries.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList())
         {
             entries.TryRemove(key, out _);
+        }
+
+        foreach (var key in misses.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList())
+        {
+            misses.TryRemove(key, out _);
         }
     }
 

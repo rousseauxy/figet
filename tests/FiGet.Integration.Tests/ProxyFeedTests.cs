@@ -41,6 +41,33 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
     }
 
     /// <summary>
+    /// Found by the 2026-09-14 review: every id a client asked a proxy feed about became a stored catalogue row, whether or
+    /// not any upstream held it, so made-up ids grew the table without bound. An id nobody holds leaves nothing stored, and
+    /// asking again within the refresh window does not ask the upstream again either.
+    /// </summary>
+    [Fact]
+    public async Task An_id_no_upstream_holds_is_remembered_in_memory_and_leaves_no_row()
+    {
+        using var client = server.CreateClient();
+        var ids = Enumerable.Range(0, 3).Select(_ => FiGetServerFixture.UniqueId("Proxy.Absent").ToLowerInvariant()).ToList();
+        foreach (var id in ids)
+        {
+            HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/proxy/v3/flatcontainer/{id}/index.json"));
+        }
+
+        var asked = server.Upstream.CatalogCalls;
+        foreach (var id in ids)
+        {
+            HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/proxy/v3/flatcontainer/{id}/index.json"));
+        }
+
+        Assert.Equal(asked, server.Upstream.CatalogCalls);
+        await using var scope = server.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<FiGet.Infrastructure.Persistence.FiGetDbContext>();
+        Assert.Equal(0, db.CachedUpstreamIndexes.Count(c => ids.Contains(c.IdLower)));
+    }
+
+    /// <summary>
     /// The failure that drove this project: a version held locally and the same package upstream must
     /// not produce two entries, and the newer upstream version must win the latest flag. Pushed rather than
     /// cached here, so it runs on the feed that opts into merging pushed ids with its upstream.

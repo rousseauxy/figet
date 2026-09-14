@@ -17,6 +17,32 @@ namespace FiGet.Unit.Tests;
 /// </summary>
 public sealed class UpstreamMetadataCacheTests
 {
+    /// <summary>An id an upstream does not hold is remembered for the window it is given, is bounded, and goes when its upstream is repointed.</summary>
+    [Fact]
+    public void A_missing_id_is_remembered_for_its_window_and_the_memory_is_bounded()
+    {
+        var cache = new UpstreamMetadataCache();
+        var start = new DateTime(2026, 9, 14, 0, 0, 0, DateTimeKind.Utc);
+        var window = TimeSpan.FromMinutes(5);
+
+        cache.SetMissing(1, "absent", start);
+        Assert.True(cache.IsMissing(1, "absent", start.AddMinutes(4), window));
+        Assert.False(cache.IsMissing(2, "absent", start.AddMinutes(4), window));
+        Assert.False(cache.IsMissing(1, "absent", start.AddMinutes(6), window));
+
+        cache.SetMissing(1, "absent", start);
+        cache.ForgetUpstream(1);
+        Assert.False(cache.IsMissing(1, "absent", start, window));
+
+        for (var i = 0; i <= UpstreamMetadataCache.MaxMisses; i++)
+        {
+            cache.SetMissing(3, "made-up-" + i, start.AddSeconds(i));
+        }
+
+        Assert.True(cache.MissCount <= UpstreamMetadataCache.MaxMisses);
+        Assert.True(cache.IsMissing(3, "made-up-" + UpstreamMetadataCache.MaxMisses, start.AddSeconds(UpstreamMetadataCache.MaxMisses), window));
+    }
+
     [Fact]
     public void The_oldest_entries_go_when_the_cap_is_passed()
     {

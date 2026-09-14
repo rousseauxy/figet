@@ -808,6 +808,12 @@ public sealed class ConnectorService(
             return (new UpstreamCatalog(cached.Versions, described, cached.Id), !cached.Stale, cached);
         }
 
+        // An id the upstream said it does not hold, a moment ago: the same authoritative "nothing" again, without asking.
+        if (metadataCache.IsMissing(upstream.Key, idLower, now, settings.UpstreamIndexTtl))
+        {
+            return (new UpstreamCatalog([], []), true, null);
+        }
+
         try
         {
             // Versions alone where that is cheaper, with the full description queued behind the request rather than
@@ -815,12 +821,27 @@ public sealed class ConnectorService(
             // nothing downstream can mistake the missing descriptions for "nothing hidden".
             if (versionsOnly && await client.GetVersionsAsync(upstream, idLower, cancellationToken) is { } versions)
             {
+                if (versions.Count == 0)
+                {
+                    metadataCache.SetMissing(upstream.Key, idLower, now);
+                    return (new UpstreamCatalog([], []), true, null);
+                }
+
                 await index.SaveAsync(upstream.Key, idLower, "", versions, [], stale: false, now, cancellationToken);
                 refreshes.Enqueue(upstream, idLower);
                 return (new UpstreamCatalog(versions, []), true, null);
             }
 
             var catalog = await client.GetCatalogAsync(upstream, idLower, cancellationToken);
+
+            // Nothing under this id: remembered in memory for the refresh window, never stored. Any client can ask about any
+            // id, and each answer used to become a row.
+            if (catalog.Versions.Count == 0)
+            {
+                metadataCache.SetMissing(upstream.Key, idLower, now);
+                return (catalog, true, null);
+            }
+
             await index.SaveAsync(upstream.Key, idLower, catalog.Id, catalog.Versions, catalog.Described, stale: false, now, cancellationToken);
             await descriptions.SaveAsync(upstream.Key, idLower, catalog.Described, cancellationToken);
             metadataCache.Set(upstream.Key, idLower, catalog.Described, now);
