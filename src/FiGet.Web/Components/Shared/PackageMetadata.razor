@@ -25,7 +25,7 @@
             }
             else if (Display.Link(Row.LicenseUrl) is { } licence)
             {
-                <a href="@licence" rel="noopener noreferrer">@licence</a>
+                <a href="@licence" target="_blank" rel="noopener noreferrer" title="Opens in a new tab">@licence</a>
             }
             else
             {
@@ -36,7 +36,7 @@
         <dd>
             @if (Display.Link(Row.ProjectUrl) is { } project)
             {
-                <a href="@project" rel="noopener noreferrer">@project</a>
+                <a href="@project" target="_blank" rel="noopener noreferrer" title="Opens in a new tab">@project</a>
             }
             else
             {
