@@ -416,6 +416,15 @@ public sealed class ConnectorService(
     /// <summary>Hits asked of an upstream per request: what galleries answer in one page without capping it.</summary>
     public const int SearchChunk = 100;
 
+    /// <summary>
+    /// The most upstream hits one search collects, and the most pages it asks one upstream for. Any client may search an
+    /// anonymous proxy feed, and a v3 search may ask for a thousand results; found by the 2026-09-14 review, that was ten
+    /// requests to every upstream per search, and an allow list that filtered out every hit kept paging to the end.
+    /// </summary>
+    public const int MaxUpstreamSearchHits = 500;
+
+    public const int MaxSearchChunksPerUpstream = 5;
+
     public async Task<IReadOnlyList<UpstreamSearchHit>> SearchUpstreamsAsync(
         Feed feed,
         string query,
@@ -424,13 +433,14 @@ public sealed class ConnectorService(
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(feed);
+        take = Math.Min(take, MaxUpstreamSearchHits);
         var hits = new List<UpstreamSearchHit>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var upstream in feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal))
         {
             var offset = 0;
-            while (hits.Count < take)
+            for (var chunk = 0; hits.Count < take && chunk < MaxSearchChunksPerUpstream; chunk++)
             {
                 var size = Math.Min(SearchChunk, take - hits.Count);
                 IReadOnlyList<UpstreamSearchHit> found;

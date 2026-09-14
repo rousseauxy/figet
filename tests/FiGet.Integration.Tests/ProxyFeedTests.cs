@@ -41,6 +41,31 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
     }
 
     /// <summary>
+    /// A search asks each upstream for a bounded number of pages, whatever size the client asked for and however many hits an
+    /// allow list throws away. Found by the 2026-09-14 review: a take of a thousand was ten requests to every upstream.
+    /// </summary>
+    [Fact]
+    public async Task A_search_asks_each_upstream_for_a_bounded_number_of_pages()
+    {
+        var prefix = "Fan" + Guid.NewGuid().ToString("N")[..8];
+        foreach (var n in Enumerable.Range(1, 700))
+        {
+            server.Upstream.AddVersions($"{prefix}.M{n:D3}", ["1.0.0"]);
+        }
+
+        using var client = server.CreateClient();
+        var before = server.Upstream.SearchCalls;
+        var body = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/query?q={prefix}&take=1000")))!;
+        Assert.True(server.Upstream.SearchCalls - before <= ConnectorService.MaxSearchChunksPerUpstream, $"{server.Upstream.SearchCalls - before} search requests.");
+        Assert.True(body["data"]!.AsArray().Count <= ConnectorService.MaxUpstreamSearchHits);
+
+        // The guarded feed allows only ids starting with "allowed": every hit is filtered out, and it still stops.
+        before = server.Upstream.SearchCalls;
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/guarded/v3/query?q={prefix}&take=1000"));
+        Assert.True(server.Upstream.SearchCalls - before <= ConnectorService.MaxSearchChunksPerUpstream, $"{server.Upstream.SearchCalls - before} search requests through an allow list.");
+    }
+
+    /// <summary>
     /// Found by the 2026-09-14 review: every id a client asked a proxy feed about became a stored catalogue row, whether or
     /// not any upstream held it, so made-up ids grew the table without bound. An id nobody holds leaves nothing stored, and
     /// asking again within the refresh window does not ask the upstream again either.

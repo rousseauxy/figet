@@ -161,7 +161,7 @@ else
     private const int PageSize = 50;
 
     /// <summary>How deep into the upstreams' results the pages reach: ten pages, which is past where anyone reads.</summary>
-    private const int MaxUpstreamResults = 500;
+    private const int MaxUpstreamResults = ConnectorService.MaxUpstreamSearchHits;
 
     private Feed? feed;
     private int total;
