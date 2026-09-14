@@ -47,17 +47,20 @@
                 }
             }
 
-            <fieldset class="fg-field fg-swatches">
+            @* One row of dots, the dot itself being the control: the native radio is hidden and the chosen dot wears a
+               ring. Not a dropdown, which cannot show a colour, and not a colour picker, which would lose the point of
+               the palette - nine hues chosen to stay apart from each other on the graph in both themes. *@
+            <fieldset class="fg-swatches">
                 <legend>Colour on the usage graph</legend>
-                <InputRadioGroup @bind-Value="Settings!.ChartColor">
+                <InputRadioGroup @bind-Value="Settings!.ChartColor" class="fg-swatch-row">
                     <label class="fg-swatch" title="Picked for this @Noun, the same every time">
-                        <InputRadio Value="0" /> <span class="fg-series-dot" style="--series: var(--fg-series-@AutomaticColor)"></span> Automatic
+                        <InputRadio Value="0" /><span class="fg-series-dot" style="--series: var(--fg-series-@AutomaticColor)"></span><span>Automatic</span>
                     </label>
                     @for (var color = 1; color <= FeedColors.Count; color++)
                     {
                         var value = color;
                         <label class="fg-swatch" title="Colour @value">
-                            <InputRadio Value="value" /> <span class="fg-series-dot" style="--series: var(--fg-series-@value)"></span><span class="fg-sr-only">Colour @value</span>
+                            <InputRadio Value="value" /><span class="fg-series-dot" style="--series: var(--fg-series-@value)"></span><span class="fg-sr-only">Colour @value</span>
                         </label>
                     }
                 </InputRadioGroup>

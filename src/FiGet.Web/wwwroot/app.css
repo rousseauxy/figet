@@ -1322,7 +1322,13 @@ textarea.fg-mono { font-family: var(--font-mono); font-size: 0.8rem; }
 
 /* The colour choice on a feed's settings: a row of dots to pick from. */
 .fg-swatches { border: 0; margin: 0 0 1rem; padding: 0; }
-.fg-swatches legend { font-size: 0.8rem; font-weight: 600; color: var(--text-2); margin-bottom: 0.35rem; padding: 0; }
-.fg-swatch { display: inline-flex; align-items: center; gap: 0.3rem; margin-right: 0.9rem; font-size: 0.84rem; cursor: pointer; }
-.fg-swatch .fg-series-dot { width: 0.9rem; height: 0.9rem; }
+.fg-swatches legend { font-size: 0.8rem; font-weight: 600; color: var(--text-2); margin-bottom: 0.45rem; padding: 0; }
+.fg-swatch-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
+.fg-swatch { position: relative; display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.84rem; cursor: pointer; }
+/* The dot is the control: the radio stays in the tree for the keyboard and the form, out of sight for the eye. */
+.fg-swatch input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.fg-swatch .fg-series-dot { width: 1.15rem; height: 1.15rem; box-shadow: 0 0 0 2px var(--surface), 0 0 0 2px var(--surface); transition: box-shadow 0.1s ease; }
+.fg-swatch:hover .fg-series-dot { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--border-strong); }
+.fg-swatch input:checked + .fg-series-dot { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-2); }
+.fg-swatch input:focus-visible + .fg-series-dot { outline: 2px solid var(--accent); outline-offset: 4px; }
 .fg-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
