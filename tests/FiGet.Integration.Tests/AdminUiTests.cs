@@ -329,6 +329,30 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         Assert.Contains("No upstream of this feed could serve that package.", shown, StringComparison.Ordinal);
     }
 
+    /// <summary>Only a path on this site is followed; a browser reads each of these as another site. <c>/\host</c> was accepted until the 2026-09-14 review.</summary>
+    [Theory]
+    [InlineData("//evil.example/x")]
+    [InlineData("/\\evil.example/x")]
+    [InlineData("/\t/evil.example/x")]
+    [InlineData("https://evil.example/x")]
+    public async Task A_return_url_to_another_site_goes_to_the_fallback(string returnUrl)
+    {
+        using var client = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
+
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/feeds"));
+        var fields = HiddenFields(FormBlock(page, "create-feed"));
+        fields.Remove("_handler");
+        fields["id"] = "No.Such.Package";
+        fields["version"] = "1.0.0";
+        fields["returnUrl"] = returnUrl;
+
+        using var content = new FormUrlEncodedContent(fields);
+        var response = await client.PostAsync("/admin/feeds/public/pull", content);
+        HttpAssert.Status(HttpStatusCode.Redirect, response);
+        Assert.StartsWith("/feeds/public", response.Headers.Location!.OriginalString, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_feed_is_deleted_only_when_its_name_is_typed_exactly()
     {

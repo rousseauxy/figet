@@ -91,10 +91,7 @@
 
     private bool IsLocalPath => HttpContext.Request.Path.StartsWithSegments("/account/login/local", StringComparison.OrdinalIgnoreCase);
 
-    private string SafeReturnUrl =>
-        !string.IsNullOrEmpty(ReturnUrl) && ReturnUrl.StartsWith('/') && !ReturnUrl.StartsWith("//", StringComparison.Ordinal) && !ReturnUrl.StartsWith("/\\", StringComparison.Ordinal)
-            ? ReturnUrl
-            : "/";
+    private string SafeReturnUrl => ReturnUrls.LocalOr(ReturnUrl, "/");
 
     private string LocalHref => "/account/login/local" + (SafeReturnUrl == "/" ? "" : "?returnUrl=" + Uri.EscapeDataString(SafeReturnUrl));
 

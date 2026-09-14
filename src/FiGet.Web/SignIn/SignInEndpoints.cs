@@ -211,8 +211,5 @@ public static class SignInEndpoints
     private static Task<bool> ValidAsync(HttpContext http) =>
         http.RequestServices.GetRequiredService<IAntiforgery>().IsRequestValidAsync(http);
 
-    private static string LocalOrRoot(string? url) =>
-        !string.IsNullOrEmpty(url) && url.StartsWith('/') && !url.StartsWith("//", StringComparison.Ordinal) && !url.StartsWith("/\\", StringComparison.Ordinal)
-            ? url
-            : "/";
+    private static string LocalOrRoot(string? url) => ReturnUrls.LocalOr(url, "/");
 }

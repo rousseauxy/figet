@@ -1437,11 +1437,7 @@ public static class FiGetApp
 
     /// <summary>Back where the button was pressed, as long as that is a page on this server.</summary>
     private static IResult Back(string? returnUrl, string fallback) =>
-        !string.IsNullOrWhiteSpace(returnUrl)
-        && returnUrl.StartsWith('/')
-        && !returnUrl.StartsWith("//", StringComparison.Ordinal)
-            ? Results.Redirect(returnUrl)
-            : Results.Redirect(fallback);
+        Results.Redirect(ReturnUrls.LocalOr(returnUrl, fallback));
 
     /// <summary>
     /// Every request with a sign-in cookie: the account must still exist, be enabled, and carry the security stamp the
