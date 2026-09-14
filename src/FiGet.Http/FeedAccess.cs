@@ -39,10 +39,26 @@ public static class FeedAccess
     /// directory does not exist to the package endpoints: each surface sees only its own kind, so a NuGet
     /// client pointed at a directory gets a clean 404 rather than an empty feed that looks broken.
     /// </summary>
-    public static Task<(FeedRequest? Request, IResult? Error)> ResolveAssetsAsync(HttpContext http, string directoryName, TokenScopes required, CancellationToken cancellationToken) =>
-        ResolveAsync(http, directoryName, required, assets: true, cancellationToken);
+    /// <param name="listing">
+    /// Whether the request lists, exports or browses folders rather than fetching a path it knows. Without credentials
+    /// that needs the directory's <see cref="Feed.AnonymousList"/>, not only its anonymous download: a consumer that knows
+    /// its paths downloads, and a stranger who does not learns nothing.
+    /// </param>
+    public static Task<(FeedRequest? Request, IResult? Error)> ResolveAssetsAsync(HttpContext http, string directoryName, TokenScopes required, CancellationToken cancellationToken, bool listing = false) =>
+        ResolveAsync(http, directoryName, required, assets: true, listing, cancellationToken);
 
-    private static async Task<(FeedRequest? Request, IResult? Error)> ResolveAsync(HttpContext http, string feedName, TokenScopes required, bool assets, CancellationToken cancellationToken)
+    /// <summary>Whether the request proved nothing about who sent it: no accepted token and no signed-in account.</summary>
+    public static bool IsAnonymous(HttpContext http, FeedRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(http);
+        ArgumentNullException.ThrowIfNull(request);
+        return request.Token is null && http.User.Identity?.IsAuthenticated != true;
+    }
+
+    private static Task<(FeedRequest? Request, IResult? Error)> ResolveAsync(HttpContext http, string feedName, TokenScopes required, bool assets, CancellationToken cancellationToken) =>
+        ResolveAsync(http, feedName, required, assets, listing: false, cancellationToken);
+
+    private static async Task<(FeedRequest? Request, IResult? Error)> ResolveAsync(HttpContext http, string feedName, TokenScopes required, bool assets, bool listing, CancellationToken cancellationToken)
     {
         var feeds = http.RequestServices.GetRequiredService<IFeedStore>();
         var feed = await feeds.FindAsync(feedName, cancellationToken);
@@ -89,7 +105,8 @@ public static class FeedAccess
             return (null, Results.Text("Too many requests from this address without credentials. Try again shortly, or use an API key.", "text/plain", statusCode: StatusCodes.Status429TooManyRequests));
         }
 
-        var allowed = tokenAllows || (required == TokenScopes.Read && feed.AnonymousRead);
+        var anonymousRead = assets && listing ? feed.AnonymousList : feed.AnonymousRead;
+        var allowed = tokenAllows || (required == TokenScopes.Read && anonymousRead);
 
         // A signed-in browser - a download link on a package page - reads with its account's level. Reading only: a
         // cookie is sent with any request the browser makes, so it must never be what lets a push or a delete through.

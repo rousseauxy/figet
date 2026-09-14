@@ -40,7 +40,13 @@ public interface IFeedStore
     Task<bool> CreateAsync(Feed feed, CancellationToken cancellationToken);
 
     /// <summary>Changes the feed's settings. Returns false when the feed no longer exists.</summary>
-    Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, bool mergePushedIdsWithUpstreams, int? chartColor, CancellationToken cancellationToken);
+    Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool anonymousList, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, bool mergePushedIdsWithUpstreams, int? chartColor, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Points an asset directory at a folder on the server, or away from one, as configuration says on start. Returns
+    /// whether anything changed.
+    /// </summary>
+    Task<bool> UpdateFolderAsync(int key, string? folderRoot, bool folderWritable, CancellationToken cancellationToken);
 
     /// <summary>Changes the feed's retention and cache pruning. Returns false when the feed no longer exists.</summary>
     Task<bool> UpdateRetentionAsync(int key, RetentionRules rules, CancellationToken cancellationToken);

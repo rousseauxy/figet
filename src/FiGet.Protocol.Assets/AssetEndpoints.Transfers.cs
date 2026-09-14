@@ -248,7 +248,7 @@ public static partial class AssetEndpoints
         IOptions<UploadOptions> upload,
         CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAssetsAsync(http, directory, TokenScopes.Read, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAssetsAsync(http, directory, TokenScopes.Read, cancellationToken, listing: true);
         if (error is not null)
         {
             return error;

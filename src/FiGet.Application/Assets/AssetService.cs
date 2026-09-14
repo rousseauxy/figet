@@ -43,6 +43,12 @@ public enum AssetOutcome
 
     /// <summary>A multipart request whose numbers do not add up, or a completion with parts missing.</summary>
     InvalidUpload,
+
+    /// <summary>
+    /// The directory's files are a folder on the server that FiGet does not write to: writes are off for it, or the
+    /// operation has nowhere to keep what it would write (metadata, multipart parts).
+    /// </summary>
+    ReadOnly,
 }
 
 /// <summary>One user-defined metadata value, as the asset API spells it.</summary>
@@ -60,20 +66,42 @@ public sealed record AssetMetadataChange(
 /// What an asset directory does: store a file at a path, make a folder, delete, describe. The rules live
 /// here rather than in the endpoints so the API and the upload page cannot drift apart.
 /// </summary>
-public sealed class AssetService(IAssetStore store, IAssetStorage storage, TimeProvider time, ILogger<AssetService> logger)
+public sealed class AssetService(IAssetStore store, IAssetStorage storage, IFolderAssets folders, TimeProvider time, ILogger<AssetService> logger)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    // A directory backed by a folder on the server reads and writes that folder; every other one reads its rows and
+    // its blobs. The branch is here, once, so the endpoints and the pages need not know which they are looking at.
+
     public async Task<AssetItem?> FindAsync(Feed feed, AssetPath path, CancellationToken cancellationToken) =>
-        path.IsRoot ? null : await store.FindAsync(feed.Key, path.Lower, cancellationToken);
+        path.IsRoot ? null
+        : feed.IsFolderBacked ? await folders.FindAsync(feed, path, cancellationToken)
+        : await store.FindAsync(feed.Key, path.Lower, cancellationToken);
 
     public Task<IReadOnlyList<AssetItem>> ListAsync(Feed feed, AssetPath folder, bool recursive, CancellationToken cancellationToken) =>
-        store.ListAsync(feed.Key, folder.Lower, recursive, cancellationToken);
+        feed.IsFolderBacked
+            ? folders.ListAsync(feed, folder, recursive, cancellationToken)
+            : store.ListAsync(feed.Key, folder.Lower, recursive, cancellationToken);
 
-    public Task<Stream?> OpenAsync(Feed feed, AssetItem file, CancellationToken cancellationToken) =>
-        file.BlobId is null
+    public Task<Stream?> OpenAsync(Feed feed, AssetItem file, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        if (feed.IsFolderBacked)
+        {
+            return AssetPath.TryParse(file.Path, out var path) ? folders.OpenAsync(feed, path, cancellationToken) : Task.FromResult<Stream?>(null);
+        }
+
+        return file.BlobId is null
             ? Task.FromResult<Stream?>(null)
             : storage.OpenAsync(new AssetBlobKey(feed.Key, file.BlobId), cancellationToken);
+    }
+
+    /// <summary>Whether writes through FiGet reach this directory at all: always for its own storage, by choice for a folder.</summary>
+    public static bool AcceptsWrites(Feed feed)
+    {
+        ArgumentNullException.ThrowIfNull(feed);
+        return !feed.IsFolderBacked || feed.FolderWritable;
+    }
 
     /// <summary>
     /// Stores <paramref name="content"/> at <paramref name="path"/>, creating the folders above it. The body
@@ -93,6 +121,11 @@ public sealed class AssetService(IAssetStore store, IAssetStorage storage, TimeP
         if (path.IsRoot)
         {
             return AssetOutcome.InvalidPath;
+        }
+
+        if (feed.IsFolderBacked)
+        {
+            return feed.FolderWritable ? await folders.WriteAsync(feed, path, content, mode, maxBytes, cancellationToken) : AssetOutcome.ReadOnly;
         }
 
         var existing = await store.FindAsync(feed.Key, path.Lower, cancellationToken);
@@ -190,6 +223,12 @@ public sealed class AssetService(IAssetStore store, IAssetStorage storage, TimeP
     {
         ArgumentNullException.ThrowIfNull(feed);
         ArgumentNullException.ThrowIfNull(content);
+        if (feed.IsFolderBacked)
+        {
+            // Parts wait on FiGet's shared storage until completion, which a folder-backed directory does not have.
+            return AssetOutcome.ReadOnly;
+        }
+
         if (string.IsNullOrWhiteSpace(uploadId)
             || totalParts <= 0
             || index < 0
@@ -244,6 +283,11 @@ public sealed class AssetService(IAssetStore store, IAssetStorage storage, TimeP
     {
         ArgumentNullException.ThrowIfNull(feed);
         ArgumentNullException.ThrowIfNull(path);
+        if (feed.IsFolderBacked)
+        {
+            return AssetOutcome.ReadOnly;
+        }
+
         if (string.IsNullOrWhiteSpace(uploadId))
         {
             return AssetOutcome.InvalidUpload;
@@ -309,6 +353,11 @@ public sealed class AssetService(IAssetStore store, IAssetStorage storage, TimeP
             return AssetOutcome.AlreadyExists;
         }
 
+        if (feed.IsFolderBacked)
+        {
+            return feed.FolderWritable ? await folders.CreateFolderAsync(feed, path, cancellationToken) : AssetOutcome.ReadOnly;
+        }
+
         var existing = await store.FindAsync(feed.Key, path.Lower, cancellationToken);
         if (existing is not null)
         {
@@ -335,6 +384,11 @@ public sealed class AssetService(IAssetStore store, IAssetStorage storage, TimeP
         if (path.IsRoot)
         {
             return AssetOutcome.InvalidPath;
+        }
+
+        if (feed.IsFolderBacked)
+        {
+            return feed.FolderWritable ? await folders.DeleteAsync(feed, path, recursive, cancellationToken) : AssetOutcome.ReadOnly;
         }
 
         var existing = await store.FindAsync(feed.Key, path.Lower, cancellationToken);
@@ -371,6 +425,12 @@ public sealed class AssetService(IAssetStore store, IAssetStorage storage, TimeP
         ArgumentNullException.ThrowIfNull(feed);
         ArgumentNullException.ThrowIfNull(path);
         ArgumentNullException.ThrowIfNull(change);
+        if (feed.IsFolderBacked)
+        {
+            // Nothing can be written beside the files on a share; cache modes for such a directory live in FiGet instead.
+            return AssetOutcome.ReadOnly;
+        }
+
         var existing = path.IsRoot ? null : await store.FindAsync(feed.Key, path.Lower, cancellationToken);
         if (existing is null)
         {

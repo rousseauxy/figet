@@ -2,6 +2,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FiGet.Application.Assets;
+using FiGet.Application.Ports;
 using FiGet.Domain.Assets;
 using FiGet.Domain.Entities;
 using FiGet.Http;
@@ -56,7 +57,7 @@ public static partial class AssetEndpoints
     public static string EscapePath(string path) =>
         string.Join('/', path.Split('/', StringSplitOptions.RemoveEmptyEntries).Select(Uri.EscapeDataString));
 
-    private static async Task<IResult> DownloadAsync(HttpContext http, string directory, string? path, AssetService assets, CancellationToken cancellationToken)
+    private static async Task<IResult> DownloadAsync(HttpContext http, string directory, string? path, AssetService assets, IAssetCachePolicyStore policies, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAssetsAsync(http, directory, TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -64,6 +65,8 @@ public static partial class AssetEndpoints
             return error;
         }
 
+        // A folder, a missing file and a name that is never served all answer the same 404, so nothing is discoverable
+        // from here; what a folder holds is a listing's business, which has its own switch.
         if (!AssetPath.TryParse(path, out var parsed)
             || await assets.FindAsync(request!.Feed, parsed, cancellationToken) is not { IsDirectory: false } file
             || await assets.OpenAsync(request.Feed, file, cancellationToken) is not { } stream)
@@ -71,13 +74,13 @@ public static partial class AssetEndpoints
             return Results.Text(FileNotFound, "text/plain", statusCode: StatusCodes.Status404NotFound);
         }
 
-        ApplyCacheHeader(http, file);
+        await ApplyCacheHeadersAsync(http, request.Feed, file, policies, cancellationToken);
 
         // A file is served on this site's own origin, with a type its uploader chose. An HTML or SVG file opened from its link
         // would run as a page of this site, with the cookie of whoever opened it - an admin, from the browse page. So nothing
         // served here runs, and only types a browser shows without running anything open in it; the rest download. Download
         // clients (Invoke-WebRequest, curl, win_get_url) ignore all three headers.
-        var contentType = file.ContentType ?? AssetContentTypes.Fallback;
+        var contentType = file.ContentType ?? AssetContentTypes.Resolve(null, file.Name);
         http.Response.Headers.XContentTypeOptions = "nosniff";
         http.Response.Headers.ContentSecurityPolicy = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox";
 
@@ -88,7 +91,9 @@ public static partial class AssetEndpoints
             contentType,
             fileDownloadName: AssetContentTypes.OpensInline(contentType) ? null : file.Name,
             lastModified: new DateTimeOffset(file.ModifiedUtc),
-            entityTag: file.Sha256 is null ? null : new EntityTagHeaderValue($"\"{file.Sha256}\""),
+            // The hash when FiGet stored the file; size and modified time when the file is a folder's, which is what a
+            // web server's virtual folder sent and costs no read of the file.
+            entityTag: new EntityTagHeaderValue("\"" + (file.Sha256 ?? $"{file.Size:x}-{file.ModifiedUtc.Ticks:x}") + "\""),
             enableRangeProcessing: true);
     }
 
@@ -212,7 +217,7 @@ public static partial class AssetEndpoints
 
     private static async Task<IResult> ListAsync(HttpContext http, string directory, string? path, string? recursive, AssetService assets, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAssetsAsync(http, directory, TokenScopes.Read, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveAssetsAsync(http, directory, TokenScopes.Read, cancellationToken, listing: true);
         if (error is not null)
         {
             return error;
@@ -287,6 +292,12 @@ public static partial class AssetEndpoints
             return Results.Text(MetadataNotFound, "text/plain", statusCode: StatusCodes.Status404NotFound);
         }
 
+        // A folder's existence is a listing's business: without the listing switch a stranger is told it is not there.
+        if (item.IsDirectory && !request.Feed.AnonymousList && FeedAccess.IsAnonymous(http, request))
+        {
+            return Results.Text(MetadataNotFound, "text/plain", statusCode: StatusCodes.Status404NotFound);
+        }
+
         return Results.Json(Describe(http, request.Feed, item), Json);
     }
 
@@ -337,22 +348,71 @@ public static partial class AssetEndpoints
             return Results.Text(MetadataNotFound, "text/plain", statusCode: StatusCodes.Status404NotFound);
         }
 
+        if (outcome == AssetOutcome.ReadOnly)
+        {
+            return ToResult(outcome);
+        }
+
         audit.Record(http, "asset.metadata", parsed.Value, $"directory={request.Feed.Name}");
         return Results.Ok();
     }
 
     /// <summary>
-    /// A time-to-live is the one cache setting with an obvious meaning, so it is the one applied. Other types
-    /// are kept and reported back, but not turned into headers: guessing what they should send would be a
-    /// behaviour nobody asked for.
+    /// The file's own <c>ttl</c> from the metadata call first: a time-to-live is the one cache setting with an obvious
+    /// meaning, so it is the one applied, and other types are kept and reported back but not turned into headers. Then the
+    /// nearest folder above the file with a cache mode, the directory itself included, which is how a whole folder is
+    /// marked no-store the way a web server's virtual folder was.
     /// </summary>
-    private static void ApplyCacheHeader(HttpContext http, AssetItem file)
+    private static async Task ApplyCacheHeadersAsync(HttpContext http, Feed feed, AssetItem file, IAssetCachePolicyStore policies, CancellationToken cancellationToken)
     {
         if (string.Equals(file.CacheHeaderType, "ttl", StringComparison.OrdinalIgnoreCase)
             && int.TryParse(file.CacheHeaderValue, out var seconds)
             && seconds >= 0)
         {
             http.Response.Headers.CacheControl = $"public, max-age={seconds}";
+            return;
+        }
+
+        var policy = Nearest(await policies.ListAsync(feed.Key, cancellationToken), file.ParentLower);
+        switch (policy?.Mode)
+        {
+            case AssetCacheMode.NoStore:
+                http.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+                http.Response.Headers.Pragma = "no-cache";
+                http.Response.Headers.Expires = "-1";
+                break;
+            case AssetCacheMode.MaxAge:
+                http.Response.Headers.CacheControl = $"public, max-age={Math.Max(0, policy.MaxAgeSeconds ?? 0)}";
+                break;
+            default:
+                break;
+        }
+    }
+
+    /// <summary>The policy of the folder itself, else of the nearest folder above it, else of the directory (the empty path).</summary>
+    public static AssetCachePolicy? Nearest(IReadOnlyList<AssetCachePolicy> policies, string folderLower)
+    {
+        ArgumentNullException.ThrowIfNull(policies);
+        if (policies.Count == 0)
+        {
+            return null;
+        }
+
+        var current = folderLower;
+        while (true)
+        {
+            if (policies.FirstOrDefault(p => p.PathLower == current) is { } found)
+            {
+                return found;
+            }
+
+            if (current.Length == 0)
+            {
+                return null;
+            }
+
+            var slash = current.LastIndexOf('/');
+            current = slash < 0 ? "" : current[..slash];
         }
     }
 
@@ -366,6 +426,7 @@ public static partial class AssetEndpoints
         AssetOutcome.ParentIsFile => Results.Text("A file is in the way: one of the folders on this path is a file.", "text/plain", statusCode: StatusCodes.Status400BadRequest),
         AssetOutcome.NotEmpty => Results.Text("The folder is not empty. Pass recursive=true to delete it with its contents.", "text/plain", statusCode: StatusCodes.Status400BadRequest),
         AssetOutcome.TooLarge => Results.Text("The file is larger than this server accepts.", "text/plain", statusCode: StatusCodes.Status413PayloadTooLarge),
+        AssetOutcome.ReadOnly => Results.Text("This directory's files are managed on a folder of the server, which FiGet does not write to.", "text/plain", statusCode: StatusCodes.Status403Forbidden),
         _ => Results.Text("The path is not valid.", "text/plain", statusCode: StatusCodes.Status400BadRequest),
     };
 
@@ -377,7 +438,7 @@ public static partial class AssetEndpoints
             item.Name,
             parent,
             item.IsDirectory ? null : item.Size,
-            item.IsDirectory ? "dir" : item.ContentType ?? AssetContentTypes.Fallback,
+            item.IsDirectory ? "dir" : item.ContentType ?? AssetContentTypes.Resolve(null, item.Name),
             item.IsDirectory ? null : ContentUrl(http, feed.Name, item.Path),
             item.CreatedUtc,
             item.ModifiedUtc,

@@ -19,10 +19,15 @@
     <section class="fg-panel">
         <h2>Settings</h2>
         <EditForm Model="Settings!" FormName="feed-settings" OnValidSubmit="SaveAsync" method="post" class="fg-form">
-            <label class="fg-check"><InputCheckbox id="anonymous-read" @bind-Value="Settings!.AnonymousRead" /> Anyone can read without a token</label>
+            <label class="fg-check"><InputCheckbox id="anonymous-read" @bind-Value="Settings!.AnonymousRead" /> @(IsAssets ? "Anyone can download a file without a token" : "Anyone can read without a token")</label>
             @if (IsAssets)
             {
-                <p class="fg-muted fg-small">Uploading and deleting always need a token or a signed-in admin, whatever this says.</p>
+                <label class="fg-check"><InputCheckbox id="anonymous-list" @bind-Value="Settings!.AnonymousList" /> Anyone can list and browse the folders without a token</label>
+                <p class="fg-muted fg-small">
+                    A consumer that knows its paths needs only the first. With the second off, a folder shows a stranger nothing
+                    and a wrong path is the same 404 as a right one; listing then needs a signed-in account or a key with Read.
+                    Uploading and deleting always need a token or a signed-in account with Publish, whatever these say.
+                </p>
             }
             else
             {
@@ -71,6 +76,17 @@
 
         <dl class="fg-facts">
             <dt>Kind</dt><dd>@Display.Kind(feed.Kind)</dd>
+            @if (feed.IsFolderBacked)
+            {
+                <dt>Folder</dt>
+                <dd>
+                    <code>@feed.FolderRoot</code>
+                    <div class="fg-small fg-muted">
+                        The files are this folder on the server, read as it is; set in the server configuration (<code>FiGet:Feeds</code>),
+                        applied on every start. Writes through FiGet are @(feed.FolderWritable ? "on" : "off") for it.
+                    </div>
+                </dd>
+            }
             <dt>Created</dt><dd class="fg-num">@feed.CreatedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) UTC</dd>
             <dt>@(IsAssets ? "Files" : "Versions")</dt><dd class="fg-num">@versionCount.ToString("N0", CultureInfo.InvariantCulture)</dd>
         </dl>
@@ -149,7 +165,7 @@
         // Only seeded on a GET; on a post it already carries what was submitted.
         Settings ??= Target is not { } feed
             ? new SettingsForm()
-            : new SettingsForm { AnonymousRead = feed.AnonymousRead, AllowOverwrite = feed.AllowOverwrite, DeletionBehavior = feed.DeletionBehavior, MergePushedIdsWithUpstreams = feed.MergePushedIdsWithUpstreams, ChartColor = feed.ChartColor ?? 0 };
+            : new SettingsForm { AnonymousRead = feed.AnonymousRead, AnonymousList = feed.AnonymousList, AllowOverwrite = feed.AllowOverwrite, DeletionBehavior = feed.DeletionBehavior, MergePushedIdsWithUpstreams = feed.MergePushedIdsWithUpstreams, ChartColor = feed.ChartColor ?? 0 };
     }
 
     private async Task LoadAsync()
@@ -170,7 +186,7 @@
         }
 
         var saved = await Feeds.UpdateSettingsAsync(
-            feed.Key, Settings!.AnonymousRead, Settings!.AllowOverwrite, Settings!.DeletionBehavior, Settings!.MergePushedIdsWithUpstreams, Settings!.ChartColor is 0 ? null : Settings!.ChartColor, HttpContext.RequestAborted);
+            feed.Key, Settings!.AnonymousRead, Settings!.AnonymousList, Settings!.AllowOverwrite, Settings!.DeletionBehavior, Settings!.MergePushedIdsWithUpstreams, Settings!.ChartColor is 0 ? null : Settings!.ChartColor, HttpContext.RequestAborted);
 
         if (saved)
         {
@@ -180,7 +196,7 @@
                 HttpContext,
                 "feed.settings",
                 feed.Name,
-                $"anonymousRead={Settings!.AnonymousRead} allowOverwrite={Settings!.AllowOverwrite} onDelete={Settings!.DeletionBehavior} mergePushedIds={Settings!.MergePushedIdsWithUpstreams} chartColor={(Settings!.ChartColor is 0 ? "automatic" : Settings!.ChartColor.ToString(CultureInfo.InvariantCulture))}");
+                $"anonymousRead={Settings!.AnonymousRead} anonymousList={Settings!.AnonymousList} allowOverwrite={Settings!.AllowOverwrite} onDelete={Settings!.DeletionBehavior} mergePushedIds={Settings!.MergePushedIdsWithUpstreams} chartColor={(Settings!.ChartColor is 0 ? "automatic" : Settings!.ChartColor.ToString(CultureInfo.InvariantCulture))}");
         }
 
         (message, messageIsError) = saved ? ("Settings saved.", false) : ("This feed no longer exists.", true);
@@ -190,6 +206,8 @@
     private sealed class SettingsForm
     {
         public bool AnonymousRead { get; set; }
+
+        public bool AnonymousList { get; set; }
 
         public bool AllowOverwrite { get; set; }
 

@@ -55,7 +55,16 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         }
     }
 
-    public async Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, bool mergePushedIdsWithUpstreams, int? chartColor, CancellationToken cancellationToken)
+    public async Task<bool> UpdateFolderAsync(int key, string? folderRoot, bool folderWritable, CancellationToken cancellationToken)
+    {
+        var root = string.IsNullOrWhiteSpace(folderRoot) ? null : folderRoot.Trim();
+        var writable = root is not null && folderWritable;
+        return await db.Feeds
+            .Where(f => f.Key == key && (f.FolderRoot != root || f.FolderWritable != writable))
+            .ExecuteUpdateAsync(s => s.SetProperty(f => f.FolderRoot, root).SetProperty(f => f.FolderWritable, writable), cancellationToken) > 0;
+    }
+
+    public async Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool anonymousList, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, bool mergePushedIdsWithUpstreams, int? chartColor, CancellationToken cancellationToken)
     {
         var feed = await db.Feeds.FirstOrDefaultAsync(f => f.Key == key, cancellationToken);
         if (feed is null)
@@ -64,6 +73,7 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         }
 
         feed.AnonymousRead = anonymousRead;
+        feed.AnonymousList = feed.Kind == FeedKind.Assets && anonymousList;
         feed.AllowOverwrite = allowOverwrite;
         feed.DeletionBehavior = deletionBehavior;
         feed.MergePushedIdsWithUpstreams = mergePushedIdsWithUpstreams;

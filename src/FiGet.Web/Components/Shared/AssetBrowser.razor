@@ -2,6 +2,7 @@
 @using FiGet.Domain.Assets
 @using FiGet.Protocol.Assets
 @inject AssetService AssetFiles
+@inject IAssetCachePolicyStore CachePolicies
 
 @* The browse page of an asset directory. Statically rendered like the rest of the public pages: a folder
    is a link, a file is a download, and the one piece of script is the upload drop zone an admin sees. *@
@@ -36,6 +37,10 @@
 <div class="fg-page-head">
     <h1>@(Folder.IsRoot ? Feed.Name : Folder.Name)</h1>
     <span class="fg-badge">Asset directory</span>
+    @if (Feed.IsFolderBacked)
+    {
+        <span class="fg-badge fg-badge-plain" title="The files are a folder on the server, read as it is: what is placed there is served at once">From a folder on the server</span>
+    }
     @if (Level >= FeedAccessLevel.Manage)
     {
         <a class="fg-btn fg-btn-sm" href="/admin/assets/@Feed.Name">Settings</a>
@@ -63,7 +68,48 @@
     return;
 }
 
-@if (Level >= FeedAccessLevel.Publish)
+@if (Level >= FeedAccessLevel.Manage)
+{
+    @* What downloads under this folder tell caches; inherited by the folders below unless one says otherwise. Fixed modes,
+       never free-form headers, so nothing here can undo the download headers every file carries. *@
+    <Accordion Id="cache" Title="@CacheTitle" Group="asset-actions">
+        <form method="post" action="/admin/assets/@Uri.EscapeDataString(Feed.Name)/cache" class="fg-form fg-form-inline">
+            <AntiforgeryToken />
+            <input type="hidden" name="path" value="@Folder.Value" />
+            <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+            <div class="fg-field">
+                <label for="cache-mode">@(Folder.IsRoot ? "Caching for this directory" : "Caching for this folder")</label>
+                <select id="cache-mode" name="mode">
+                    @if (!Folder.IsRoot)
+                    {
+                        <option value="inherit" selected="@(ownPolicy is null)">Inherit from the folder above (@Describe(inherited))</option>
+                    }
+                    else
+                    {
+                        <option value="inherit" selected="@(ownPolicy is null)">Browser and proxy defaults</option>
+                    }
+                    <option value="no-store" selected="@(ownPolicy?.Mode == AssetCacheMode.NoStore)">Never cache (no-store, no-cache, must-revalidate)</option>
+                    <option value="max-age" selected="@(ownPolicy?.Mode == AssetCacheMode.MaxAge)">Cache for a number of seconds</option>
+                </select>
+            </div>
+            <div class="fg-field">
+                <label for="cache-seconds">Seconds</label>
+                <input id="cache-seconds" name="maxAge" type="number" min="0" value="@(ownPolicy?.MaxAgeSeconds ?? 3600)" />
+            </div>
+            <button type="submit" class="fg-btn">Apply</button>
+        </form>
+    </Accordion>
+}
+
+@if (Feed.IsFolderBacked && !Feed.FolderWritable && Level >= FeedAccessLevel.Publish)
+{
+    <p class="fg-muted fg-small">
+        The files are a folder on the server and are managed there; uploads, folders and deletes through FiGet are off for
+        this directory.
+    </p>
+}
+
+@if (Level >= FeedAccessLevel.Publish && AssetService.AcceptsWrites(Feed))
 {
     <section class="fg-dropzone" data-asset-upload data-upload-url="/admin/assets/@Uri.EscapeDataString(Feed.Name)/upload" data-import-url="/admin/assets/@Uri.EscapeDataString(Feed.Name)/import" data-folder="@Folder.Value">
         <AntiforgeryToken />
@@ -159,14 +205,14 @@ else
                             <td><a href="@ContentUrl(item)" title="Download @item.Name">@Display.BreakableId(item.Name)</a></td>
                             <td class="fg-num">@Display.Size(item.Size)</td>
                             <td class="fg-num">@Display.Date(item.ModifiedUtc)</td>
-                            <td class="fg-small fg-muted">@item.ContentType</td>
+                            <td class="fg-small fg-muted">@(item.ContentType ?? AssetContentTypes.Resolve(null, item.Name))</td>
                         }
                         <td class="fg-cell-actions">
                             @if (!item.IsDirectory)
                             {
                                 <button type="button" class="fg-copy" data-copy="@ContentUrl(item)" title="Copy the download URL" aria-label="Copy the download URL of @item.Name">Copy URL</button>
                             }
-                            @if (Level >= FeedAccessLevel.Publish)
+                            @if (Level >= FeedAccessLevel.Publish && AssetService.AcceptsWrites(Feed))
                             {
                                 <form method="post" action="/admin/assets/@Uri.EscapeDataString(Feed.Name)/delete"
                                       data-confirm="@(item.IsDirectory ? $"Delete the folder {item.Name} and everything in it?" : $"Delete {item.Name}?")">
@@ -187,6 +233,18 @@ else
 @code {
     private IReadOnlyList<FiGet.Domain.Entities.AssetItem> items = [];
     private bool missing;
+    private IReadOnlyList<AssetCachePolicy> policies = [];
+    private AssetCachePolicy? ownPolicy;
+    private AssetCachePolicy? inherited;
+
+    private string CacheTitle => "Caching: " + Describe(ownPolicy ?? inherited) + (ownPolicy is null && !Folder.IsRoot ? " (inherited)" : "");
+
+    private static string Describe(AssetCachePolicy? policy) => policy?.Mode switch
+    {
+        AssetCacheMode.NoStore => "never cached",
+        AssetCacheMode.MaxAge => $"cached for {policy.MaxAgeSeconds ?? 0} seconds",
+        _ => "browser and proxy defaults",
+    };
 
     [Parameter, EditorRequired]
     public Feed Feed { get; set; } = default!;
@@ -238,6 +296,13 @@ else
         }
 
         items = await AssetFiles.ListAsync(Feed, folder, recursive: false, HttpContext.RequestAborted);
+
+        if (Level >= FeedAccessLevel.Manage)
+        {
+            policies = await CachePolicies.ListAsync(Feed.Key, HttpContext.RequestAborted);
+            ownPolicy = policies.FirstOrDefault(p => p.PathLower == folder.Lower);
+            inherited = folder.IsRoot ? null : AssetEndpoints.Nearest(policies, folder.Parent.Lower);
+        }
     }
 
     /// <summary>

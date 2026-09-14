@@ -38,7 +38,9 @@
 
         // A package feed is not an asset directory, and one that needs credentials is not confirmed to exist.
         level = feed is null ? FeedAccessLevel.None : await Access.LevelAsync(feed, FiGetApp.Actor(HttpContext.User), HttpContext.RequestAborted);
-        directory = feed is { Kind: FeedKind.Assets } && level >= FeedAccessLevel.Read ? feed : null;
+        // Browsing is a listing: a stranger needs the directory's listing switch, not only its anonymous download.
+        var signedIn = FiGetApp.Actor(HttpContext.User) is not null;
+        directory = feed is { Kind: FeedKind.Assets } && level >= FeedAccessLevel.Read && (signedIn || feed.AnonymousList) ? feed : null;
         if (directory is null)
         {
             HttpContext.Response.StatusCode = StatusCodes.Status404NotFound;

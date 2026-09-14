@@ -60,6 +60,8 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
 
     public DbSet<AssetItem> AssetItems => Set<AssetItem>();
 
+    public DbSet<AssetCachePolicy> AssetCachePolicies => Set<AssetCachePolicy>();
+
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -80,6 +82,8 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(16);
             e.Property(x => x.DeletionBehavior).HasConversion<string>().HasMaxLength(16);
             e.Property(x => x.ClientBaseUrl).HasMaxLength(512);
+            e.Property(x => x.FolderRoot).HasMaxLength(1024);
+            e.Ignore(x => x.IsFolderBacked);
             e.Property(x => x.PackageInstructions).HasMaxLength(4000);
             e.Property(x => x.FeedInstructions).HasMaxLength(4000);
             e.Property(x => x.FileInstructions).HasMaxLength(4000);
@@ -372,6 +376,16 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.HasIndex(x => new { x.FeedKey, x.PathLower }).IsUnique();
             e.HasIndex(x => new { x.FeedKey, x.ParentLower });
             e.HasOne(x => x.Feed).WithMany().HasForeignKey(x => x.FeedKey).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AssetCachePolicy>(e =>
+        {
+            e.ToTable("AssetCachePolicies");
+            e.HasKey(x => x.Key);
+            e.Property(x => x.PathLower).HasMaxLength(FiGet.Domain.Assets.AssetPath.MaxLength);
+            e.Property(x => x.Mode).HasConversion<string>().HasMaxLength(16);
+            e.HasIndex(x => new { x.FeedKey, x.PathLower }).IsUnique();
+            e.HasOne<Feed>().WithMany().HasForeignKey(x => x.FeedKey).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<AccessToken>(e =>

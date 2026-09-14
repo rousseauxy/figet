@@ -71,6 +71,36 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                     b.ToTable("AccessTokens", (string)null);
                 });
 
+            modelBuilder.Entity("FiGet.Domain.Entities.AssetCachePolicy", b =>
+                {
+                    b.Property<int>("Key")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("FeedKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("MaxAgeSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PathLower")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("FeedKey", "PathLower")
+                        .IsUnique();
+
+                    b.ToTable("AssetCachePolicies", (string)null);
+                });
+
             modelBuilder.Entity("FiGet.Domain.Entities.AssetItem", b =>
                 {
                     b.Property<int>("Key")
@@ -432,6 +462,13 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                     b.Property<string>("FileInstructions")
                         .HasMaxLength(4000)
                         .HasColumnType("TEXT");
+
+                    b.Property<string>("FolderRoot")
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("FolderWritable")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Kind")
                         .IsRequired()
@@ -1188,6 +1225,15 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                     b.Navigation("Feed");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("FiGet.Domain.Entities.AssetCachePolicy", b =>
+                {
+                    b.HasOne("FiGet.Domain.Entities.Feed", null)
+                        .WithMany()
+                        .HasForeignKey("FeedKey")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("FiGet.Domain.Entities.AssetItem", b =>

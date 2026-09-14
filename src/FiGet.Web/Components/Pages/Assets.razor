@@ -37,7 +37,7 @@ else
                     var url = $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(directory.Name)}/content/";
                     <tr>
                         <td><span class="fg-feed-name"><span class="fg-series-dot" style="--series: var(--fg-series-@FeedColors.Of(directory))" aria-hidden="true"></span><a href="/assets/@directory.Name">@directory.Name</a></span></td>
-                        <td>@(directory.AnonymousRead ? "Anonymous" : "Token")</td>
+                        <td>@(directory.AnonymousRead ? (directory.AnonymousList ? "Anonymous" : "Anonymous, no listing") : "Token")</td>
                         <td>
                             <div class="fg-url">
                                 <code>@url</code>
@@ -80,6 +80,8 @@ else
         var all = await Feeds.ListAsync(HttpContext.RequestAborted);
         var assetDirectories = all.Where(f => f.Kind == FeedKind.Assets).ToList();
         var levels = await Access.LevelsAsync(assetDirectories, FiGetApp.Actor(HttpContext.User), HttpContext.RequestAborted);
-        directories = assetDirectories.Where(f => levels[f.Key] >= FeedAccessLevel.Read).ToList();
+        // A stranger sees only what a stranger may list; a signed-in account sees what it may read.
+        var signedIn = FiGetApp.Actor(HttpContext.User) is not null;
+        directories = assetDirectories.Where(f => levels[f.Key] >= FeedAccessLevel.Read && (signedIn || f.AnonymousList)).ToList();
     }
 }

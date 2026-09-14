@@ -44,6 +44,19 @@ is marked as FiGet's own.
 Folders above an uploaded file are created on the way. Something above the path being a file is a 400, and
 so is uploading to a path where a folder is.
 
+Two anonymous switches, not one. *Download without credentials* covers `GET /content/{path}` and a file's
+`/metadata/{path}`; *list without credentials* covers `/dir/`, `/export/`, a folder's `/metadata/` and the browse page.
+With the first on and the second off - the setting the device-management consumers get - a client that knows its
+paths downloads, and a stranger learns nothing: `/dir/` and `/export/` answer 401 with a Basic challenge, a folder's
+metadata is the same 404 as a wrong path.
+
+A directory backed by a folder on the server (`FiGet:Feeds:N:Folder`) answers the same routes from the folder itself,
+with these differences: an item has no hashes, its `ETag` is size and modified time, its type comes from its extension,
+and every write - `PUT`, `POST`, `PATCH`, `DELETE`, `/dir/`, `/delete/`, `/import/`, the multipart calls, `/metadata/`
+- answers 403 unless `FolderWrites` is on; `/metadata/` and multipart always do, since nothing can be stored beside
+the files. Hidden and system files, `web.config`, `Thumbs.db`, `desktop.ini` and `~$` lock files are never listed or
+served, and a link or junction leading out of the folder is a 404 like a missing file.
+
 ## Verified with the reference client
 
 The reference client (2.4.2), against a local instance, token passed on the command line so no source was
@@ -123,6 +136,18 @@ their write-side statuses were not recorded from the reference server either.
 - **Cache header:** a `ttl` type with a whole number of seconds becomes `Cache-Control: public, max-age=N` on
   download. Other types are stored and reported back but not applied, because what they should send is not
   documented anywhere we could read.
+- **Cache modes per folder**, set on the browse page (*Cache*): *inherit*, *no-store* (`Cache-Control: no-store,
+  no-cache, must-revalidate`, `Pragma: no-cache`, `Expires: -1`) or *max-age N* (`Cache-Control: public, max-age=N`).
+  The nearest folder above the file decides, the directory's root included; a file's own `ttl` metadata wins over
+  both. Fixed modes rather than free-form headers, which could switch off the sandbox policy, `nosniff` and the
+  attachment disposition every download carries. Stored in FiGet (`AssetCachePolicies`), never beside the files, so a
+  folder-backed directory has them too. (2026-09-14, for the shared-folder consumers.)
+- **A folder on the server can be the directory** (`FiGet:Feeds:N:Folder`): no copy and no index, so a file dropped on
+  the share over SMB is served at once and a deleted one is gone. The root and every resolved path are checked to stay
+  under it, and a reparse point on the way is refused, because a share is written by people and a link out of it is one
+  `mklink` away. Writes are off unless `FolderWrites` says otherwise: the share's own permissions decide who writes,
+  and a second way in needs its own reason. Writes that are on go through a temporary file in the target folder and a
+  rename, so a half-written upload is never the file a client downloads. (2026-09-14.)
 - **User metadata marked `includeInResponseHeader` is stored but not sent as a header.** The header name the
   reference server uses was not observable without write access, and guessing one would be a promise.
 - **Writing never works anonymously**, whatever the directory's anonymous-read setting says. Tokens are the

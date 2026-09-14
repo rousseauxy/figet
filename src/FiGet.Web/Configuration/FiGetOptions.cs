@@ -111,6 +111,21 @@ public sealed class FeedSeedOptions
 
     public bool AnonymousRead { get; set; }
 
+    /// <summary>
+    /// Asset directories: whether folders can be listed without credentials. Null, the default, follows
+    /// <see cref="AnonymousRead"/>, which is how a directory behaved before the switch existed.
+    /// </summary>
+    public bool? AnonymousList { get; set; }
+
+    /// <summary>
+    /// Asset directories: a folder on the server whose content the directory serves as it is - a mounted share. Applied on
+    /// every start, so a moved mount is followed; it is the operator's, never a page's.
+    /// </summary>
+    public string? Folder { get; set; }
+
+    /// <summary>Folder-backed directories: whether uploads, folders and deletes through FiGet act on the folder. Off by default.</summary>
+    public bool FolderWrites { get; set; }
+
     public bool AllowOverwrite { get; set; }
 
     public PackageDeletionBehavior DeletionBehavior { get; set; } = PackageDeletionBehavior.Unlist;

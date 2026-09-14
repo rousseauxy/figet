@@ -33,7 +33,9 @@ secret files.
 ## FiGet:Feeds
 
 A list of feeds created on start when they do not exist. Existing feeds are never changed from
-configuration. If no feed exists after seeding, a feed named `default` is created.
+configuration, with one exception: `Folder` and `FolderWrites` of an asset directory are applied on every start, because
+the mount is the operator's to provide and to take away. If no feed exists after seeding, a feed named `default` is
+created.
 
 A configured feed renamed on its settings page keeps existing as long as its old name is kept as an alternate name: the
 name is then taken, nothing is created, and the start logs a warning to rename it here too. Without the alternate name,
@@ -43,7 +45,10 @@ the next start creates a new, empty feed of the configured name.
 |---|---|---|
 | `Feeds:N:Name` | required | Letters, digits, `.`, `-`, `_`; 1 to 64 characters; starts with a letter or digit. Case-insensitive in URLs. |
 | `Feeds:N:Kind` | `Curated` | `Curated`, `Proxy` or `Assets`. A feed with upstreams is a proxy feed whatever this says. `Assets` makes an asset directory: files by path under `/endpoints/{name}`, described in `docs/protocol-assets.md`; `AllowOverwrite`, `DeletionBehavior` and upstreams do not apply to it. |
-| `Feeds:N:AnonymousRead` | `false` | When true, every read endpoint works without credentials. |
+| `Feeds:N:AnonymousRead` | `false` | When true, every read endpoint works without credentials. On an asset directory: downloading a file by its path. |
+| `Feeds:N:AnonymousList` | `AnonymousRead` | Asset directories only. When true, folders can be listed, exported and browsed without credentials. A consumer that knows its paths needs only `AnonymousRead`; with this off, a folder shows a stranger nothing and a wrong path is the same 404 as a right one, so listing needs a signed-in account or a key with Read. |
+| `Feeds:N:Folder` | empty | Asset directories only. A folder on the server - a mounted share - that *is* the directory's content, read as it is: no copy, no row per file, a file placed on the share served at once. Applied on every start. Hidden and system files, `web.config`, `Thumbs.db`, `desktop.ini` and `~$` lock files are never listed or served, and a link leading out of the folder is refused. See `docs/protocol-assets.md`. |
+| `Feeds:N:FolderWrites` | `false` | With `Folder`: whether uploads, new folders and deletes through FiGet act on the folder. Off, every write answers 403 and the share's own permissions decide who writes. Applied on every start. |
 | `Feeds:N:AllowOverwrite` | `false` | When true, pushing an existing version replaces it instead of answering 409. |
 | `Feeds:N:DeletionBehavior` | `Unlist` | `Unlist` hides the version from search and keeps it downloadable; `HardDelete` removes the metadata and the files. |
 | `Feeds:N:MergePushedIdsWithUpstreams` | `false` | When false, an id with a version pushed to the feed is served only from the feed: its upstreams are not asked about it, and copies of it cached from an upstream are unlisted. When true, the pushed and upstream versions are merged into one list, so the higher version of either is latest. Only right when the upstream package really is the same package. |

@@ -43,7 +43,7 @@ else if (IsAssets)
                 {
                     <tr>
                         <td><a href="/admin/assets/@directory.Name">@directory.Name</a></td>
-                        <td>@(directory.AnonymousRead ? "Anonymous" : "Token")</td>
+                        <td>@(directory.AnonymousRead ? (directory.AnonymousList ? "Anonymous" : "Anonymous, no listing") : "Token")@(directory.IsFolderBacked ? " · folder" : "")</td>
                         <td class="fg-cell-actions">
                             <a class="fg-btn fg-btn-sm" href="/assets/@directory.Name">Browse</a>
                             <a class="fg-btn fg-btn-sm" href="/admin/assets/@directory.Name">Settings</a>
@@ -103,7 +103,11 @@ else
             <ValidationMessage For="() => NewFeed!.Name" />
         </div>
 
-        <label class="fg-check"><InputCheckbox @bind-Value="NewFeed!.AnonymousRead" /> Anyone can read without a token</label>
+        <label class="fg-check"><InputCheckbox @bind-Value="NewFeed!.AnonymousRead" /> @(IsAssets ? "Anyone can download a file without a token" : "Anyone can read without a token")</label>
+        @if (IsAssets)
+        {
+            <label class="fg-check"><InputCheckbox @bind-Value="NewFeed!.AnonymousList" /> Anyone can list and browse the folders without a token</label>
+        }
 
         @if (!IsAssets)
         {
@@ -166,6 +170,7 @@ else
                 NameLower = NewFeed!.Name.ToLowerInvariant(),
                 Kind = Kind,
                 AnonymousRead = NewFeed!.AnonymousRead,
+                AnonymousList = IsAssets && NewFeed!.AnonymousList,
                 AllowOverwrite = !IsAssets && NewFeed!.AllowOverwrite,
                 DeletionBehavior = IsAssets ? PackageDeletionBehavior.Unlist : NewFeed!.DeletionBehavior,
                 CreatedUtc = Time.GetUtcNow().UtcDateTime,
@@ -178,7 +183,7 @@ else
                 HttpContext,
                 "feed.create",
                 NewFeed!.Name,
-                $"kind={Kind} anonymousRead={NewFeed!.AnonymousRead} allowOverwrite={NewFeed!.AllowOverwrite} onDelete={NewFeed!.DeletionBehavior}");
+                $"kind={Kind} anonymousRead={NewFeed!.AnonymousRead} anonymousList={IsAssets && NewFeed!.AnonymousList} allowOverwrite={NewFeed!.AllowOverwrite} onDelete={NewFeed!.DeletionBehavior}");
         }
 
         // Feeds and directories share one set of names, so the refusal cannot say which of the two holds it
@@ -199,6 +204,8 @@ else
         public string Name { get; set; } = "";
 
         public bool AnonymousRead { get; set; }
+
+        public bool AnonymousList { get; set; }
 
         public bool AllowOverwrite { get; set; }
 

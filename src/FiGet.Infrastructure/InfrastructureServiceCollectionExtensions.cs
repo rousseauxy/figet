@@ -29,6 +29,8 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<JobInstance>();
         services.AddScoped<IAuditStore, EfAuditStore>();
         services.AddScoped<IAssetStore, EfAssetStore>();
+        services.AddScoped<IAssetCachePolicyStore, EfAssetCachePolicyStore>();
+        services.AddSingleton<IFolderAssets, Storage.SharedFolderAssets>();
         return services;
     }
 }

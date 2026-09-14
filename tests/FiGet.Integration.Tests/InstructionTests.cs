@@ -98,7 +98,7 @@ public abstract partial class InstructionTests
         var name = (kind == FeedKind.Assets ? "idir" : "ifeed") + Guid.NewGuid().ToString("N")[..8];
         await using var scope = server.Services.CreateAsyncScope();
         Assert.True(await scope.ServiceProvider.GetRequiredService<IFeedStore>().CreateAsync(
-            new Feed { Name = name, NameLower = name, Kind = kind, AnonymousRead = true, CreatedUtc = DateTime.UtcNow },
+            new Feed { Name = name, NameLower = name, Kind = kind, AnonymousRead = true, AnonymousList = kind == FeedKind.Assets, CreatedUtc = DateTime.UtcNow },
             CancellationToken.None));
         return name;
     }

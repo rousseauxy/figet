@@ -510,14 +510,23 @@ public static class FiGetApp
             {
                 logger.LogInformation("Created feed {Feed} from configuration.", seed.Name);
             }
-            else if (await feeds.FindAsync(seed.Name, CancellationToken.None) is { } renamed
-                && !string.Equals(renamed.NameLower, seed.Name, StringComparison.OrdinalIgnoreCase))
+            else if (await feeds.FindAsync(seed.Name, CancellationToken.None) is { } existing)
             {
-                // Renamed with its old name kept, which is also what stops a new empty feed of the old name appearing here.
-                logger.LogWarning(
-                    "Configured feed {Configured} has been renamed to {Feed} and answers to its old name as an alternate name. Rename it in FiGet:Feeds too.",
-                    seed.Name,
-                    renamed.Name);
+                if (!string.Equals(existing.NameLower, seed.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Renamed with its old name kept, which is also what stops a new empty feed of the old name appearing here.
+                    logger.LogWarning(
+                        "Configured feed {Configured} has been renamed to {Feed} and answers to its old name as an alternate name. Rename it in FiGet:Feeds too.",
+                        seed.Name,
+                        existing.Name);
+                }
+
+                // The one setting configuration keeps applying to an existing feed: the folder an asset directory is backed by,
+                // and whether FiGet writes to it. It is the operator's mount, so a moved mount must be followed on the next start.
+                if (existing.Kind == FeedKind.Assets && await feeds.UpdateFolderAsync(existing.Key, seed.Folder, seed.FolderWrites, CancellationToken.None))
+                {
+                    logger.LogInformation("Asset directory {Feed} now follows folder {Folder} (writes {Writes}).", existing.Name, seed.Folder ?? "(none)", seed.FolderWrites ? "on" : "off");
+                }
             }
         }
 
@@ -834,6 +843,7 @@ public static class FiGetApp
                 AssetOutcome.AlreadyExists => Results.Json(new { error = "A file with this name already exists." }, statusCode: StatusCodes.Status409Conflict),
                 AssetOutcome.TooLarge => Results.Json(new { error = "The file is larger than this server accepts." }, statusCode: StatusCodes.Status413PayloadTooLarge),
                 AssetOutcome.WrongType => Results.Json(new { error = "A folder with this name already exists." }, statusCode: StatusCodes.Status409Conflict),
+                AssetOutcome.ReadOnly => Results.Json(new { error = "This directory's files are managed on a folder of the server; FiGet does not write to it." }, statusCode: StatusCodes.Status403Forbidden),
                 _ => Results.Json(new { error = "The file could not be stored here." }, statusCode: StatusCodes.Status400BadRequest),
             };
         }).DisableAntiforgery();
@@ -935,6 +945,46 @@ public static class FiGetApp
             return target is not { Kind: FeedKind.Assets }
                 ? Results.NotFound()
                 : await AssetEndpoints.ExportAsync(target, path, format, recursive: true, archives, upload.Value, cancellationToken);
+        });
+
+        // The cache mode of one folder, or of the directory itself (an empty path): what its downloads tell caches, inherited
+        // by the folders below it. Stored in FiGet, because on a folder-backed directory nothing can be written beside the
+        // files; fixed modes rather than free-form headers, so a mode can never undo the download headers every file carries.
+        manageFeed.MapPost("/assets/{directory}/cache", async (
+            string directory,
+            HttpContext http,
+            IFeedStore feeds,
+            IAssetCachePolicyStore policies,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var target = await feeds.FindAsync(directory, cancellationToken);
+            var mode = form["mode"].ToString().Trim().ToLowerInvariant();
+            if (target is { Kind: FeedKind.Assets } && AssetPath.TryParse(form["path"].ToString(), out var folder))
+            {
+                var seconds = int.TryParse(form["maxAge"].ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) ? parsed : (int?)null;
+                var applied = mode switch
+                {
+                    "no-store" => await Set(AssetCacheMode.NoStore, null),
+                    "max-age" when seconds is >= 0 => await Set(AssetCacheMode.MaxAge, seconds),
+                    "inherit" => await policies.RemoveAsync(target.Key, folder.Lower, cancellationToken),
+                    _ => false,
+                };
+
+                if (applied)
+                {
+                    audit.Record(http, "asset.cache", folder.IsRoot ? "/" : folder.Value, $"directory={target.Name} mode={mode}{(mode == "max-age" ? " seconds=" + seconds : "")}");
+                }
+
+                async Task<bool> Set(AssetCacheMode cacheMode, int? maxAge)
+                {
+                    await policies.SetAsync(target.Key, folder.Lower, cacheMode, maxAge, cancellationToken);
+                    return true;
+                }
+            }
+
+            return Back(form["returnUrl"].ToString(), $"/assets/{Uri.EscapeDataString(directory)}");
         });
 
         publishFeed.MapPost("/assets/{directory}/folders", async (
@@ -1551,6 +1601,10 @@ public static class FiGetApp
             // what it will behave like.
             Kind = upstreams.Count > 0 ? FeedKind.Proxy : seed.Kind,
             AnonymousRead = seed.AnonymousRead,
+            // Listing follows downloading unless said otherwise, which is how a directory behaved before the switch.
+            AnonymousList = seed.Kind == FeedKind.Assets && (seed.AnonymousList ?? seed.AnonymousRead),
+            FolderRoot = seed.Kind == FeedKind.Assets && !string.IsNullOrWhiteSpace(seed.Folder) ? seed.Folder.Trim() : null,
+            FolderWritable = seed.Kind == FeedKind.Assets && !string.IsNullOrWhiteSpace(seed.Folder) && seed.FolderWrites,
             AllowOverwrite = seed.AllowOverwrite,
             DeletionBehavior = seed.DeletionBehavior,
             MergePushedIdsWithUpstreams = seed.MergePushedIdsWithUpstreams,

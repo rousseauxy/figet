@@ -11,8 +11,31 @@ public sealed class Feed
 
     public FeedKind Kind { get; set; } = FeedKind.Curated;
 
-    /// <summary>When true, every read endpoint of the feed works without credentials.</summary>
+    /// <summary>When true, every read endpoint of the feed works without credentials. On an asset directory: downloads.</summary>
     public bool AnonymousRead { get; set; }
+
+    /// <summary>
+    /// Asset directories only: when true, folders can be listed, exported and browsed without credentials. A consumer that
+    /// knows its paths needs only <see cref="AnonymousRead"/>; with this off, a folder shows nothing to a stranger and a
+    /// wrong path is the same 404 as a right one, so nothing can be discovered.
+    /// </summary>
+    public bool AnonymousList { get; set; }
+
+    /// <summary>
+    /// Asset directories only: when set, the directory's content is this folder on the server - a mounted share - read
+    /// as it is, with no copy and no row per file. Comes from configuration (<c>FiGet:Feeds:N:Folder</c>), never from a
+    /// page, because the operator provides the mount. Null: files are stored by FiGet under random ids.
+    /// </summary>
+    public string? FolderRoot { get; set; }
+
+    /// <summary>
+    /// Folder-backed directories only: whether uploads, folders and deletes through FiGet act on the folder. Off by
+    /// default; the share's own permissions decide who writes, and a second way in needs its own reason.
+    /// </summary>
+    public bool FolderWritable { get; set; }
+
+    /// <summary>Whether the files come from a folder on the server rather than from FiGet's own storage.</summary>
+    public bool IsFolderBacked => !string.IsNullOrWhiteSpace(FolderRoot);
 
     /// <summary>When true, pushing an existing id and version replaces it instead of answering 409.</summary>
     public bool AllowOverwrite { get; set; }
