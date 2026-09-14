@@ -24,8 +24,11 @@ services:
       # SQL Server instead of SQLite:
       # FiGet__Database__Provider: "SqlServer"
       # FiGet__Database__ConnectionString: "Server=sql;Database=figet;User Id=figet;Password=...;TrustServerCertificate=True"
+      # Shares an administrator may pick as the content of an asset directory: each one a sub-folder of this mount.
+      # FiGet__Assets__SharesRoot: "/shares"
     volumes:
       - figet-data:/data
+      # - /srv/shares/intune:/shares/intune:ro
     restart: unless-stopped
 
 volumes:

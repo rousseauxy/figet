@@ -2914,3 +2914,37 @@ Owner's feedback with a screenshot:
   by name, saves a list, and clears it.
 
 Suites: unit 176, integration 458, on SQLite and SQL Server.
+
+## Folder-backed directories chosen on the pages - 2026-09-15
+
+The owner asked whether a folder-backed directory could still be made from the UI, if the choice were limited to one
+mount point. It can, and the limit is what makes it safe: a free path in a form would let an administrator serve `/data`
+(the database) or `/etc`; a name chosen from the sub-folders of one mount cannot leave it.
+
+- **`FiGet:Assets:SharesRoot`** names the mount, for example `/shares`; the operator mounts each share as a direct
+  sub-folder of it. `IShareFolders` (port) and `ShareFolders` (Infrastructure, beside `SharedFolderAssets`) list those
+  sub-folders on every call - real directories only: no reparse points, nothing hidden or system, plain names, none of
+  the never-served names - and resolve a posted name to a path only when it is on the list at that moment, building the
+  path from the listed entry's own name. Read per call rather than cached, so a mount added to one replica is offered at
+  once and no replica holds a stale list (the theme packs' problem).
+- **The create form** for asset directories gets a *Content* choice - FiGet's own storage, or one of the folders - and a
+  writes switch; without a root it says what a folder-backed directory needs; with an empty root it says so. A name not
+  on the list is refused and creates nothing. Package feeds have no such choice. `feed.create` audits the folder.
+- **The settings page** gets a *Content* accordion, admins only (a feed manager sees the facts, not the form, and a
+  hand-posted form is refused), that moves a directory between folders and its own storage and toggles writes; moving
+  off a folder leaves the directory on FiGet's own storage, empty, with the folder untouched. Audited as `feed.folder`.
+  A directory whose folder configuration sets shows no form: the next start would put configuration's folder back.
+- **The start-up rule**: configuration owns folders outside the mount and the pages own folders under it. A seed that
+  names a `Folder` is applied on every start as before; a seed without one detaches the directory only from a folder
+  the pages could not have chosen, so a choice made on the page survives a restart while removing `Folder` from
+  configuration still takes the operator's away.
+- `ShareFoldersTests` (unit): plain names, the listing, the resolver's refusals (`..`, a file, a dot-folder, a
+  case-variant, a name with a separator), a symbolic link under the root neither listed nor resolved, no root and a
+  missing root. `ShareFolderChoiceTests` (integration, a fixture with a mount of two folders, a dot-folder and a file,
+  a configured directory and one named without a folder): the form offers the two folders and nothing else, a
+  directory created on one serves it and refuses a PUT until writes are on, seven names not on the list create nothing,
+  the settings page moves a directory on to a folder (a PUT then lands there), refuses an unlisted name with the form
+  reopened, and moves it back; the configured directory shows no form and ignores a hand-posted one; a manager
+  neither sees nor posts it. `AdminUiTests`: without a root, the hint and no chooser.
+
+Suites: unit 198, integration 470, on SQLite and SQL Server.

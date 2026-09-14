@@ -12,9 +12,12 @@ Ordered roughly by when it is likely to be worth doing, not by importance.
 ### ~~Asset directories backed by a shared folder~~ (designed and built 2026-09-14)
 
 Built as designed below - `docs/status.md`, "Asset directories backed by a shared folder" - with the folder from
-configuration, the two anonymous switches on every directory, writes off by default, and cache modes per folder. What
-stays open is the consumer questions under *Open before building*, which only the consumers answer. Not yet tried
-against a real SMB mount from a pod: the tests use folders on the test host.
+configuration, the two anonymous switches on every directory, writes off by default, and cache modes per folder. Since
+2026-09-15 an administrator can also pick the folder on the pages, from the sub-folders of one configured mount
+(`FiGet:Assets:SharesRoot`). What stays open is the consumer questions under *Open before building*, which only the
+consumers answer, and three smaller things: not yet tried against a real SMB mount from a pod (the tests use folders on
+the test host); only direct sub-folders of the mount are offered, so a share that must be nested needs a mount of its
+own; and the hidden-attribute exclusion is Windows-only, on Linux a folder hides by its dot.
 
 **Why.** Folders on a file share are published today through a web server's virtual folders, so that applications
 can download from them: device-management scripts, a CRM's assets, network appliances. The same folders are written

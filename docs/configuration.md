@@ -34,8 +34,10 @@ secret files.
 
 A list of feeds created on start when they do not exist. Existing feeds are never changed from
 configuration, with one exception: `Folder` and `FolderWrites` of an asset directory are applied on every start, because
-the mount is the operator's to provide and to take away. If no feed exists after seeding, a feed named `default` is
-created.
+the mount is the operator's to provide and to take away. Configuration owns folders outside the shares mount
+(`Assets:SharesRoot`) and the pages own folders under it: a directory listed here without `Folder` keeps a folder
+chosen on its settings page, and loses one that came from configuration. If no feed exists after seeding, a feed named
+`default` is created.
 
 What is not here is set on a feed's settings page: retention, instructions, access grants, and the addresses a feed
 may be reached from (*Allowed networks*, under the settings; empty means any).
@@ -50,7 +52,7 @@ the next start creates a new, empty feed of the configured name.
 | `Feeds:N:Kind` | `Curated` | `Curated`, `Proxy` or `Assets`. A feed with upstreams is a proxy feed whatever this says. `Assets` makes an asset directory: files by path under `/endpoints/{name}`, described in `docs/protocol-assets.md`; `AllowOverwrite`, `DeletionBehavior` and upstreams do not apply to it. |
 | `Feeds:N:AnonymousRead` | `false` | When true, every read endpoint works without credentials. On an asset directory: downloading a file by its path. |
 | `Feeds:N:AnonymousList` | `AnonymousRead` | Asset directories only. When true, folders can be listed, exported and browsed without credentials. A consumer that knows its paths needs only `AnonymousRead`; with this off, a folder shows a stranger nothing and a wrong path is the same 404 as a right one, so listing needs a signed-in account or a key with Read. |
-| `Feeds:N:Folder` | empty | Asset directories only. A folder on the server - a mounted share - that *is* the directory's content, read as it is: no copy, no row per file, a file placed on the share served at once. Applied on every start. Hidden and system files, `web.config`, `Thumbs.db`, `desktop.ini` and `~$` lock files are never listed or served, and a link leading out of the folder is refused. See `docs/protocol-assets.md`. |
+| `Feeds:N:Folder` | empty | Asset directories only. A folder on the server - a mounted share - that *is* the directory's content, read as it is: no copy, no row per file, a file placed on the share served at once. Any path, for the operator; applied on every start. Hidden and system files, `web.config`, `Thumbs.db`, `desktop.ini` and `~$` lock files are never listed or served, and a link leading out of the folder is refused. See `docs/protocol-assets.md`. The other way to a folder-backed directory is `Assets:SharesRoot` below, where an administrator picks a sub-folder of one mount on the pages; a directory with `Folder` here shows no chooser. |
 | `Feeds:N:FolderWrites` | `false` | With `Folder`: whether uploads, new folders and deletes through FiGet act on the folder. Off, every write answers 403 and the share's own permissions decide who writes. Applied on every start. |
 | `Feeds:N:AllowOverwrite` | `false` | When true, pushing an existing version replaces it instead of answering 409. |
 | `Feeds:N:DeletionBehavior` | `Unlist` | `Unlist` hides the version from search and keeps it downloadable; `HardDelete` removes the metadata and the files. |
@@ -172,6 +174,7 @@ not get around the limit: a request is counted as anonymous after its key has be
 | Key | Default | Meaning |
 |---|---|---|
 | `IncompleteUploadExpiry` | `24:00:00` | How long the parts of a multipart upload wait for completion before the hourly sweep removes them. |
+| `SharesRoot` | empty | A folder on the server whose direct sub-folders an administrator may choose on the pages as the content of an asset directory: the create form under *Content*, and *Content* on the directory's settings page (admins only). Mount each share as a sub-folder of it (`/shares/intune` under `/shares`). The pages offer names and never take a path, so nothing outside this folder can be served. Only real sub-folders are offered: no links or junctions, nothing hidden or system, none of the never-served names. Empty: the pages offer no folders, and a folder-backed directory comes only from `Feeds:N:Folder`. |
 | `RemoteFetch:Timeout` | `00:30:00` | How long fetching one file by URL may take, download included. |
 | `RemoteFetch:AllowPrivateNetworks` | `false` | Whether a fetched URL may point at a private network, loopback or carrier-grade NAT address. Off, because an upload token could otherwise read internal addresses through the server. Link-local (cloud metadata) addresses stay refused either way. Applies without a proxy. |
 | `RemoteFetch:Proxy` | empty | An HTTP proxy to fetch through (`http://proxy.example:8080`; credentials in the URL, from a secret, when it needs them). Requires `AllowedHosts`: through a proxy the server cannot see the address it reaches, so the host name is what is checked. |
