@@ -92,6 +92,19 @@ volume), not in this repository. Both shipped packs carry FiGet's own mark as th
 | `Theme` | empty | Name of the pack to serve. Empty uses the built-in look. |
 | `Path` | `themes` under the web root | Where packs are read from. Point it at a mounted volume to change themes without rebuilding the image. |
 
+## FiGet:DataProtection
+
+The data-protection key ring protects the sign-in cookies, the antiforgery tokens and the stored client secrets of
+sign-in providers. It is kept in the database, so every replica shares it.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `MasterKey` | empty | 32 random bytes in base64 (`openssl rand -base64 32`) that encrypt the key ring. From a secret (on OpenShift an ESO-synced Secret as `FiGet__DataProtection__MasterKey`), never a committed file. Empty: the ring is stored as plain XML with a warning at every start, and anyone who can read the database can forge a sign-in cookie. Required when `Database:ExpectedReplicas` is above 1. |
+
+Setting a master key encrypts the keys already stored at the next start, in place: sessions and provider secrets stay
+valid. Keep the key: without it, or with another one, the ring cannot be read, every session ends, stored provider
+secrets have to be entered again, and a new key is made (in plain text if no master key is set).
+
 ## FiGet:Auth
 
 | Key | Default | Meaning |

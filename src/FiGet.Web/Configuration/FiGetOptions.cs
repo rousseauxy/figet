@@ -30,6 +30,8 @@ public sealed class FiGetOptions
 
     public AuditOptions Audit { get; set; } = new();
 
+    public DataProtectionSettings DataProtection { get; set; } = new();
+
     /// <summary>Per-address limits on what can be done without a key or a sign-in.</summary>
     public FiGet.Http.RateLimitOptions RateLimits { get; set; } = new();
 
@@ -45,6 +47,15 @@ public sealed class FiGetOptions
     /// assembly's informational version, which is what a local run has.
     /// </summary>
     public string? Version { get; set; }
+}
+
+public sealed class DataProtectionSettings
+{
+    /// <summary>
+    /// 32 random bytes in base64 that encrypt the data-protection key ring in the database. From a secret, never a file
+    /// in the repository. Required with more than one replica.
+    /// </summary>
+    public string? MasterKey { get; set; }
 }
 
 public sealed class ThemingOptions

@@ -153,6 +153,18 @@ public static class FiGetApp
             .SetApplicationName("FiGet")
             .PersistKeysToDbContext<FiGetDbContext>();
 
+        // With a master key the ring is stored encrypted; without one it is plain XML in the database, as before, with a
+        // warning at every start. The decryptor finds the key through the service provider the framework hands it.
+        services.AddSingleton(sp => Security.KeyRingMasterKey.From(sp.GetRequiredService<IOptions<FiGetOptions>>().Value.DataProtection.MasterKey));
+        services.AddOptions<Microsoft.AspNetCore.DataProtection.KeyManagement.KeyManagementOptions>().Configure<IServiceProvider>((keys, sp) =>
+        {
+            var masterKey = sp.GetRequiredService<Security.KeyRingMasterKey>();
+            if (masterKey.IsSet)
+            {
+                keys.XmlEncryptor = new Security.MasterKeyXmlEncryptor(masterKey);
+            }
+        });
+
         services
             .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
             .AddCookie(cookie =>
@@ -410,6 +422,14 @@ public static class FiGetApp
                 $"FiGet:Feeds names the credential '{badCredential.CredentialRef}' for upstream '{badCredential.Url}'. A credential reference must be an environment variable starting with {FeedUpstream.CredentialPrefix}, in upper case.");
         }
 
+        // Read before anything else so a malformed key stops the start here, with its own message.
+        var masterKey = app.Services.GetRequiredService<Security.KeyRingMasterKey>();
+        if (!masterKey.IsSet && options.Database.ExpectedReplicas > 1)
+        {
+            throw new InvalidOperationException(
+                $"FiGet:Database:ExpectedReplicas is above 1 but {Security.KeyRingMasterKey.Setting} is not set. Replicas share the data-protection key ring in the database, and without a master key anyone who can read the database can forge a sign-in cookie.");
+        }
+
         await using var scope = app.Services.CreateAsyncScope();
         var services = scope.ServiceProvider;
         var db = services.GetRequiredService<FiGetDbContext>();
@@ -427,6 +447,21 @@ public static class FiGetApp
         if (options.Database.MigrateOnStartup)
         {
             await db.Database.MigrateAsync();
+        }
+
+        if (masterKey.IsSet)
+        {
+            var encrypted = await Security.KeyRingEncryption.EncryptStoredKeysAsync(db, new Security.MasterKeyXmlEncryptor(masterKey), CancellationToken.None);
+            if (encrypted > 0)
+            {
+                logger.LogInformation("Encrypted {Count} data-protection key(s) stored before a master key was configured.", encrypted);
+            }
+        }
+        else
+        {
+            logger.LogWarning(
+                "The data-protection key ring is stored unencrypted in the database: anyone who can read it can forge a sign-in cookie. Set {Setting} from a secret.",
+                Security.KeyRingMasterKey.Setting);
         }
 
         if (options.Database.Provider == DatabaseProvider.Sqlite)
