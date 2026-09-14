@@ -227,6 +227,16 @@ public sealed class HttpRemoteFileSource : IRemoteFileSource, IDisposable
                 return false;
             }
 
+            // Reserved for documentation, benchmarks and protocol assignments (RFC 5737, RFC 2544, RFC 6890): nothing
+            // legitimate answers there, and a fetch that resolves to one is a name pointing somewhere it should not.
+            if ((b[0] == 192 && b[1] == 0 && b[2] is 0 or 2)
+                || (b[0] == 198 && b[1] is 18 or 19)
+                || (b[0] == 198 && b[1] == 51 && b[2] == 100)
+                || (b[0] == 203 && b[1] == 0 && b[2] == 113))
+            {
+                return false;
+            }
+
             var isPrivate = b[0] == 10
                 || b[0] == 127
                 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31)

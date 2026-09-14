@@ -46,6 +46,12 @@ public sealed class RemoteFetchAddressTests
     [InlineData("255.255.255.255")]
     [InlineData("224.0.0.1")]
     [InlineData("ff02::1")]
+    [InlineData("192.0.0.1")]
+    [InlineData("192.0.2.1")]
+    [InlineData("198.18.0.1")]
+    [InlineData("198.19.255.254")]
+    [InlineData("198.51.100.7")]
+    [InlineData("203.0.113.9")]
     public void Metadata_unspecified_and_multicast_addresses_are_never_allowed(string address)
     {
         Assert.False(HttpRemoteFileSource.IsAllowed(IPAddress.Parse(address), allowPrivateNetworks: true));
