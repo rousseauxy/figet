@@ -17,4 +17,11 @@ public sealed class ConnectorSettings
     /// latency of a single request.
     /// </summary>
     public TimeSpan UpstreamTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Where a package downloaded from an upstream is buffered while it is indexed: <c>FiGet:Storage:TempPath</c>, or the
+    /// system temp directory. On a pod the system one is the container's small writable layer, and an installer-sized
+    /// package filled it before it reached storage.
+    /// </summary>
+    public string? TempPath { get; set; }
 }

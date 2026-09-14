@@ -28,7 +28,7 @@ secret files.
 |---|---|---|
 | `Provider` | `FileSystem` | Only `FileSystem` exists today. |
 | `Root` | `data` under the content root; `/data` in the container image | Package files go under `{Root}/files`, the SQLite database (when used) under `{Root}`. On a cluster, a volume shared by all replicas (ReadWriteMany). |
-| `TempPath` | system temp directory | Where uploads are buffered while they are validated. Must have room for the largest package. |
+| `TempPath` | system temp directory | Where uploads, and packages downloaded from upstreams, are buffered while they are validated. Must have room for the largest package or asset. On a pod, point it at the storage volume or an `emptyDir`, not the container's writable layer. |
 
 ## FiGet:Feeds
 

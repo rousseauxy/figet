@@ -130,11 +130,12 @@ public static class FiGetApp
         // database context.
         services.AddSingleton(provider =>
         {
-            var connector = provider.GetRequiredService<IOptions<FiGetOptions>>().Value.Connector;
+            var figet = provider.GetRequiredService<IOptions<FiGetOptions>>().Value;
             return new ConnectorSettings
             {
-                UpstreamIndexTtl = connector.UpstreamIndexTtl,
-                UpstreamTimeout = connector.UpstreamTimeout,
+                UpstreamIndexTtl = figet.Connector.UpstreamIndexTtl,
+                UpstreamTimeout = figet.Connector.UpstreamTimeout,
+                TempPath = figet.Storage.TempPath,
             };
         });
         services.AddSingleton<IUpstreamClient, NuGetUpstreamClient>();

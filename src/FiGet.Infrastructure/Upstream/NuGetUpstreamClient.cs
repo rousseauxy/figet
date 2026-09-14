@@ -104,8 +104,10 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
 
         // Buffered to a temporary file that deletes itself: the caller needs a seekable stream to index the
         // package, and a cached package can be far larger than is comfortable in memory.
+        var directory = string.IsNullOrWhiteSpace(settings.TempPath) ? Path.GetTempPath() : settings.TempPath;
+        Directory.CreateDirectory(directory);
         var file = new FileStream(
-            Path.Combine(Path.GetTempPath(), "figet-upstream-" + Guid.NewGuid().ToString("N") + ".tmp"),
+            Path.Combine(directory, "figet-upstream-" + Guid.NewGuid().ToString("N") + ".tmp"),
             FileMode.CreateNew,
             FileAccess.ReadWrite,
             FileShare.None,
