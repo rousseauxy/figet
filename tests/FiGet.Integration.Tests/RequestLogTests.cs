@@ -155,6 +155,18 @@ public sealed class RequestLogTests(RequestLogFixture server) : IClassFixture<Re
         Assert.DoesNotContain(server.Logs.Lines, l => l.Contains("cobalt.css", StringComparison.Ordinal));
     }
 
+    /// <summary>A provider's authorization code arrives in the callback's query; the line says the callback happened, without it.</summary>
+    [Fact]
+    public async Task The_sign_in_callback_is_logged_without_its_query()
+    {
+        using var client = server.CreateClient();
+        var code = "code-" + Guid.NewGuid().ToString("N");
+        await client.GetAsync($"signin-oidc/log-probe?code={code}&state=abc");
+
+        Assert.NotNull(await WaitForLineAsync("/signin-oidc/log-probe"));
+        Assert.DoesNotContain(server.Logs.Lines, l => l.Contains(code, StringComparison.Ordinal));
+    }
+
     /// <summary>Health probes would otherwise be most of the log, and nobody is ever looking for them.</summary>
     [Fact]
     public async Task Health_probes_are_not_logged()

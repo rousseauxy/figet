@@ -43,7 +43,7 @@ public sealed class RequestLogMiddleware(RequestDelegate next, ILogger<RequestLo
                 "{Method} {Path}{Query} -> {Status} in {ElapsedMs:F0}ms | caller={Caller} forwarded={Forwarded} who={Who} agent={Agent}",
                 context.Request.Method,
                 context.Request.Path.Value,
-                context.Request.QueryString.Value,
+                Query(context.Request),
                 context.Response.StatusCode,
                 elapsed.TotalMilliseconds,
                 context.Connection.RemoteIpAddress?.ToString() ?? "-",
@@ -52,6 +52,17 @@ public sealed class RequestLogMiddleware(RequestDelegate next, ILogger<RequestLo
                 Header(context, "User-Agent"));
         }
     }
+
+    /// <summary>
+    /// The query string, except where it carries a provider's authorization code and state: the sign-in callback and what
+    /// follows it. A code is single-use and bound to its sign-in, but logs travel further than the database does.
+    /// </summary>
+    private static string? Query(HttpRequest request) =>
+        request.QueryString.HasValue
+        && (request.Path.StartsWithSegments(SignIn.OidcSchemes.CallbackSegment, StringComparison.OrdinalIgnoreCase)
+            || request.Path.StartsWithSegments("/account/external", StringComparison.OrdinalIgnoreCase))
+            ? "?(query not logged)"
+            : request.QueryString.Value;
 
     private static string Header(HttpContext context, string name)
     {
