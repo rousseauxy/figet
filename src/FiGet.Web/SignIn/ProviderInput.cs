@@ -45,6 +45,12 @@ public sealed partial class ProviderInput
 
     public int Ordinal { get; set; }
 
+    /// <summary>False by default for the same reason as <see cref="Enabled"/>; a new provider starts not making accounts.</summary>
+    public bool CreateAccounts { get; set; }
+
+    [StringLength(1024)]
+    public string AllowedEmailDomains { get; set => field = value ?? ""; } = "";
+
     public static ProviderInput From(OidcProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
@@ -56,6 +62,8 @@ public sealed partial class ProviderInput
             ClientId = provider.ClientId,
             Scopes = provider.Scopes,
             UserNameClaim = provider.UserNameClaim,
+            CreateAccounts = provider.CreateAccounts,
+            AllowedEmailDomains = provider.AllowedEmailDomains,
             GroupsClaim = provider.GroupsClaim,
             Enabled = provider.Enabled,
             Ordinal = provider.Ordinal,
@@ -68,6 +76,11 @@ public sealed partial class ProviderInput
         if (!Uri.TryCreate(Authority.Trim(), UriKind.Absolute, out var authority) || authority.Scheme is not ("https" or "http"))
         {
             return "The issuer must be an absolute https:// URL.";
+        }
+
+        if (OidcProvider.ParseEmailDomains(AllowedEmailDomains).Any(d => !DomainPattern().IsMatch(d)))
+        {
+            return "Allowed email domains are host names such as example.org, one per line.";
         }
 
         return ClaimPattern().IsMatch(UserNameClaim.Trim()) && (GroupsClaim.Trim().Length == 0 || ClaimPattern().IsMatch(GroupsClaim.Trim()))
@@ -93,10 +106,15 @@ public sealed partial class ProviderInput
         provider.UserNameClaim = UserNameClaim.Trim();
         provider.GroupsClaim = GroupsClaim.Trim();
         provider.Enabled = Enabled;
+        provider.CreateAccounts = CreateAccounts;
+        provider.AllowedEmailDomains = string.Join('\n', OidcProvider.ParseEmailDomains(AllowedEmailDomains));
         provider.Ordinal = Ordinal;
         provider.UpdatedUtc = utcNow;
     }
 
     [GeneratedRegex(@"^[A-Za-z0-9._:/-]{1,64}$", RegexOptions.CultureInvariant)]
     private static partial Regex ClaimPattern();
+
+    [GeneratedRegex(@"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$", RegexOptions.CultureInvariant)]
+    private static partial Regex DomainPattern();
 }

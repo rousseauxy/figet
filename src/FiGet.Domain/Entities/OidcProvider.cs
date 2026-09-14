@@ -33,6 +33,41 @@ public sealed class OidcProvider
 
     public bool Enabled { get; set; } = true;
 
+    /// <summary>
+    /// Whether the first sign-in of an identity no account has makes an account. Off: an admin makes the account, and its
+    /// owner connects the provider from the profile page. With a provider anyone can register at - Google, a multi-tenant
+    /// Entra registration - on means anyone gets an account.
+    /// </summary>
+    public bool CreateAccounts { get; set; } = true;
+
+    /// <summary>
+    /// Email domains a new identity must have an address in, one per line; empty allows any. Checked before an account is
+    /// made, never for an identity already connected to one. An address the provider marks unverified counts as none.
+    /// </summary>
+    public string AllowedEmailDomains { get; set; } = "";
+
+    /// <summary>The domains of an allowed-domains text, lower case, without a leading @.</summary>
+    public static IReadOnlyList<string> ParseEmailDomains(string? text) =>
+        [.. (text ?? "").Split(['\n', '\r', ' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(d => d.TrimStart('@').ToLowerInvariant())
+            .Where(d => d.Length > 0)
+            .Distinct(StringComparer.Ordinal)];
+
+    /// <summary>Whether an identity with this address may get an account: always without domains, else only a verified address in one of them.</summary>
+    public bool AllowsEmail(string? email, bool? emailVerified)
+    {
+        var domains = ParseEmailDomains(AllowedEmailDomains);
+        if (domains.Count == 0)
+        {
+            return true;
+        }
+
+        var at = email?.LastIndexOf('@') ?? -1;
+        return emailVerified != false
+            && at > 0
+            && domains.Contains(email![(at + 1)..].Trim().ToLowerInvariant());
+    }
+
     /// <summary>Order of the buttons on the sign-in page.</summary>
     public int Ordinal { get; set; }
 

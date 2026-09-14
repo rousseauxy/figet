@@ -48,6 +48,12 @@
     <label for="provider-order">Button order</label>
     <InputNumber id="provider-order" @bind-Value="Model.Ordinal" />
 </div>
+<div class="fg-field">
+    <label for="provider-domains">Allowed email domains</label>
+    <InputTextArea id="provider-domains" @bind-Value="Model.AllowedEmailDomains" rows="2" placeholder="for example: example.org" />
+    <span class="fg-small fg-muted">One per line. Someone signing in for the first time needs a verified address in one of them. Empty allows any address.</span>
+</div>
+<label class="fg-check"><InputCheckbox @bind-Value="Model.CreateAccounts" /> Make an account at a first sign-in. Off: an admin makes the account, and its owner connects this provider from the profile page. With a provider anyone can register at, on means anyone gets an account.</label>
 <label class="fg-check"><InputCheckbox @bind-Value="Model.Enabled" /> Enabled: show it on the sign-in page and accept sign-ins</label>
 
 @code {

@@ -678,6 +678,11 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("AllowedEmailDomains")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Authority")
                         .IsRequired()
                         .HasMaxLength(512)
@@ -687,6 +692,9 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("CreateAccounts")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("TEXT");

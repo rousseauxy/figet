@@ -99,6 +99,64 @@ public abstract partial class ExternalSignInTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Found by the 2026-09-14 review: the build plan asked for an allow list, and without one anyone with an account at a
+    /// provider people can register at got an account here. A new identity needs a verified address in an allowed domain,
+    /// and a provider that does not make accounts refuses every new identity - while one already connected to an account
+    /// still signs in.
+    /// </summary>
+    [Fact]
+    public async Task A_provider_makes_accounts_only_for_allowed_domains_and_only_when_it_may()
+    {
+        var slug = await AddProviderAsync();
+        await ChangeProviderAsync(slug, p => p.AllowedEmailDomains = "example.org");
+
+        foreach (var (email, verified) in new (string?, bool?)[] { ("x@other.test", true), ("x@sub.example.org", true), ("x@example.org", false), (null, null) })
+        {
+            var name = "dom" + Guid.NewGuid().ToString("N")[..8];
+            idp.Next = new FakeIdentity(Guid.NewGuid().ToString("N"), name, email?.Replace("x@", name + "@", StringComparison.Ordinal), EmailVerified: verified);
+            using var browser = CreateBrowser();
+            var refused = await ProviderSignInAsync(browser, slug);
+            Assert.Equal("/account/login?external=email-not-allowed", refused.Headers.Location!.OriginalString);
+            Assert.Null(await FindUserAsync(name));
+        }
+
+        var allowed = "dom" + Guid.NewGuid().ToString("N")[..8];
+        idp.Next = new FakeIdentity(Guid.NewGuid().ToString("N"), allowed, $"{allowed}@EXAMPLE.org", EmailVerified: true);
+        using (var browser = CreateBrowser())
+        {
+            Assert.Equal("/", (await ProviderSignInAsync(browser, slug)).Headers.Location!.OriginalString);
+        }
+
+        Assert.NotNull(await FindUserAsync(allowed));
+
+        // Accounts off: a connected identity still signs in, a new one is sent to an administrator.
+        var local = await CreateLocalUserAsync();
+        var connected = Guid.NewGuid().ToString("N");
+        idp.Next = new FakeIdentity(connected, "someone", "someone@example.org", EmailVerified: true);
+        using (var browser = await SignedInLocallyAsync(local))
+        {
+            Assert.EndsWith("/account/profile?linked=ok", (await ProviderLinkAsync(browser, slug)).Headers.Location!.OriginalString, StringComparison.Ordinal);
+        }
+
+        await ChangeProviderAsync(slug, p => p.CreateAccounts = false);
+        var stranger = "dom" + Guid.NewGuid().ToString("N")[..8];
+        idp.Next = new FakeIdentity(Guid.NewGuid().ToString("N"), stranger, $"{stranger}@example.org", EmailVerified: true);
+        using (var browser = CreateBrowser())
+        {
+            Assert.Equal("/account/login?external=no-account", (await ProviderSignInAsync(browser, slug)).Headers.Location!.OriginalString);
+            Assert.Contains("There is no account for you yet.", await HttpAssert.SuccessBodyAsync(await browser.GetAsync("/account/login?external=no-account")), StringComparison.Ordinal);
+        }
+
+        Assert.Null(await FindUserAsync(stranger));
+        idp.Next = new FakeIdentity(connected, "someone", "someone@example.org", EmailVerified: true);
+        using (var browser = CreateBrowser())
+        {
+            await ProviderSignInAsync(browser, slug);
+            Assert.Contains($"<h1>{local}</h1>", await HttpAssert.SuccessBodyAsync(await browser.GetAsync("/account/profile")), StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
     /// Connecting from the profile page joins the identity to the signed-in account, and signing in with it afterwards
     /// reaches that account. An identity that already belongs to someone else is refused.
     /// </summary>
@@ -292,7 +350,8 @@ public abstract partial class ExternalSignInTests : IAsyncLifetime
         fields[BrowserSignIn.InputName(form, "provider-client")] = FakeOidcProvider.ClientId;
         fields[BrowserSignIn.InputName(form, "provider-secret")] = FakeOidcProvider.ClientSecret;
         fields[BrowserSignIn.InputName(form, "provider-username-claim")] = "preferred_username";
-        fields[InputNameOfCheckbox(form)] = "true";
+        fields[InputNameOfCheckbox(form, "Enabled")] = "true";
+        fields[WebUtility.HtmlDecode(Regex.Match(form, "<textarea[^>]*id=\"provider-domains\"[^>]*name=\"(?<n>[^\"]+)\"").Groups["n"].Value)] = "Example.org\n@example.net";
         using (var content = new FormUrlEncodedContent(fields))
         {
             var created = await admin.PostAsync("/admin/providers", content);
@@ -304,6 +363,10 @@ public abstract partial class ExternalSignInTests : IAsyncLifetime
         {
             var stored = await scope.ServiceProvider.GetRequiredService<FiGetDbContext>().OidcProviders.SingleAsync(p => p.Slug == slug, TestContext.Current.CancellationToken);
             Assert.True(stored.Enabled);
+
+            // A provider added on the page starts not making accounts, and its domains are stored cleaned up.
+            Assert.False(stored.CreateAccounts);
+            Assert.Equal("example.org\nexample.net", stored.AllowedEmailDomains);
             Assert.DoesNotContain(FakeOidcProvider.ClientSecret, stored.ProtectedClientSecret, StringComparison.Ordinal);
             Assert.Equal(FakeOidcProvider.ClientSecret, scope.ServiceProvider.GetRequiredService<ISecretProtector>().Unprotect(stored.ProtectedClientSecret));
         }
@@ -486,8 +549,10 @@ public abstract partial class ExternalSignInTests : IAsyncLifetime
     private static string FormWithAction(string page, string action) =>
         FormElement().Matches(page).Select(m => m.Value).First(f => f.Contains($"action=\"{action}\"", StringComparison.Ordinal));
 
-    private static string InputNameOfCheckbox(string form) =>
-        WebUtility.HtmlDecode(Regex.Match(form, "<input[^>]*type=\"checkbox\"[^>]*name=\"(?<n>[^\"]+)\"|<input[^>]*name=\"(?<n>[^\"]+)\"[^>]*type=\"checkbox\"").Groups["n"].Value);
+    private static string InputNameOfCheckbox(string form, string property) =>
+        Regex.Matches(form, "<input[^>]*type=\"checkbox\"[^>]*name=\"(?<n>[^\"]+)\"|<input[^>]*name=\"(?<n>[^\"]+)\"[^>]*type=\"checkbox\"")
+            .Select(m => WebUtility.HtmlDecode(m.Groups["n"].Value))
+            .Single(n => n.EndsWith("." + property, StringComparison.Ordinal));
 
     private static Dictionary<string, string> Hidden(string html) =>
         HiddenInput().Matches(html)

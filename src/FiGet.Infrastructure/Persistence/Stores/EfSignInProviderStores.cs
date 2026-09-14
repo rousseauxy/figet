@@ -63,6 +63,8 @@ public sealed class EfOidcProviderStore(FiGetDbContext db) : IOidcProviderStore
                     .SetProperty(p => p.UserNameClaim, provider.UserNameClaim)
                     .SetProperty(p => p.GroupsClaim, provider.GroupsClaim)
                     .SetProperty(p => p.Enabled, provider.Enabled)
+                    .SetProperty(p => p.CreateAccounts, provider.CreateAccounts)
+                    .SetProperty(p => p.AllowedEmailDomains, provider.AllowedEmailDomains)
                     .SetProperty(p => p.Ordinal, provider.Ordinal)
                     .SetProperty(p => p.UpdatedUtc, provider.UpdatedUtc),
                 cancellationToken) > 0;

@@ -8,7 +8,8 @@ namespace FiGet.Application.Accounts;
 /// Who a provider says the person is. <see cref="Groups"/> is null when the provider has no groups claim configured,
 /// which leaves memberships alone; an empty list means "in no group" and removes the ones that provider gave.
 /// </summary>
-public sealed record ExternalIdentity(string Subject, string? UserName, string? Email, string? DisplayName, IReadOnlyCollection<string>? Groups);
+/// <param name="EmailVerified">The provider's <c>email_verified</c> claim; null when it sent none.</param>
+public sealed record ExternalIdentity(string Subject, string? UserName, string? Email, string? DisplayName, IReadOnlyCollection<string>? Groups, bool? EmailVerified = null);
 
 public enum ExternalSignInStatus
 {
@@ -24,6 +25,12 @@ public enum ExternalSignInStatus
     /// and nothing is joined: that person signs in to the existing account and connects the provider from its profile.
     /// </summary>
     MatchesExistingAccount,
+
+    /// <summary>No account had this identity, and its email address is not a verified one in the provider's allowed domains.</summary>
+    EmailNotAllowed,
+
+    /// <summary>No account had this identity, and the provider does not make accounts: an admin makes one first.</summary>
+    NoAccount,
 }
 
 public sealed record ExternalSignInResult(ExternalSignInStatus Status, User? User = null);
@@ -75,6 +82,17 @@ public sealed class ExternalAccountService(IUserStore users, IExternalLoginStore
             await users.UpdateAsync(existing, cancellationToken);
             await SyncGroupsAsync(existing.Key, provider, identity, cancellationToken);
             return new ExternalSignInResult(ExternalSignInStatus.SignedIn, existing);
+        }
+
+        // Checked before anything about existing accounts is looked at, so a refused identity learns nothing about them.
+        if (!provider.AllowsEmail(identity.Email, identity.EmailVerified))
+        {
+            return new ExternalSignInResult(ExternalSignInStatus.EmailNotAllowed);
+        }
+
+        if (!provider.CreateAccounts)
+        {
+            return new ExternalSignInResult(ExternalSignInStatus.NoAccount);
         }
 
         if (await MatchesExistingAccountAsync(identity, cancellationToken))

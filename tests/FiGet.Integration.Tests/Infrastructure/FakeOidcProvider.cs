@@ -15,7 +15,7 @@ using Microsoft.IdentityModel.Tokens;
 namespace FiGet.Integration.Tests.Infrastructure;
 
 /// <summary>Who the fake provider signs in as next: the person at the provider's login screen.</summary>
-public sealed record FakeIdentity(string Subject, string? UserName = null, string? Email = null, string? Name = null, string[]? Groups = null);
+public sealed record FakeIdentity(string Subject, string? UserName = null, string? Email = null, string? Name = null, string[]? Groups = null, bool? EmailVerified = null);
 
 /// <summary>
 /// A minimal OpenID Connect provider on a loopback port: discovery, keys, authorize, token and user info, with the checks
@@ -174,6 +174,11 @@ public sealed class FakeOidcProvider : IAsyncDisposable
         if (identity.Name is not null)
         {
             claims["name"] = identity.Name;
+        }
+
+        if (identity.EmailVerified is { } verified)
+        {
+            claims["email_verified"] = verified;
         }
 
         if (identity.Groups is not null)

@@ -132,6 +132,13 @@ public static class SignInEndpoints
             return Results.Redirect("/account/login?external=exists");
         }
 
+        if (outcome.Status is ExternalSignInStatus.EmailNotAllowed or ExternalSignInStatus.NoAccount)
+        {
+            var reason = outcome.Status == ExternalSignInStatus.EmailNotAllowed ? "email-not-allowed" : "no-account";
+            audit.Record(http, "signin.external.refused", identity.UserName ?? identity.Email ?? identity.Subject, $"provider={provider.Slug} reason={reason} email={identity.Email ?? "-"}");
+            return Results.Redirect("/account/login?external=" + reason);
+        }
+
         if (outcome.Status == ExternalSignInStatus.Disabled)
         {
             audit.Record(http, "signin.disabled", outcome.User!.UserName, $"provider={provider.Slug}");
@@ -169,7 +176,8 @@ public static class SignInEndpoints
             principal.FindFirst(provider.UserNameClaim)?.Value,
             principal.FindFirst("email")?.Value,
             principal.FindFirst("name")?.Value,
-            groups);
+            groups,
+            bool.TryParse(principal.FindFirst("email_verified")?.Value, out var verified) ? verified : null);
     }
 
     private static IResult Challenge(OidcProvider provider, string returnUrl, int? linkTo)

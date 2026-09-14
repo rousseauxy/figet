@@ -195,6 +195,7 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.Property(x => x.Scopes).HasMaxLength(512);
             e.Property(x => x.UserNameClaim).HasMaxLength(64);
             e.Property(x => x.GroupsClaim).HasMaxLength(64);
+            e.Property(x => x.AllowedEmailDomains).HasMaxLength(1024);
         });
 
         modelBuilder.Entity<ExternalLogin>(e =>

@@ -82,10 +82,17 @@ Evaluated per request, so a change applies at once. Browsing pages use the same 
   options cache for a changed provider is cleared, so saving a provider needs no restart.
 - The public base URL (`FiGet:PublicBaseUrl` or forwarded headers) must be right for callbacks behind a proxy; the
   provider page shows the exact redirect URI to register.
-- Sign-in: provider identity found in `ExternalLogins` → that user (refused if disabled). Not found, and its user name
-  or email (case-insensitive) belongs to an existing account → refused, with a message to sign in to that account and
-  connect the provider. Otherwise → a new user with role *user*, user name from the configured claim. Linked groups
-  refreshed from the groups claim.
+- Sign-in: provider identity found in `ExternalLogins` → that user (refused if disabled). Not found, and the provider
+  has allowed email domains while the identity has no address in one of them, or one its `email_verified` claim marks
+  unverified → refused. Not found, and the provider does not make accounts → refused, with a message to ask an
+  administrator. Not found, and its user name or email (case-insensitive) belongs to an existing account → refused,
+  with a message to sign in to that account and connect the provider. Otherwise → a new user with role *user*, user
+  name from the configured claim. Linked groups refreshed from the groups claim.
+- Who may get an account (2026-09-14 review, restoring the build plan's allow list): each provider has **allowed email
+  domains** (empty allows any) and **make an account at a first sign-in**. A provider added on the page starts with
+  accounts off; providers that existed before kept making them. Neither applies to an identity already connected to
+  an account. With a provider anyone can register at (Google, a multi-tenant Entra registration), set domains or turn
+  accounts off: otherwise anyone gets an account, and a signed-in account is not held to the anonymous rate limit.
 - Connect from the profile page: a challenge marked as a link request for the signed-in user; refused when that
   identity already belongs to another user.
 - Signing out ends the FiGet session; ending the provider's session is not attempted.
