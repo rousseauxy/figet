@@ -150,10 +150,11 @@ their write-side statuses were not recorded from the reference server either.
   `mklink` away. Writes are off unless `FolderWrites` says otherwise: the share's own permissions decide who writes,
   and a second way in needs its own reason. Writes that are on go through a temporary file in the target folder and a
   rename, so a half-written upload is never the file a client downloads. (2026-09-14.)
-- **A page never takes a folder path.** An administrator picks a folder by name from the direct sub-folders of one
-  configured mount (`FiGet:Assets:SharesRoot`), and the server joins that name to the root only when it is on the list
-  at that moment. A free path in a form would let a page serve the database folder or the system; a list of names
-  cannot leave the mount. Any other path stays the operator's, in configuration. (2026-09-15.)
+- **A page never takes a folder path.** An administrator picks a share by name from the direct sub-folders of one
+  configured mount (`FiGet:Assets:SharesRoot`) and, optionally, a folder inside it; the server walks that from the root
+  one real directory at a time, matching each name against what is there, so `..`, a link, a file or a name that is not
+  there ends the walk with nothing. A free path in a form would let a page serve the database folder or the system; a
+  walk from the mount cannot leave it. Any other path stays the operator's, in configuration. (2026-09-15.)
 - **User metadata marked `includeInResponseHeader` is stored but not sent as a header.** The header name the
   reference server uses was not observable without write access, and guessing one would be a promise.
 - **Writing never works anonymously**, whatever the directory's anonymous-read setting says. Tokens are the

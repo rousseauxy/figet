@@ -15,7 +15,9 @@ public sealed class ShareFoldersTests : IDisposable
 
     public ShareFoldersTests()
     {
-        Directory.CreateDirectory(Path.Combine(root, "intune"));
+        Directory.CreateDirectory(Path.Combine(root, "intune", "scripts", "deep"));
+        Directory.CreateDirectory(Path.Combine(root, "intune", ".private"));
+        File.WriteAllText(Path.Combine(root, "intune", "readme.txt"), "a file, not a folder");
         Directory.CreateDirectory(Path.Combine(root, "crm"));
         Directory.CreateDirectory(Path.Combine(root, ".dotted"));
         Directory.CreateDirectory(Path.Combine(root, "desktop.ini"));
@@ -69,17 +71,51 @@ public sealed class ShareFoldersTests : IDisposable
         var names = shares.List().Select(folder => folder.Name).ToList();
         Assert.Equal(["crm", "intune"], names);
         Assert.Equal(Path.Combine(Path.GetFullPath(root), "crm"), shares.List()[0].Path);
+
+        // The first folders inside each share are shown as a hint: real, offered ones only.
+        Assert.Empty(shares.List()[0].Inside);
+        Assert.Equal(["scripts"], shares.List()[1].Inside);
     }
 
     [Fact]
     public void Resolves_a_listed_name_to_its_path_and_nothing_else()
     {
         var shares = Create(root);
-        Assert.Equal(Path.Combine(Path.GetFullPath(root), "intune"), shares.Resolve("intune"));
+        Assert.Equal(Path.Combine(Path.GetFullPath(root), "intune"), shares.Resolve("intune", null));
+        Assert.Equal(Path.Combine(Path.GetFullPath(root), "intune"), shares.Resolve("intune", "  "));
         foreach (var name in (string?[])[null, "", "..", ".", "notes.txt", "nothing", ".dotted", "desktop.ini", "hidden", "intune/sub", "intune\\sub", "INTUNE", "../intune", "..\\.."])
         {
-            Assert.Null(shares.Resolve(name));
+            Assert.Null(shares.Resolve(name, null));
         }
+    }
+
+    /// <summary>A folder inside a share is walked one real directory at a time; nothing on the way may be a way out.</summary>
+    [Fact]
+    public void Resolves_a_folder_inside_a_share_by_walking_it()
+    {
+        var shares = Create(root);
+        var intune = Path.Combine(Path.GetFullPath(root), "intune");
+        Assert.Equal(Path.Combine(intune, "scripts"), shares.Resolve("intune", "scripts"));
+        Assert.Equal(Path.Combine(intune, "scripts", "deep"), shares.Resolve("intune", "scripts/deep"));
+        Assert.Equal(Path.Combine(intune, "scripts", "deep"), shares.Resolve("intune", "/scripts\\deep/"));
+        foreach (var inside in (string[])["..", "../crm", "scripts/..", "scripts/../../crm", ".private", "readme.txt", "nothing", "Scripts", "scripts/nothing", "scripts/deep/deeper"])
+        {
+            Assert.Null(shares.Resolve("intune", inside));
+        }
+
+        Assert.Null(shares.Resolve("crm", "scripts"));
+        Assert.Null(shares.Resolve("intune", string.Join('/', Enumerable.Repeat("scripts", ShareFolders.MaxDepth + 1))));
+    }
+
+    [Fact]
+    public void Describes_a_stored_path_as_share_and_folder_inside()
+    {
+        var shares = Create(root);
+        Assert.Equal(("intune", ""), shares.Describe(Path.Combine(root, "intune")));
+        Assert.Equal(("intune", "scripts/deep"), shares.Describe(Path.Combine(root, "intune", "scripts", "deep")));
+        Assert.Null(shares.Describe(root));
+        Assert.Null(shares.Describe(Path.Combine(root, "..", "elsewhere")));
+        Assert.Null(shares.Describe(null));
     }
 
     [Fact]
@@ -100,7 +136,12 @@ public sealed class ShareFoldersTests : IDisposable
 
             var shares = Create(root);
             Assert.DoesNotContain("linked", shares.List().Select(folder => folder.Name));
-            Assert.Null(shares.Resolve("linked"));
+            Assert.Null(shares.Resolve("linked", null));
+
+            // Nor a link inside a share.
+            Directory.CreateSymbolicLink(Path.Combine(root, "intune", "linked"), elsewhere);
+            Assert.DoesNotContain("linked", shares.List().Single(folder => folder.Name == "intune").Inside);
+            Assert.Null(shares.Resolve("intune", "linked"));
         }
         finally
         {
@@ -118,8 +159,9 @@ public sealed class ShareFoldersTests : IDisposable
         Assert.False(shares.IsConfigured);
         Assert.Null(shares.Root);
         Assert.Empty(shares.List());
-        Assert.Null(shares.Resolve("intune"));
+        Assert.Null(shares.Resolve("intune", null));
         Assert.False(shares.IsUnderRoot(Path.Combine(root, "intune")));
+        Assert.Null(shares.Describe(Path.Combine(root, "intune")));
     }
 
     [Fact]
@@ -128,7 +170,7 @@ public sealed class ShareFoldersTests : IDisposable
         var shares = Create(Path.Combine(root, "missing"));
         Assert.True(shares.IsConfigured);
         Assert.Empty(shares.List());
-        Assert.Null(shares.Resolve("intune"));
+        Assert.Null(shares.Resolve("intune", null));
     }
 
     /// <summary>The start-up rule: configuration owns folders outside the mount, the pages own those under it.</summary>

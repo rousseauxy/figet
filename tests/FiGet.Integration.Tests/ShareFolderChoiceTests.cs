@@ -23,8 +23,9 @@ public sealed class SharesRootServerFixture() : FiGetServerFixture(TestDatabase.
     protected override void Configure(IWebHostBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
-        Directory.CreateDirectory(Path.Combine(SharesRoot, "intune"));
+        Directory.CreateDirectory(Path.Combine(SharesRoot, "intune", "scripts"));
         File.WriteAllText(Path.Combine(SharesRoot, "intune", "setup.txt"), "from intune");
+        File.WriteAllText(Path.Combine(SharesRoot, "intune", "scripts", "run.ps1"), "from intune/scripts");
         Directory.CreateDirectory(Path.Combine(SharesRoot, "crm"));
         Directory.CreateDirectory(Path.Combine(SharesRoot, ".dotted"));
         File.WriteAllText(Path.Combine(SharesRoot, "notes.txt"), "not a folder");
@@ -59,6 +60,8 @@ public sealed partial class ShareFolderChoiceTests(SharesRootServerFixture serve
         Assert.DoesNotContain(".dotted", form, StringComparison.Ordinal);
         Assert.DoesNotContain("notes.txt", form, StringComparison.Ordinal);
         Assert.DoesNotContain("FiGet:Assets:SharesRoot", form, StringComparison.Ordinal);
+        Assert.Contains("Inside <code>intune</code>: scripts", form, StringComparison.Ordinal);
+        Assert.DoesNotContain("Inside <code>crm</code>", form, StringComparison.Ordinal);
 
         // Package feeds have no content to choose.
         Assert.DoesNotContain("id=\"feed-folder\"", FormWith(await HttpAssert.SuccessBodyAsync(await admin.GetAsync("/admin/feeds")), "create-feed"), StringComparison.Ordinal);
@@ -91,21 +94,45 @@ public sealed partial class ShareFolderChoiceTests(SharesRootServerFixture serve
         Assert.Contains("chosen under <em>Content</em> below", settings, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task A_directory_can_be_a_folder_inside_a_share()
+    {
+        using var admin = await AdminAsync();
+        var name = "inside-" + Guid.NewGuid().ToString("N")[..8];
+        Assert.Contains("created.", await CreateAsync(admin, name, "intune", writes: false, inside: "/scripts/"), StringComparison.Ordinal);
+        Assert.Equal(Path.Combine(Path.GetFullPath(server.SharesRoot), "intune", "scripts"), (await FindAsync(name))!.FolderRoot);
+
+        using var withKey = server.CreateClient(FiGetServerFixture.AdminToken);
+        Assert.Equal("from intune/scripts", await HttpAssert.SuccessBodyAsync(await withKey.GetAsync($"endpoints/{name}/content/run.ps1")));
+        HttpAssert.Status(HttpStatusCode.NotFound, await withKey.GetAsync($"endpoints/{name}/content/setup.txt"));
+
+        var settings = await HttpAssert.SuccessBodyAsync(await admin.GetAsync($"/admin/assets/{name}"));
+        Assert.Contains("Content: folder intune/scripts on the shares mount", settings, StringComparison.Ordinal);
+        var form = FormWith(settings, "feed-folder");
+        Assert.Contains("value=\"scripts\"", form, StringComparison.Ordinal);
+    }
+
     [Theory]
-    [InlineData("..")]
-    [InlineData("other")]
-    [InlineData(".dotted")]
-    [InlineData("notes.txt")]
-    [InlineData("intune/sub")]
-    [InlineData("..\\..")]
-    [InlineData("INTUNE")]
-    public async Task A_name_that_is_not_on_the_list_is_refused_and_creates_nothing(string folder)
+    [InlineData("..", "")]
+    [InlineData("other", "")]
+    [InlineData(".dotted", "")]
+    [InlineData("notes.txt", "")]
+    [InlineData("intune/sub", "")]
+    [InlineData("..\\..", "")]
+    [InlineData("INTUNE", "")]
+    [InlineData("intune", "..")]
+    [InlineData("intune", "../crm")]
+    [InlineData("intune", "scripts/../../crm")]
+    [InlineData("intune", "setup.txt")]
+    [InlineData("intune", "nothing")]
+    [InlineData("crm", "scripts")]
+    public async Task A_name_that_is_not_on_the_list_is_refused_and_creates_nothing(string folder, string inside)
     {
         using var admin = await AdminAsync();
         var name = "refused-" + Guid.NewGuid().ToString("N")[..8];
         var before = Directory.GetFileSystemEntries(server.SharesRoot).Length;
 
-        var refused = await CreateAsync(admin, name, folder, writes: true);
+        var refused = await CreateAsync(admin, name, folder, writes: true, inside);
         Assert.Contains("is not a folder on the shares mount", refused, StringComparison.Ordinal);
         Assert.Null(await FindAsync(name));
         Assert.Equal(before, Directory.GetFileSystemEntries(server.SharesRoot).Length);
@@ -143,6 +170,13 @@ public sealed partial class ShareFolderChoiceTests(SharesRootServerFixture serve
         Assert.Contains("&#x27;other&#x27; is not a folder on the shares mount.", refused, StringComparison.Ordinal);
         Assert.Contains("<details class=\"fg-accordion\" id=\"folder\" open>", refused, StringComparison.Ordinal);
         Assert.Equal(Path.Combine(Path.GetFullPath(server.SharesRoot), "crm"), (await FindAsync(name))!.FolderRoot);
+        var deeper = await SaveContentAsync(admin, name, moved, "intune", writes: false, inside: "../crm");
+        Assert.Contains("&#x27;intune/../crm&#x27; is not a folder on the shares mount.", deeper, StringComparison.Ordinal);
+
+        // Into a folder inside a share.
+        var inside = await SaveContentAsync(admin, name, moved, "intune", writes: false, inside: "scripts");
+        Assert.Contains("Content: folder intune/scripts on the shares mount", inside, StringComparison.Ordinal);
+        Assert.Equal(Path.Combine(Path.GetFullPath(server.SharesRoot), "intune", "scripts"), (await FindAsync(name))!.FolderRoot);
 
         // Back to FiGet's own storage: the folder and its file are untouched.
         var back = await SaveContentAsync(admin, name, moved, "", writes: false);
@@ -211,22 +245,24 @@ public sealed partial class ShareFolderChoiceTests(SharesRootServerFixture serve
         Assert.Null((await FindAsync(name))!.FolderRoot);
     }
 
-    private static async Task<string> CreateAsync(HttpClient admin, string name, string folder, bool writes)
+    private static async Task<string> CreateAsync(HttpClient admin, string name, string folder, bool writes, string inside = "")
     {
         var form = FormWith(await HttpAssert.SuccessBodyAsync(await admin.GetAsync("/admin/assets")), "create-feed");
         var fields = HiddenFields(form);
         fields[BrowserSignIn.InputName(form, "feed-name")] = name;
         fields[BrowserSignIn.InputName(form, "feed-folder")] = folder;
+        fields[BrowserSignIn.InputName(form, "feed-folder-inside")] = inside;
         fields[BrowserSignIn.InputName(form, "feed-folder-writes")] = writes ? "true" : "false";
         using var content = new FormUrlEncodedContent(fields);
         return await HttpAssert.SuccessBodyAsync(await admin.PostAsync("/admin/assets", content));
     }
 
-    private static async Task<string> SaveContentAsync(HttpClient admin, string name, string page, string share, bool writes)
+    private static async Task<string> SaveContentAsync(HttpClient admin, string name, string page, string share, bool writes, string inside = "")
     {
         var form = FormWith(page, "feed-folder");
         var fields = HiddenFields(form);
         fields[BrowserSignIn.InputName(form, "folder-share")] = share;
+        fields[BrowserSignIn.InputName(form, "folder-inside")] = inside;
         fields[BrowserSignIn.InputName(form, "folder-writes")] = writes ? "true" : "false";
         using var content = new FormUrlEncodedContent(fields);
         return await HttpAssert.SuccessBodyAsync(await admin.PostAsync($"/admin/assets/{name}", content));

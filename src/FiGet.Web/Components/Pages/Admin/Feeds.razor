@@ -130,10 +130,19 @@ else
                         <option value="">FiGet's own storage (uploads)</option>
                         @foreach (var share in shares)
                         {
-                            <option value="@share.Name">Folder @share.Name on the shares mount, read as it is</option>
+                            <option value="@share.Name">Share @share.Name, read as it is</option>
                         }
                     </InputSelect>
                 </div>
+                <div class="fg-field">
+                    <label for="feed-folder-inside">Folder inside the share (empty: the whole share)</label>
+                    <InputText id="feed-folder-inside" @bind-Value="NewFeed!.FolderInside" placeholder="for example: Fiction/2024" />
+                </div>
+                @* What is inside each share, so the folder to name can be seen rather than guessed. *@
+                @foreach (var share in shares.Where(s => s.Inside.Count > 0))
+                {
+                    <div class="fg-small fg-muted">Inside <code>@share.Name</code>: @string.Join(", ", share.Inside)@(share.Inside.Count >= FiGet.Infrastructure.Storage.ShareFolders.InsideShown ? ", …" : "")</div>
+                }
                 <label class="fg-check"><InputCheckbox id="feed-folder-writes" @bind-Value="NewFeed!.FolderWrites" /> Uploads and deletes through FiGet act on the folder (folder-backed directories only; the share's own permissions still apply)</label>
             }
         }
@@ -201,12 +210,14 @@ else
         // list right now - a path, a name with a separator, a folder that is gone - creates nothing.
         string? folderRoot = null;
         var folderName = (NewFeed!.Folder ?? "").Trim();
+        var folderInside = (NewFeed!.FolderInside ?? "").Trim().Trim('/', '\\');
+        var chosen = folderInside.Length == 0 ? folderName : folderName + "/" + folderInside;
         if (IsAssets && folderName.Length > 0)
         {
-            folderRoot = Shares.Resolve(folderName);
+            folderRoot = Shares.Resolve(folderName, folderInside);
             if (folderRoot is null)
             {
-                (message, messageIsError) = ($"'{folderName}' is not a folder on the shares mount.", true);
+                (message, messageIsError) = ($"'{chosen}' is not a folder on the shares mount.", true);
                 return;
             }
         }
@@ -238,7 +249,7 @@ else
                 "feed.create",
                 NewFeed!.Name,
                 $"kind={Kind} anonymousRead={NewFeed!.AnonymousRead} anonymousList={IsAssets && NewFeed!.AnonymousList} allowOverwrite={NewFeed!.AllowOverwrite} onDelete={NewFeed!.DeletionBehavior}"
-                + (IsAssets ? $" folder={(folderRoot is null ? "none" : folderName)} folderWrites={folderWrites}" : ""));
+                + (IsAssets ? $" folder={(folderRoot is null ? "none" : chosen)} folderWrites={folderWrites}" : ""));
         }
 
         // Feeds and directories share one set of names, so the refusal cannot say which of the two holds it
@@ -262,8 +273,11 @@ else
 
         public bool AnonymousList { get; set; }
 
-        /// <summary>Empty for FiGet's own storage, else the name of a sub-folder of the shares mount. A name, never a path.</summary>
+        /// <summary>Empty for FiGet's own storage, else the name of a share under the mount. A name, never a path.</summary>
         public string Folder { get; set; } = "";
+
+        /// <summary>A folder inside the share, segments separated by slashes; empty for the share itself. Walked, never joined.</summary>
+        public string FolderInside { get; set; } = "";
 
         public bool FolderWrites { get; set; }
 
