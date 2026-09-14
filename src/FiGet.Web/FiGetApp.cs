@@ -168,6 +168,14 @@ public static class FiGetApp
                 cookie.Events.OnValidatePrincipal = ValidateCookieAsync;
             });
         services.AddOidcProviders();
+
+        // Sign-in cookies are Secure whenever the public address is HTTPS. Left to the request, a proxy that ends TLS and does
+        // not pass the scheme on made them cookies a browser also sends over plain HTTP. Not the antiforgery cookie: the
+        // framework refuses to issue one marked Always on a request it does not see as HTTPS, and it proves nothing alone.
+        services.AddOptions<CookieAuthenticationOptions>(CookieAuthenticationDefaults.AuthenticationScheme)
+            .Configure<IOptions<PublicUrlOptions>>((cookie, urls) => cookie.Cookie.SecurePolicy = PublicUrls.CookiePolicy(urls.Value));
+        services.AddOptions<CookieAuthenticationOptions>(OidcSchemes.ExternalCookie)
+            .Configure<IOptions<PublicUrlOptions>>((cookie, urls) => cookie.Cookie.SecurePolicy = PublicUrls.CookiePolicy(urls.Value));
         services.AddAuthorizationBuilder()
             .AddPolicy(AdminPolicy, policy => policy.RequireAuthenticatedUser().RequireClaim(ClaimTypes.Role, AdminRole))
             .AddPolicy(SuperAdminPolicy, policy => policy.RequireAuthenticatedUser().RequireClaim(ClaimTypes.Role, SuperAdminRole));

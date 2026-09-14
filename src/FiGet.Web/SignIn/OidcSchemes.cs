@@ -113,6 +113,7 @@ public sealed class OidcOptionsMonitor(
     IServiceScopeFactory scopes,
     IDataProtectionProvider dataProtection,
     ISecretProtector secrets,
+    IOptions<PublicUrlOptions> urls,
     TimeProvider time) : IOptionsMonitor<OpenIdConnectOptions>
 {
     private readonly ConcurrentDictionary<string, (DateTime Version, OpenIdConnectOptions Options)> built = new(StringComparer.Ordinal);
@@ -177,9 +178,9 @@ public sealed class OidcOptionsMonitor(
         options.ClaimActions.MapAll();
         options.TokenValidationParameters.NameClaimType = provider.UserNameClaim;
         options.CorrelationCookie.SameSite = SameSiteMode.Lax;
-        options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.CorrelationCookie.SecurePolicy = PublicUrls.CookiePolicy(urls.Value);
         options.NonceCookie.SameSite = SameSiteMode.Lax;
-        options.NonceCookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.NonceCookie.SecurePolicy = PublicUrls.CookiePolicy(urls.Value);
         // Behind a proxy the request's own scheme and host are only as right as its forwarded headers. With a public base
         // URL configured, the redirect URI is built from it - the same URI the provider page tells people to register. The
         // handler keeps this value for redeeming the code, so both legs of the flow send the same one.

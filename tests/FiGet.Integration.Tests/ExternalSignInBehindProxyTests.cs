@@ -49,7 +49,8 @@ public sealed partial class ExternalSignInBehindProxyTests(PublicBaseUrlServerFi
         }
 
         idp.Next = new FakeIdentity(Guid.NewGuid().ToString("N"), "proxy" + slug);
-        using var browser = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = true, CookieContainer = new CookieContainer() }) { BaseAddress = server.BaseAddress };
+        // The browser reaches the proxy over HTTPS, so it sends the Secure cookies back; the proxy talks plain HTTP to the container.
+        using var browser = new HttpClient(new CookiesAsOverHttps(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })) { BaseAddress = server.BaseAddress };
         var page = await HttpAssert.SuccessBodyAsync(await browser.GetAsync("/account/login"));
         var token = WebUtility.HtmlDecode(Antiforgery().Match(page).Groups["value"].Value);
         using var content = new FormUrlEncodedContent(new Dictionary<string, string> { ["__RequestVerificationToken"] = token });
@@ -69,4 +70,41 @@ public sealed partial class ExternalSignInBehindProxyTests(PublicBaseUrlServerFi
 
     [GeneratedRegex("name=\"__RequestVerificationToken\"[^>]*value=\"(?<value>[^\"]+)\"", RegexOptions.CultureInvariant)]
     private static partial Regex Antiforgery();
+
+    /// <summary>
+    /// Keeps cookies the way a browser on the far side of a TLS-ending proxy does: Secure ones included, because its own
+    /// connection is HTTPS. Only what this test needs - name and value, no paths or expiry.
+    /// </summary>
+    private sealed class CookiesAsOverHttps(HttpMessageHandler inner) : DelegatingHandler(inner)
+    {
+        private readonly Dictionary<string, string> cookies = new(StringComparer.Ordinal);
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (cookies.Count > 0)
+            {
+                request.Headers.Add("Cookie", string.Join("; ", cookies.Select(c => $"{c.Key}={c.Value}")));
+            }
+
+            var response = await base.SendAsync(request, cancellationToken);
+            if (response.Headers.TryGetValues("Set-Cookie", out var set))
+            {
+                foreach (var pair in set.Select(c => c.Split(';')[0]))
+                {
+                    var separator = pair.IndexOf('=', StringComparison.Ordinal);
+                    var (name, value) = (pair[..separator], pair[(separator + 1)..]);
+                    if (value.Length == 0)
+                    {
+                        cookies.Remove(name);
+                    }
+                    else
+                    {
+                        cookies[name] = value;
+                    }
+                }
+            }
+
+            return response;
+        }
+    }
 }

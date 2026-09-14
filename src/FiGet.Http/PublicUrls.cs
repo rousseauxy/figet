@@ -16,6 +16,12 @@ public sealed class PublicUrlOptions
 
 public static class PublicUrls
 {
+    /// <summary>Cookies marked Secure whenever the public address is HTTPS, rather than whenever a request happened to arrive over it.</summary>
+    public static CookieSecurePolicy CookiePolicy(PublicUrlOptions options) =>
+        options?.PublicBaseUrl?.StartsWith("https://", StringComparison.OrdinalIgnoreCase) == true
+            ? CookieSecurePolicy.Always
+            : CookieSecurePolicy.SameAsRequest;
+
     /// <summary>The base URL without a trailing slash.</summary>
     public static string Base(HttpContext http)
     {
