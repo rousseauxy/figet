@@ -374,13 +374,6 @@ pre code { padding: 0; background: none; }
 .fg-btn.fg-btn-block { width: 100%; justify-content: center; }
 .fg-signin-local { margin: 0.9rem 0 0; text-align: center; font-size: 0.9em; }
 
-.fg-panel-grid {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(21rem, 1fr));
-  align-items: start;
-}
-
 /* ── Tables: the record list ────────────────────────────────────── */
 .fg-table-wrap {
   background: var(--surface);
@@ -1015,14 +1008,13 @@ legend {
 /* Panels stacked in the admin body, one per section: without a gap their borders touched and read as one
    box with a seam. The facts under a settings form get a rule, so the Save button ends the form instead of
    sitting on top of the first fact. */
-:not(.fg-panel-grid) > .fg-panel + .fg-panel { margin-top: 1rem; }
+.fg-panel + .fg-panel { margin-top: 1rem; }
 h2 + .fg-panel { margin-top: 0.5rem; }
 .fg-panel :is(.fg-form, .fg-form-actions) + .fg-facts {
   margin-top: 1rem;
   padding-top: 0.9rem;
   border-top: 1px solid var(--border);
 }
-.fg-panel-grid + .fg-panel { margin-top: 1rem; }
 
 /* A row of buttons under a form, when one of them belongs to another form (form="...") or opens a popover. */
 .fg-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin-top: 0.75rem; }
@@ -1062,7 +1054,6 @@ h2 + .fg-panel { margin-top: 0.5rem; }
 @media (max-width: 900px) {
   .fg-admin-shell { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
   .fg-admin-nav { display: none; }
-  .fg-panel-grid { grid-template-columns: minmax(0, 1fr); }
 
   .fg-admin-menu {
     display: block;

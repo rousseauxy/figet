@@ -48,8 +48,6 @@
     <div class="fg-alert fg-alert-danger" role="alert">@problem</div>
 }
 
-@* One grid whatever the count: with the profile alone in it, the single column fills the row. *@
-<div class="fg-panel-grid">
 <section class="fg-panel">
     <h2>Profile</h2>
     <EditForm Model="Input!" FormName="profile" OnValidSubmit="SaveAsync" method="post" class="fg-form" id="profile-form">
@@ -157,7 +155,6 @@
         </div>
     </section>
 }
-</div>
 
 <section class="fg-panel" id="keys">
     <h2>API keys</h2>
