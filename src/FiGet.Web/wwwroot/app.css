@@ -248,6 +248,7 @@ pre code { padding: 0; background: none; }
 }
 .fg-navbar a.active { background: var(--chrome-hover); color: var(--chrome-text); }
 
+
 .fg-navbar .fg-signed-in { display: flex; align-items: center; gap: 0.6rem; }
 .fg-navbar .fg-signed-in .fg-who { color: var(--chrome-muted); font-size: 0.8rem; }
 
@@ -1035,6 +1036,13 @@ h2 + .fg-panel { margin-top: 0.5rem; }
   border: 1px solid var(--border);
   border-radius: var(--r-2);
   box-shadow: var(--shadow-2);
+}
+/* On a phone a popover beside its button has no room to its right: it opens in the page flow instead, below the buttons
+   and as wide as the panel, pushing what follows down rather than running off the screen. */
+@media (max-width: 600px) {
+  .fg-popover { display: block; flex-basis: 100%; }
+  .fg-popover > summary { display: inline-flex; }
+  .fg-popover-body { position: static; width: auto; margin-top: 0.6rem; box-shadow: none; }
 }
 
 /* The phone menu: hidden on a wide screen, where the column above does the job. */
