@@ -50,6 +50,8 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
 
     public DbSet<Setting> Settings => Set<Setting>();
 
+    public DbSet<JobLease> JobLeases => Set<JobLease>();
+
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
 
     public DbSet<AssetItem> AssetItems => Set<AssetItem>();
@@ -103,6 +105,14 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.Property(x => x.CredentialRef).HasMaxLength(128);
             e.HasIndex(x => new { x.FeedKey, x.Name }).IsUnique();
             e.HasOne(x => x.Feed).WithMany(x => x.Upstreams).HasForeignKey(x => x.FeedKey).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<JobLease>(e =>
+        {
+            e.ToTable("JobLeases");
+            e.HasKey(x => x.Name);
+            e.Property(x => x.Name).HasMaxLength(64);
+            e.Property(x => x.Holder).HasMaxLength(128);
         });
 
         modelBuilder.Entity<Setting>(e =>

@@ -8,7 +8,7 @@ namespace FiGet.Web.Logging;
 
 /// <summary>
 /// Stores what <see cref="AuditLog"/> queued, in batches, and prunes entries past the retention. Every replica writes its
-/// own entries and prunes; pruning twice deletes nothing the second time.
+/// own entries; the one holding the lease prunes.
 /// </summary>
 public sealed class AuditWriterService(
     AuditLog audit,
@@ -106,6 +106,11 @@ public sealed class AuditWriterService(
         }
 
         lastPrune = now;
+        if (!await Connectors.JobLeaseGate.TakeAsync(scopes, time, JobLeaseNames.AuditPrune, PruneInterval, logger, cancellationToken))
+        {
+            return;
+        }
+
         try
         {
             await using var scope = scopes.CreateAsyncScope();

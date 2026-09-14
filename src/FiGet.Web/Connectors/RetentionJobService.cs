@@ -1,13 +1,14 @@
 using FiGet.Application.Packages;
 using FiGet.Application.Ports;
+using FiGet.Domain.Entities;
 using FiGet.Http;
 
 namespace FiGet.Web.Connectors;
 
 /// <summary>
-/// Runs every feed's retention and cache pruning once an hour. Every replica runs it; two runs at once remove nothing
-/// twice, because a version already removed is simply not found by the second. A leader lock belongs with the cluster
-/// deployment (build plan phase 6), not here.
+/// Runs every feed's retention and cache pruning once an hour, on the one replica that holds the job's lease. Two runs at
+/// once would remove nothing twice - a version already removed is simply not found by the second - but each is a scan of
+/// every feed, and each wrote its own audit entries.
 /// </summary>
 public sealed class RetentionJobService(
     IServiceScopeFactory scopes,
@@ -28,7 +29,10 @@ public sealed class RetentionJobService(
             using var timer = new PeriodicTimer(Interval, time);
             do
             {
-                await RunOnceAsync(stoppingToken);
+                if (await JobLeaseGate.TakeAsync(scopes, time, JobLeaseNames.Retention, Interval, logger, stoppingToken))
+                {
+                    await RunOnceAsync(stoppingToken);
+                }
             }
             while (await timer.WaitForNextTickAsync(stoppingToken));
         }

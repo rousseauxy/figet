@@ -1,4 +1,5 @@
 using FiGet.Application.Ports;
+using FiGet.Domain.Entities;
 using FiGet.Web.Configuration;
 using Microsoft.Extensions.Options;
 
@@ -6,11 +7,12 @@ namespace FiGet.Web.Connectors;
 
 /// <summary>
 /// Sweeps away multipart uploads nobody completed: a client that crashed half way leaves its parts on shared
-/// storage, and nothing else would ever remove them. Every replica sweeps; that is harmless, because a sweep
-/// only removes uploads that have been idle for the whole expiry, and removing one twice removes nothing.
+/// storage, and nothing else would ever remove them. One replica sweeps, the one holding the lease: a sweep lists the
+/// whole upload area of the shared volume, and every replica doing it each hour bought nothing.
 /// </summary>
 public sealed class AssetUploadCleanupService(
     IAssetStorage storage,
+    IServiceScopeFactory scopes,
     IOptions<FiGetOptions> options,
     TimeProvider time,
     ILogger<AssetUploadCleanupService> logger) : BackgroundService
@@ -22,6 +24,11 @@ public sealed class AssetUploadCleanupService(
         using var timer = new PeriodicTimer(Interval, time);
         do
         {
+            if (!await JobLeaseGate.TakeAsync(scopes, time, JobLeaseNames.UploadSweep, Interval, logger, stoppingToken))
+            {
+                continue;
+            }
+
             try
             {
                 var cutoff = time.GetUtcNow().UtcDateTime - options.Value.Assets.IncompleteUploadExpiry;

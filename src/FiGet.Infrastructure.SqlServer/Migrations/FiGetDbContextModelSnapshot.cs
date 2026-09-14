@@ -701,6 +701,25 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.ToTable("GroupProviderLinks", (string)null);
                 });
 
+            modelBuilder.Entity("FiGet.Domain.Entities.JobLease", b =>
+                {
+                    b.Property<string>("Name")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Holder")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.HasKey("Name");
+
+                    b.ToTable("JobLeases", (string)null);
+                });
+
             modelBuilder.Entity("FiGet.Domain.Entities.OidcProvider", b =>
                 {
                     b.Property<int>("Key")
