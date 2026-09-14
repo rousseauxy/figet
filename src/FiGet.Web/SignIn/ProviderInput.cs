@@ -73,7 +73,10 @@ public sealed partial class ProviderInput
     /// <summary>A message for what the attributes cannot check, or null when the input is usable.</summary>
     public string? Problem()
     {
-        if (!Uri.TryCreate(Authority.Trim(), UriKind.Absolute, out var authority) || authority.Scheme is not ("https" or "http"))
+        // Plain http only on this machine, which is the rule the sign-in handler applies to the provider's metadata: refused
+        // here, rather than saved and found broken at the first sign-in.
+        if (!Uri.TryCreate(Authority.Trim(), UriKind.Absolute, out var authority)
+            || !(authority.Scheme == "https" || (authority.Scheme == "http" && authority.IsLoopback)))
         {
             return "The issuer must be an absolute https:// URL.";
         }

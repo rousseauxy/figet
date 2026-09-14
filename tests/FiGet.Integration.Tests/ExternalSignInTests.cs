@@ -351,6 +351,18 @@ public abstract partial class ExternalSignInTests : IAsyncLifetime
         fields[BrowserSignIn.InputName(form, "provider-secret")] = FakeOidcProvider.ClientSecret;
         fields[BrowserSignIn.InputName(form, "provider-username-claim")] = "preferred_username";
         fields[InputNameOfCheckbox(form, "Enabled")] = "true";
+
+        // A plain-http issuer off this machine is refused when saved, as the sign-in handler would refuse its metadata later.
+        var authorityField = BrowserSignIn.InputName(form, "provider-authority");
+        fields[authorityField] = "http://auth.example.test/application/o/figet/";
+        using (var content = new FormUrlEncodedContent(fields))
+        {
+            var refused = await admin.PostAsync("/admin/providers", content);
+            HttpAssert.Status(HttpStatusCode.OK, refused);
+            Assert.Contains("The issuer must be an absolute https:// URL.", await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), StringComparison.Ordinal);
+        }
+
+        fields[authorityField] = idp.Authority;
         fields[WebUtility.HtmlDecode(Regex.Match(form, "<textarea[^>]*id=\"provider-domains\"[^>]*name=\"(?<n>[^\"]+)\"").Groups["n"].Value)] = "Example.org\n@example.net";
         using (var content = new FormUrlEncodedContent(fields))
         {
