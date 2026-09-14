@@ -119,6 +119,32 @@ public sealed class LayerBoundaryTests
         Assert.Equal(["FiGet.Domain"], ProjectReferencesOf("FiGet.Application"));
     }
 
+    // ── the HTTP and protocol layers ────────────────────────────────────────────
+
+    /// <summary>
+    /// The protocol projects speak HTTP and reach data through Application's ports; Http holds what they share. None of them
+    /// may reach Infrastructure, and none may pull in EF or NuGet's client and packaging libraries on its own. Read from the
+    /// project files, because this test assembly does not reference these projects: a reference declared there is how a
+    /// leak starts. Added after the 2026-09-14 review found these five held only by convention.
+    /// </summary>
+    [Theory]
+    [InlineData("FiGet.Http", new[] { "FiGet.Domain", "FiGet.Application" })]
+    [InlineData("FiGet.Protocol.V2", new[] { "FiGet.Domain", "FiGet.Application", "FiGet.Http" })]
+    [InlineData("FiGet.Protocol.V3", new[] { "FiGet.Domain", "FiGet.Application", "FiGet.Http" })]
+    [InlineData("FiGet.Protocol.Management", new[] { "FiGet.Domain", "FiGet.Application", "FiGet.Http" })]
+    [InlineData("FiGet.Protocol.Assets", new[] { "FiGet.Domain", "FiGet.Application", "FiGet.Http" })]
+    public void Http_and_protocol_projects_reference_only_the_layers_below(string project, string[] allowed)
+    {
+        Assert.Equal(allowed, ProjectReferencesOf(project));
+
+        var packages = PackageReferencesOf(project)
+            .Where(p => p.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal)
+                || p.StartsWith("NuGet.Protocol", StringComparison.Ordinal)
+                || p.StartsWith("NuGet.Packaging", StringComparison.Ordinal))
+            .ToArray();
+        Assert.True(packages.Length == 0, $"{project} must not reference {string.Join(", ", packages)}.");
+    }
+
     // ── reading the project files ───────────────────────────────────────────────
 
     private static string[] ProjectReferencesOf(string project) =>
