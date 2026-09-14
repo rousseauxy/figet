@@ -24,6 +24,9 @@ else
     [Parameter]
     public string? Error { get; set; }
 
+    [Parameter]
+    public bool CanChangeSource { get; set; } = true;
+
     /// <summary>Where Cancel goes when editing: the page with the form closed.</summary>
     [Parameter]
     public string Cancel { get; set; } = "";
@@ -46,7 +49,7 @@ else
                 <input type="hidden" name="key" value="@Upstream.Key" />
             }
 
-            <UpstreamFields Upstream="Upstream" Prefix="@(Upstream is null ? "upstream-new" : $"upstream-{Upstream.Key}")" />
+            <UpstreamFields Upstream="Upstream" CanChangeSource="CanChangeSource" Prefix="@(Upstream is null ? "upstream-new" : $"upstream-{Upstream.Key}")" />
 
             @if (Upstream is not null)
             {

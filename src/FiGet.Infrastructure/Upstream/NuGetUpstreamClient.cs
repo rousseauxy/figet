@@ -258,10 +258,13 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
             return NuGet.Protocol.Core.Types.Repository.Factory.GetCoreV3(source);
         });
 
-    /// <summary>Secrets are referenced by name and read from the environment, never stored in the database.</summary>
+    /// <summary>
+    /// Secrets are referenced by name and read from the environment, never stored in the database. Checked here as well as
+    /// when saving, so a row written before the rule, or straight into the database, still cannot name another variable.
+    /// </summary>
     private static string? ReadSecret(string? credentialRef)
     {
-        if (string.IsNullOrWhiteSpace(credentialRef))
+        if (string.IsNullOrWhiteSpace(credentialRef) || !FeedUpstream.IsAllowedCredentialRef(credentialRef))
         {
             return null;
         }

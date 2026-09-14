@@ -6,18 +6,45 @@
     <input id="@(Prefix)-name" name="name" required maxlength="64" value="@Upstream?.Name" placeholder="for example: powershellgallery" />
 </div>
 
-<div class="fg-field">
-    <label for="@(Prefix)-url">URL</label>
-    <input id="@(Prefix)-url" name="url" required maxlength="2048" value="@Upstream?.Url" placeholder="https://www.powershellgallery.com/api/v2" />
-</div>
+@if (CanChangeSource)
+{
+    <div class="fg-field">
+        <label for="@(Prefix)-url">URL</label>
+        <input id="@(Prefix)-url" name="url" required maxlength="2048" value="@Upstream?.Url" placeholder="https://www.powershellgallery.com/api/v2" />
+    </div>
 
-<div class="fg-field">
-    <label for="@(Prefix)-kind">Protocol</label>
-    <select id="@(Prefix)-kind" name="kind">
-        <option value="V3" selected="@(Upstream?.Kind != UpstreamKind.V2)">v3 service index (ends in index.json)</option>
-        <option value="V2" selected="@(Upstream?.Kind == UpstreamKind.V2)">v2 feed root (the PowerShell Gallery)</option>
-    </select>
-</div>
+    <div class="fg-field">
+        <label for="@(Prefix)-kind">Protocol</label>
+        <select id="@(Prefix)-kind" name="kind">
+            <option value="V3" selected="@(Upstream?.Kind != UpstreamKind.V2)">v3 service index (ends in index.json)</option>
+            <option value="V2" selected="@(Upstream?.Kind == UpstreamKind.V2)">v2 feed root (the PowerShell Gallery)</option>
+        </select>
+    </div>
+}
+else if (Upstream is null)
+{
+    <div class="fg-field">
+        <label for="@(Prefix)-known">Gallery</label>
+        <select id="@(Prefix)-known" name="known">
+            @foreach (var known in FeedUpstream.Known)
+            {
+                <option value="@known.Name">@known.Name (@known.Url)</option>
+            }
+        </select>
+        <p class="fg-muted fg-small">Any other address, or a gallery that needs a key, is added by an admin.</p>
+    </div>
+}
+else
+{
+    @* Posted back unchanged, so the endpoint sees the source was not touched. *@
+    <input type="hidden" name="url" value="@Upstream.Url" />
+    <input type="hidden" name="kind" value="@Upstream.Kind" />
+    <input type="hidden" name="credentialRef" value="@Upstream.CredentialRef" />
+    <p class="fg-muted fg-small">
+        Points at <code>@Upstream.Url</code> (@Upstream.Kind)@(Upstream.CredentialRef is null ? "" : $", with the key in {Upstream.CredentialRef}").
+        An admin changes where an upstream points and which key it uses.
+    </p>
+}
 
 <div class="fg-field">
     <label for="@(Prefix)-allow">Only these package ids (one regular expression per line, empty allows all)</label>
@@ -29,10 +56,13 @@
     <textarea id="@(Prefix)-deny" name="deny" rows="2">@Upstream?.Deny</textarea>
 </div>
 
-<div class="fg-field">
-    <label for="@(Prefix)-credential">Environment variable holding the API key, if the upstream needs one</label>
-    <input id="@(Prefix)-credential" name="credentialRef" maxlength="128" value="@Upstream?.CredentialRef" placeholder="for example: FIGET_UPSTREAM_KEY" />
-</div>
+@if (CanChangeSource)
+{
+    <div class="fg-field">
+        <label for="@(Prefix)-credential">Environment variable holding the API key, if the upstream needs one (starts with @FeedUpstream.CredentialPrefix)</label>
+        <input id="@(Prefix)-credential" name="credentialRef" maxlength="128" value="@Upstream?.CredentialRef" placeholder="for example: @(FeedUpstream.CredentialPrefix)GALLERY" />
+    </div>
+}
 
 @if (Upstream is not null)
 {
@@ -48,4 +78,8 @@
     /// <summary>Makes the element ids unique when several of these forms are on one page.</summary>
     [Parameter]
     public string Prefix { get; set; } = "upstream";
+
+    /// <summary>Whether the URL, protocol and credential are editable: for admins. Anyone else picks a known gallery.</summary>
+    [Parameter]
+    public bool CanChangeSource { get; set; } = true;
 }

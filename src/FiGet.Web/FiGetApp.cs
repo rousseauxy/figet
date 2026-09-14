@@ -378,6 +378,13 @@ public static class FiGetApp
                 "FiGet:Database:Provider is Sqlite but FiGet:Database:ExpectedReplicas is above 1. SQLite cannot be shared by several instances; use SqlServer.");
         }
 
+        // Refused at start rather than ignored: an upstream that silently goes without its key fails later, and looks like the gallery's fault.
+        if (options.Feeds.SelectMany(f => f.Upstreams).FirstOrDefault(u => !FeedUpstream.IsAllowedCredentialRef(u.CredentialRef)) is { } badCredential)
+        {
+            throw new InvalidOperationException(
+                $"FiGet:Feeds names the credential '{badCredential.CredentialRef}' for upstream '{badCredential.Url}'. A credential reference must be an environment variable starting with {FeedUpstream.CredentialPrefix}, in upper case.");
+        }
+
         await using var scope = app.Services.CreateAsyncScope();
         var services = scope.ServiceProvider;
         var db = services.GetRequiredService<FiGetDbContext>();
@@ -622,14 +629,23 @@ public static class FiGetApp
         {
             var form = await http.Request.ReadFormAsync(cancellationToken);
             var target = await feeds.FindAsync(feed, cancellationToken);
-            if (target is not null && UpstreamFromForm(form) is { } upstream)
+            if (target is null)
             {
-                await feeds.AddUpstreamAsync(target.Key, upstream, cancellationToken);
-
-                // The url as well as the name: pointing a feed at a different gallery is the change worth
-                // being able to find afterwards.
-                audit.Record(http, "upstream.add", upstream.Name, $"feed={feed} url={upstream.Url} kind={upstream.Kind}");
+                return Results.NotFound();
             }
+
+            var upstream = UpstreamFromForm(form);
+            if ((upstream is null ? "invalid" : SourceRefusal(http, upstream, before: null)) is { } refusal)
+            {
+                // Back into the open add form, with what was wrong said inside it.
+                return Results.Redirect($"/admin/feeds/{Uri.EscapeDataString(target.Name)}/upstreams?upstream={refusal}&open=add-upstream");
+            }
+
+            await feeds.AddUpstreamAsync(target.Key, upstream!, cancellationToken);
+
+            // The url as well as the name: pointing a feed at a different gallery is the change worth
+            // being able to find afterwards.
+            audit.Record(http, "upstream.add", upstream!.Name, $"feed={feed} url={upstream.Url} kind={upstream.Kind} credentialRef={upstream.CredentialRef ?? "-"}");
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}/upstreams");
         });
@@ -1215,6 +1231,10 @@ public static class FiGetApp
             {
                 code = "invalid";
             }
+            else if (SourceRefusal(http, changed, before) is { } refusal)
+            {
+                code = refusal;
+            }
             else
             {
                 changed.Key = before.Key;
@@ -1223,7 +1243,7 @@ public static class FiGetApp
                 code = outcome switch { UpstreamChange.Done => "saved", UpstreamChange.NameTaken => "taken", _ => "gone" };
                 if (outcome == UpstreamChange.Done)
                 {
-                    if (before.Url != changed.Url || before.Kind != changed.Kind || before.CredentialRef != changed.CredentialRef)
+                    if (changed.SourceDiffersFrom(before))
                     {
                         metadata.ForgetUpstream(before.Key);
                     }
@@ -1240,7 +1260,7 @@ public static class FiGetApp
 
             // A refused edit reopens its form, so what was typed is corrected where it was typed.
             var upstreams = $"/admin/feeds/{Uri.EscapeDataString(target.Name)}/upstreams";
-            return Results.Redirect(code is "taken" or "invalid"
+            return Results.Redirect(code is "taken" or "invalid" or "credential" or "admin-only"
                 ? $"{upstreams}?edit={before!.Key}&upstream={code}#upstream-{before.Key}"
                 : $"{upstreams}?upstream={code}");
         });
@@ -1277,6 +1297,20 @@ public static class FiGetApp
     {
         var name = form["name"].ToString().Trim();
         var url = form["url"].ToString().Trim();
+        var kind = form["kind"].ToString().Equals("V2", StringComparison.OrdinalIgnoreCase) ? UpstreamKind.V2 : UpstreamKind.V3;
+
+        // The form a feed manager gets names one of the known galleries instead of a URL and a protocol.
+        if (form["known"].ToString() is { Length: > 0 } knownName)
+        {
+            if (FeedUpstream.Known.FirstOrDefault(k => k.Name == knownName) is not { } known)
+            {
+                return null;
+            }
+
+            url = known.Url;
+            kind = known.Kind;
+        }
+
         if (name.Length == 0 || url.Length == 0)
         {
             return null;
@@ -1286,11 +1320,39 @@ public static class FiGetApp
         {
             Name = name,
             Url = url,
-            Kind = form["kind"].ToString().Equals("V2", StringComparison.OrdinalIgnoreCase) ? UpstreamKind.V2 : UpstreamKind.V3,
+            Kind = kind,
             Allow = form["allow"].ToString().Trim(),
             Deny = form["deny"].ToString().Trim(),
             CredentialRef = form["credentialRef"].ToString().Trim() is { Length: > 0 } reference ? reference : null,
         };
+    }
+
+    /// <summary>
+    /// Null when the account may save this upstream's source, otherwise the code the upstreams page explains. Manage on a feed
+    /// covers its upstreams' names, order, patterns and switching them off, and adding one of the known public galleries.
+    /// Where an upstream points and with which credential is an admin's: the server makes that request from inside its own
+    /// network, and sends the credential along.
+    /// </summary>
+    private static string? SourceRefusal(HttpContext http, FeedUpstream upstream, FeedUpstream? before)
+    {
+        if (!FeedUpstream.IsAllowedCredentialRef(upstream.CredentialRef))
+        {
+            return "credential";
+        }
+
+        if (http.User.IsInRole(AdminRole))
+        {
+            return null;
+        }
+
+        if (before is not null)
+        {
+            return upstream.SourceDiffersFrom(before) ? "admin-only" : null;
+        }
+
+        return upstream.CredentialRef is null && FeedUpstream.Known.Any(k => k.Url == upstream.Url && k.Kind == upstream.Kind)
+            ? null
+            : "admin-only";
     }
 
     /// <summary>Back to the feed's name and deletion page - by its current name - with a code saying what happened.</summary>

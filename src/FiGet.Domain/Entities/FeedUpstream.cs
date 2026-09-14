@@ -52,8 +52,42 @@ public sealed class FeedUpstream
         value.Split(PatternSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     /// <summary>
-    /// Name of the environment variable or mounted file holding an API key or password for this upstream.
-    /// The secret itself is never stored in the database (build plan section 8).
+    /// Name of the environment variable holding an API key or password for this upstream, always starting with
+    /// <see cref="CredentialPrefix"/>. The secret itself is never stored in the database (build plan section 8).
     /// </summary>
     public string? CredentialRef { get; set; }
+
+    /// <summary>
+    /// The only environment variables an upstream may name. Without it the field read any variable of the process - the
+    /// database connection string, the bootstrap token - and sent its value as a password to the upstream's URL.
+    /// </summary>
+    public const string CredentialPrefix = "FIGET_UPSTREAM_";
+
+    /// <summary>Empty, or the prefix followed by upper-case letters, digits and underscores.</summary>
+    public static bool IsAllowedCredentialRef(string? name) =>
+        string.IsNullOrEmpty(name)
+        || (name.Length > CredentialPrefix.Length
+            && name.Length <= 128
+            && name.StartsWith(CredentialPrefix, StringComparison.Ordinal)
+            && name.All(c => c is (>= 'A' and <= 'Z') or (>= '0' and <= '9') or '_'));
+
+    /// <summary>
+    /// The public galleries a feed manager may add without an admin. Any other URL, and every credential, is an admin's
+    /// choice: an upstream is a request the server makes, from inside its network, with the credential it is given.
+    /// </summary>
+    public static IReadOnlyList<KnownUpstream> Known { get; } =
+    [
+        new("nuget.org", "https://api.nuget.org/v3/index.json", UpstreamKind.V3),
+        new("PowerShell Gallery", "https://www.powershellgallery.com/api/v2", UpstreamKind.V2),
+    ];
+
+    /// <summary>Whether the upstream's source - where it points and with what - differs from another's.</summary>
+    public bool SourceDiffersFrom(FeedUpstream other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        return Url != other.Url || Kind != other.Kind || CredentialRef != other.CredentialRef;
+    }
 }
+
+/// <summary>A public gallery offered by name on the upstream form.</summary>
+public sealed record KnownUpstream(string Name, string Url, UpstreamKind Kind);

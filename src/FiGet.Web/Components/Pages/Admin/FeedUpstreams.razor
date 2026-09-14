@@ -91,7 +91,7 @@
                             {
                                 <tr class="fg-row-panel" id="upstream-@upstream.Key">
                                     <td colspan="5">
-                                        <UpstreamForm Feed="feed" Upstream="upstream" Error="@UpstreamError" Cancel="@PagePath(FeedAdminPaths.Upstreams)" />
+                                        <UpstreamForm Feed="feed" Upstream="upstream" Error="@UpstreamError" CanChangeSource="IsAdmin" Cancel="@PagePath(FeedAdminPaths.Upstreams)" />
                                     </td>
                                 </tr>
                             }
@@ -107,7 +107,7 @@
         }
 
         <Accordion Id="add-upstream" Title="Add upstream" Open="@(feed.Upstreams.Count == 0)">
-            <UpstreamForm Feed="feed" />
+            <UpstreamForm Feed="feed" CanChangeSource="IsAdmin" Error="@(EditingKey is null ? UpstreamError : null)" />
         </Accordion>
     </section>
 }
@@ -137,6 +137,8 @@
     {
         "taken" => "Another upstream of this feed already has that name.",
         "invalid" => "An upstream needs a name and a URL.",
+        "credential" => $"The credential must name an environment variable starting with {FeedUpstream.CredentialPrefix}, in upper case, for example {FeedUpstream.CredentialPrefix}GALLERY.",
+        "admin-only" => "Only an admin changes where an upstream points or which key it uses, or adds one other than the known galleries.",
         _ => null,
     };
 

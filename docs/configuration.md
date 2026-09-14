@@ -52,7 +52,7 @@ the next start creates a new, empty feed of the configured name.
 | `Feeds:N:Upstreams:M:Kind` | `V3` | `V3` or `V2`. The URL alone cannot always tell, so it is stated. |
 | `Feeds:N:Upstreams:M:Allow:X` | empty | Regular expressions on the package id. Empty allows every id; otherwise an id must match one to be listed or fetched. |
 | `Feeds:N:Upstreams:M:Deny:X` | empty | Regular expressions on the package id. A match is never listed or fetched, even when it is allowed above. |
-| `Feeds:N:Upstreams:M:CredentialRef` | empty | Name of the environment variable holding this upstream's API key or password. The secret itself is never stored. |
+| `Feeds:N:Upstreams:M:CredentialRef` | empty | Name of the environment variable holding this upstream's API key or password. It must start with `FIGET_UPSTREAM_` and be upper case (`FIGET_UPSTREAM_GALLERY`); any other name refuses to start. The secret itself is never stored. In the admin pages only an admin sets an upstream's URL, protocol and credential; a feed manager edits its name, patterns and switch, and adds one of the known public galleries. |
 
 Environment variable form: `FiGet__Feeds__0__Name=modules`, `FiGet__Feeds__0__AnonymousRead=true`.
 
