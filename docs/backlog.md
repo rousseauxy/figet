@@ -9,6 +9,60 @@ Ordered roughly by when it is likely to be worth doing, not by importance.
 
 ## Next
 
+### Asset directories backed by a shared folder (next up, designed 2026-09-14)
+
+**Why.** Folders on a file share are published today through a web server's virtual folders, so that applications
+can download from them: device-management scripts, a CRM's assets, network appliances. The same folders are written
+directly over SMB, by applications and by people dropping files in. Replacing the web server with FiGet needs an asset
+directory whose content *is* that folder. A normal asset directory cannot do this: FiGet stores its files under random
+ids with a database row each, so a file placed on the share would not exist for it.
+
+**What the consumers need, as the owner described them.**
+- Download only. Every consumer knows the exact paths it fetches; none lists a folder. Browsing is for people, and is
+  normally off.
+- No credentials: today anyone with a file's URL downloads it, and a folder shows nothing (browsing off, or an empty
+  index page).
+- The URL becomes FiGet's own (`/endpoints/{dir}/content/{path}`); no path alias.
+- No-cache on some folders: `Cache-Control: no-store, no-cache, must-revalidate`, `Pragma: no-cache`, `Expires: -1`.
+- No HTML directory listing, and no Windows authentication.
+
+**Design.**
+1. **A folder-backed directory kind.** Its root is a mounted path from configuration, never typed in the UI: the
+   operator provides the mount. On the cluster that is an SMB/DFS share mounted into the pods with a service account
+   from ESO, the arrangement the reference server's shared storage already uses.
+   - Downloads and listings read the folder itself. No copy, no index: a file placed on the share is served at once,
+     and a deleted one is gone.
+   - The ETag is size plus modified time. A SHA-256 is computed only when asked for.
+   - Every resolved path must stay under the root; symlinks and junctions leading out of it are refused.
+   - Never listed or served: `web.config`, `Thumbs.db`, `desktop.ini`, `~$` lock files, hidden and system files.
+2. **Writes through FiGet are off by default for this kind.** The share's own permissions decide who writes, and a
+   second way in would need its own reason. When turned on, uploads, folders and deletes act on the share, with the same
+   Publish and key rules as other directories.
+3. **Two access switches instead of one "anonymous read"**, for every asset directory:
+   - *download without credentials*, and
+   - *list without credentials*.
+
+   These consumers get download on, list off: exactly today's behaviour. A folder URL or a wrong path answers the same
+   404, so nothing can be discovered, and listing needs a signed-in account or a key with Read.
+4. **Optional per-consumer keys**, which exist already: a read-only key limited to the directory, sent as `X-ApiKey` or
+   as the Basic password. That buys revocation and a name on every download in the logs, for any consumer that can send
+   a header or Basic credentials; the others keep downloading without.
+5. **Cache modes per directory and per folder, inherited downward**: default, no-store (the three headers above), and
+   max-age N. Fixed modes, not free-form headers, which could switch off the sandbox policy, `nosniff` and attachment
+   downloads every asset response carries. Stored in FiGet, since nothing can be written beside the files.
+
+**Open before building.**
+- Which consumers can send a header or Basic credentials (scripts can; appliances and the CRM are to be checked).
+- Where the device-management scripts download from: outside the network means the directory is reachable from the
+  internet.
+- Many devices behind one address count against the anonymous rate limit (1,200 a minute by default); raise it, or give
+  that consumer a key.
+- Half-written files: a large copy onto the share is visible while it is written, as it is today. Treat as unchanged
+  unless it turns out to matter.
+- Scale: listing straight from the share is fine for thousands of files; a very large tree would need an index.
+
+**Size.** Three to four days with tests on both databases, tried against a Samba share on the test host.
+
 ### Find-Module is slow for a package with thousands of versions
 
 `Find-Module PnP.PowerShell` took 44s over v2 where `Find-PSResource` took 3.1s over v3 (2026-09-12).
