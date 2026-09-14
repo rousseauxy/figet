@@ -189,8 +189,9 @@ Each is Low, and none is reachable without an account that already has rights; i
 ## Later
 
 - **History tab** on a version: the audit log exists now (filter by feed on its page); a per-version view of it is not built.
-- **Usage and statistics**, which needs per-version download tracking — the same data cache pruning wants. Per-download
-  records with whether a version came from cache or upstream belong here, not in the audit log: heaviest by volume.
+- **Usage per version.** Usage per feed is counted since 2026-09-14 (`FeedUsage`, the graph under the feed lists). What is
+  not: which versions are used, and whether a download came from the cache or the upstream. That needs per-version
+  records, heaviest by volume, and belongs apart from both the per-feed counts and the audit log.
 
 ## Decided against
 

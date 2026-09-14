@@ -40,7 +40,7 @@ public interface IFeedStore
     Task<bool> CreateAsync(Feed feed, CancellationToken cancellationToken);
 
     /// <summary>Changes the feed's settings. Returns false when the feed no longer exists.</summary>
-    Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, bool mergePushedIdsWithUpstreams, CancellationToken cancellationToken);
+    Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, bool mergePushedIdsWithUpstreams, int? chartColor, CancellationToken cancellationToken);
 
     /// <summary>Changes the feed's retention and cache pruning. Returns false when the feed no longer exists.</summary>
     Task<bool> UpdateRetentionAsync(int key, RetentionRules rules, CancellationToken cancellationToken);

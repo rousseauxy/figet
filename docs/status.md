@@ -2765,3 +2765,29 @@ Not done, with the reason in `docs/backlog.md`: the smaller Low items, the S3 by
 for the ingress, which belongs in the chart.
 
 Suites after the fixes: unit 148, integration 432, on SQLite and SQL Server.
+
+## Usage graph on the feed lists - 2026-09-14
+
+Asked for by the tester: a coloured dot per feed on the start page, and a graph under the list showing how often each
+feed is used, one line per feed in its colour, anonymously.
+
+- **Counted**: a download (v2 and v3 package downloads, the management API's download, an asset file, including copies
+  served from a proxy feed's cache) and a search (v2 `Search()`, `FindPackagesById()`, `Packages()`, v3 `query`, a v3
+  registration or flat-container version look-up, the management API's `versions` and `latest`, an asset listing).
+  A search counts once: only its first page (`$skip`/`skip` absent or 0), because a `Find-Module` pages forty entries at
+  a time. Not counted: HEAD, a count-only request, a resumed download (a Range not starting at 0), a 304, and anything
+  refused or failed. Only a read `FeedAccess` let through marks the request with its feed; one middleware classifies the
+  finished request by its route, so no endpoint carries counting code.
+- **Stored**: `FeedUsage` rows of feed, hour, kind and count - no account, address or package id. Counted in memory and
+  written once a minute as a database-side increment, so replicas add up and a download costs no database write; hours
+  older than 90 days are removed daily by the replica holding the `usage-prune` lease. Deleting a feed deletes its rows.
+- **Drawn**: under the feed list and the asset directory list, as SVG rendered on the server (no script), for 24 hours
+  (hourly), 7 days (six-hourly) or 30 days (daily), downloads or searches. Only the feeds the page lists are drawn, so a
+  visitor who is not signed in sees the anonymous-read ones. Colours are eight fixed tokens (`--fg-series-1` to `-8`)
+  defined for light and dark; a feed gets one from its key, or the one chosen on its settings page (`Feeds.ChartColor`).
+
+Checked in a browser on a local instance with generated counts, light and dark. Tests: `FeedUsageTests` (what is and is
+not counted, falsified by counting every page; the lines and legend; bucket alignment) and the settings test choosing a
+colour. Suites: unit 148, integration 437, both databases.
+
+Also asked, and added: `/coffee` answers 418 I'm a teapot (the error page for a browser; a `BREW` request gets text).

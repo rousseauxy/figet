@@ -223,6 +223,9 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         fields[FieldName(form, "allow-overwrite")] = "true";
         fields[FieldName(form, "delete-behaviour")] = nameof(FiGet.Domain.Entities.PackageDeletionBehavior.HardDelete);
 
+        // The colour on the usage graph: a radio group of "automatic" and the eight colours.
+        fields[WebUtility.HtmlDecode(Regex.Match(form, "type=\"radio\"[^>]*name=\"(?<n>[^\"]+)\"|name=\"(?<n>[^\"]+)\"[^>]*type=\"radio\"").Groups["n"].Value)] = "6";
+
         using var content = new FormUrlEncodedContent(fields);
         var saved = await HttpAssert.SuccessBodyAsync(await client.PostAsync($"/admin/feeds/{feed}", content));
         Assert.Contains("Settings saved.", saved, StringComparison.Ordinal);
@@ -231,6 +234,11 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         Assert.True(stored!.AnonymousRead);
         Assert.True(stored.AllowOverwrite);
         Assert.Equal(FiGet.Domain.Entities.PackageDeletionBehavior.HardDelete, stored.DeletionBehavior);
+        Assert.Equal(6, stored.ChartColor);
+
+        // The feed list shows the feed with its dot in that colour.
+        var home = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/"));
+        Assert.Contains($"--fg-series-6)\" aria-hidden=\"true\"></span><a href=\"/feeds/{feed}\"", home, StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -30,6 +30,9 @@ public sealed class Feed
     /// </summary>
     public bool MergePushedIdsWithUpstreams { get; set; }
 
+    /// <summary>The colour of the feed's dot and line on the usage graph, 1 to <see cref="FeedColors.Count"/>. Null: picked from the key.</summary>
+    public int? ChartColor { get; set; }
+
     /// <summary>
     /// Retention for pushed packages: the newest this many stable versions of each package are kept, the rest removed as
     /// the feed's <see cref="DeletionBehavior"/> says. Null: no limit.

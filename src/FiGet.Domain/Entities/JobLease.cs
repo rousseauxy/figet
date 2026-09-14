@@ -24,4 +24,6 @@ public static class JobLeaseNames
     public const string AuditPrune = "audit-prune";
 
     public const string UploadSweep = "upload-sweep";
+
+    public const string UsagePrune = "usage-prune";
 }

@@ -100,6 +100,11 @@ public static class FeedAccess
         }
         if (allowed)
         {
+            if (required == TokenScopes.Read)
+            {
+                http.Items[FeedUsageCounter.FeedKeyItem] = feed.Key;
+            }
+
             if (best is not null)
             {
                 http.Items[TokenNameItem] = best.LogName;

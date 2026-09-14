@@ -410,6 +410,9 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                     b.Property<bool>("AnonymousRead")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("ChartColor")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("ClientBaseUrl")
                         .HasMaxLength(512)
                         .HasColumnType("TEXT");
@@ -591,6 +594,27 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                         .IsUnique();
 
                     b.ToTable("FeedUpstreams", (string)null);
+                });
+
+            modelBuilder.Entity("FiGet.Domain.Entities.FeedUsage", b =>
+                {
+                    b.Property<int>("FeedKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("HourUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte>("Kind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Count")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("FeedKey", "HourUtc", "Kind");
+
+                    b.HasIndex("HourUtc");
+
+                    b.ToTable("FeedUsage", (string)null);
                 });
 
             modelBuilder.Entity("FiGet.Domain.Entities.Group", b =>
@@ -1232,6 +1256,15 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                         .IsRequired();
 
                     b.Navigation("Feed");
+                });
+
+            modelBuilder.Entity("FiGet.Domain.Entities.FeedUsage", b =>
+                {
+                    b.HasOne("FiGet.Domain.Entities.Feed", null)
+                        .WithMany()
+                        .HasForeignKey("FeedKey")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("FiGet.Domain.Entities.GroupMember", b =>

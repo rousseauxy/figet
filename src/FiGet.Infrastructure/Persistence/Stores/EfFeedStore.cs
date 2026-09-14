@@ -48,7 +48,7 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         }
     }
 
-    public async Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, bool mergePushedIdsWithUpstreams, CancellationToken cancellationToken)
+    public async Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, bool mergePushedIdsWithUpstreams, int? chartColor, CancellationToken cancellationToken)
     {
         var feed = await db.Feeds.FirstOrDefaultAsync(f => f.Key == key, cancellationToken);
         if (feed is null)
@@ -60,6 +60,7 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         feed.AllowOverwrite = allowOverwrite;
         feed.DeletionBehavior = deletionBehavior;
         feed.MergePushedIdsWithUpstreams = mergePushedIdsWithUpstreams;
+        feed.ChartColor = chartColor is >= 1 and <= FeedColors.Count ? chartColor : null;
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }
@@ -111,6 +112,7 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
             .ExecuteDeleteAsync(cancellationToken);
         await db.Packages.Where(p => p.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.FeedAliases.Where(a => a.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
+        await db.FeedUsage.Where(u => u.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.AccessTokens.Where(t => t.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.FeedPermissions.Where(p => p.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.CachedUpstreamDescriptions

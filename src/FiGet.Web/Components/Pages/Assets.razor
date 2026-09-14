@@ -36,7 +36,7 @@ else
                 {
                     var url = $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(directory.Name)}/content/";
                     <tr>
-                        <td><a href="/assets/@directory.Name">@directory.Name</a></td>
+                        <td><span class="fg-feed-name"><span class="fg-series-dot" style="--series: var(--fg-series-@FeedColors.Of(directory))" aria-hidden="true"></span><a href="/assets/@directory.Name">@directory.Name</a></span></td>
                         <td>@(directory.AnonymousRead ? "Anonymous" : "Token")</td>
                         <td>
                             <div class="fg-url">
@@ -56,8 +56,19 @@ else
     <p class="fg-result-count">Asset directories are created in the <a href="/admin/assets">admin area</a>.</p>
 }
 
+@if (directories.Count > 0)
+{
+    <UsageChart Feeds="directories" PagePath="/assets" RangeCode="@UsageRangeCode" KindCode="@UsageMetric" />
+}
+
 @code {
     private IReadOnlyList<Feed> directories = [];
+
+    [SupplyParameterFromQuery(Name = "usage")]
+    private string? UsageRangeCode { get; set; }
+
+    [SupplyParameterFromQuery(Name = "metric")]
+    private string? UsageMetric { get; set; }
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;

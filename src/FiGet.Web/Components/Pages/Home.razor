@@ -36,7 +36,7 @@ else
                 {
                     var url = SourceUrl(feed);
                     <tr>
-                        <td><a href="/feeds/@feed.Name">@feed.Name</a></td>
+                        <td><span class="fg-feed-name"><span class="fg-series-dot" style="--series: var(--fg-series-@FeedColors.Of(feed))" aria-hidden="true"></span><a href="/feeds/@feed.Name">@feed.Name</a></span></td>
                         <td><span class="fg-badge">@Display.Kind(feed.Kind)</span></td>
                         <td>@(feed.AnonymousRead ? "Anonymous" : "Token")</td>
                         <td>@(feed.Kind == FeedKind.Assets ? Display.None : feed.AllowOverwrite ? "Overwrite" : "Reject (409)")</td>
@@ -59,8 +59,19 @@ else
     <p class="fg-result-count">Creating feeds, upstreams and tokens lives in the <a href="/admin/feeds">admin area</a>.</p>
 }
 
+@if (feeds.Count > 0)
+{
+    <UsageChart Feeds="feeds" PagePath="/" RangeCode="@UsageRangeCode" KindCode="@UsageMetric" />
+}
+
 @code {
     private IReadOnlyList<Feed> feeds = [];
+
+    [SupplyParameterFromQuery(Name = "usage")]
+    private string? UsageRangeCode { get; set; }
+
+    [SupplyParameterFromQuery(Name = "metric")]
+    private string? UsageMetric { get; set; }
 
     /// <summary>
     /// Reading is open, managing is not: a visitor who has not signed in sees the feeds that allow

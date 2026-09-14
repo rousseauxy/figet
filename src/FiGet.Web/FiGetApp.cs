@@ -221,6 +221,8 @@ public static class FiGetApp
         services.Configure<GzipCompressionProviderOptions>(o => o.Level = System.IO.Compression.CompressionLevel.Fastest);
         services.AddSingleton<AuditLog>();
         services.AddHostedService<AuditWriterService>();
+        services.AddSingleton<FeedUsageCounter>();
+        services.AddHostedService<Connectors.FeedUsageWriterService>();
 
         if (builder.Configuration.GetValue<bool>("FiGet:Logging:Json") || builder.Configuration.GetValue<bool>("DOTNET_RUNNING_IN_CONTAINER"))
         {
@@ -351,6 +353,14 @@ public static class FiGetApp
 
         app.UseAuthorization();
         app.UseAntiforgery();
+
+        // Downloads and searches for the usage graph, counted once the response is decided. Only a read FeedAccess let through
+        // is marked with its feed, so a refused or failed request is never counted.
+        app.Use(async (context, next) =>
+        {
+            await next(context);
+            context.RequestServices.GetRequiredService<FeedUsageCounter>().Observe(context);
+        });
 
         // After authentication on purpose: the line says who the caller turned out to be, not just where
         // it came from. Opt-in, because a package client is chatty and most instances never need it.

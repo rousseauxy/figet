@@ -47,6 +47,22 @@
                 }
             }
 
+            <fieldset class="fg-field fg-swatches">
+                <legend>Colour on the usage graph</legend>
+                <InputRadioGroup @bind-Value="Settings!.ChartColor">
+                    <label class="fg-swatch" title="Picked for this @Noun, the same every time">
+                        <InputRadio Value="0" /> <span class="fg-series-dot" style="--series: var(--fg-series-@AutomaticColor)"></span> Automatic
+                    </label>
+                    @for (var color = 1; color <= FeedColors.Count; color++)
+                    {
+                        var value = color;
+                        <label class="fg-swatch" title="Colour @value">
+                            <InputRadio Value="value" /> <span class="fg-series-dot" style="--series: var(--fg-series-@value)"></span><span class="fg-sr-only">Colour @value</span>
+                        </label>
+                    }
+                </InputRadioGroup>
+            </fieldset>
+
             <button type="submit" class="fg-btn fg-btn-primary">Save settings</button>
         </EditForm>
 
@@ -118,6 +134,9 @@
 
     private string AssetContentUrl => $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(Target!.Name)}/content/";
 
+    /// <summary>The colour "Automatic" gives this feed, shown beside it.</summary>
+    private int AutomaticColor => FeedColors.Of(new Feed { Key = Target!.Key, Name = "", NameLower = "" });
+
     private string AssetListUrl => $"{PublicUrls.Base(HttpContext)}/endpoints/{Uri.EscapeDataString(Target!.Name)}/dir/";
 
     protected override async Task OnInitializedAsync()
@@ -127,7 +146,7 @@
         // Only seeded on a GET; on a post it already carries what was submitted.
         Settings ??= Target is not { } feed
             ? new SettingsForm()
-            : new SettingsForm { AnonymousRead = feed.AnonymousRead, AllowOverwrite = feed.AllowOverwrite, DeletionBehavior = feed.DeletionBehavior, MergePushedIdsWithUpstreams = feed.MergePushedIdsWithUpstreams };
+            : new SettingsForm { AnonymousRead = feed.AnonymousRead, AllowOverwrite = feed.AllowOverwrite, DeletionBehavior = feed.DeletionBehavior, MergePushedIdsWithUpstreams = feed.MergePushedIdsWithUpstreams, ChartColor = feed.ChartColor ?? 0 };
     }
 
     private async Task LoadAsync()
@@ -148,7 +167,7 @@
         }
 
         var saved = await Feeds.UpdateSettingsAsync(
-            feed.Key, Settings!.AnonymousRead, Settings!.AllowOverwrite, Settings!.DeletionBehavior, Settings!.MergePushedIdsWithUpstreams, HttpContext.RequestAborted);
+            feed.Key, Settings!.AnonymousRead, Settings!.AllowOverwrite, Settings!.DeletionBehavior, Settings!.MergePushedIdsWithUpstreams, Settings!.ChartColor is 0 ? null : Settings!.ChartColor, HttpContext.RequestAborted);
 
         if (saved)
         {
@@ -158,7 +177,7 @@
                 HttpContext,
                 "feed.settings",
                 feed.Name,
-                $"anonymousRead={Settings!.AnonymousRead} allowOverwrite={Settings!.AllowOverwrite} onDelete={Settings!.DeletionBehavior} mergePushedIds={Settings!.MergePushedIdsWithUpstreams}");
+                $"anonymousRead={Settings!.AnonymousRead} allowOverwrite={Settings!.AllowOverwrite} onDelete={Settings!.DeletionBehavior} mergePushedIds={Settings!.MergePushedIdsWithUpstreams} chartColor={(Settings!.ChartColor is 0 ? "automatic" : Settings!.ChartColor.ToString(CultureInfo.InvariantCulture))}");
         }
 
         (message, messageIsError) = saved ? ("Settings saved.", false) : ("This feed no longer exists.", true);
@@ -174,5 +193,8 @@
         public PackageDeletionBehavior DeletionBehavior { get; set; } = PackageDeletionBehavior.Unlist;
 
         public bool MergePushedIdsWithUpstreams { get; set; }
+
+        /// <summary>0 for automatic: a radio group needs a value for every choice, and null is not one it can post.</summary>
+        public int ChartColor { get; set; }
     }
 }

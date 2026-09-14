@@ -1,0 +1,114 @@
+@using FiGet.Application.Ports
+@inject IFeedUsageStore Usage
+@inject TimeProvider Time
+
+@* How often each feed was used, one line per feed in its own colour. Drawn on the server as SVG: the pages ship no
+   script, and the lines take their colours from the stylesheet, so a theme and dark mode apply to them too. The
+   numbers are anonymous by construction - a feed, an hour and a count - and only the feeds this page lists are drawn. *@
+
+<section class="fg-usage" aria-labelledby="usage-title">
+    <div class="fg-usage-head">
+        <h2 id="usage-title">Usage</h2>
+        <div class="fg-usage-choices">
+            <nav class="fg-pills" aria-label="What to count">
+                <a class="fg-pill @(Kind == FeedUsageKind.Download ? "active" : "")" href="@Link(Range.Code, "downloads")" aria-current="@(Kind == FeedUsageKind.Download ? "true" : null)">Downloads</a>
+                <a class="fg-pill @(Kind == FeedUsageKind.Search ? "active" : "")" href="@Link(Range.Code, "searches")" aria-current="@(Kind == FeedUsageKind.Search ? "true" : null)">Searches</a>
+            </nav>
+            <nav class="fg-pills" aria-label="Period">
+                @foreach (var range in UsageRange.All)
+                {
+                    <a class="fg-pill @(range == Range ? "active" : "")" href="@Link(range.Code, KindCode)" aria-current="@(range == Range ? "true" : null)">@range.Label</a>
+                }
+            </nav>
+        </div>
+    </div>
+
+    @if (series is null || series.Lines.Count == 0)
+    {
+        <p class="fg-empty">Nothing to show.</p>
+    }
+    else
+    {
+        var top = series.ScaleTop();
+        <div class="fg-usage-plot">
+            <div class="fg-usage-scale" aria-hidden="true">
+                <span>@top.ToString("N0", CultureInfo.InvariantCulture)</span>
+                <span>@((top / 2).ToString("N0", CultureInfo.InvariantCulture))</span>
+                <span>0</span>
+            </div>
+            <svg class="fg-usage-svg" viewBox="0 0 1000 200" preserveAspectRatio="none" role="img" aria-label="@Summary">
+                <line x1="0" y1="2" x2="1000" y2="2" class="fg-usage-grid" />
+                <line x1="0" y1="101" x2="1000" y2="101" class="fg-usage-grid" />
+                <line x1="0" y1="199" x2="1000" y2="199" class="fg-usage-grid" />
+                @foreach (var line in series.Lines.Where(l => l.Total > 0))
+                {
+                    <polyline points="@UsageSeries.PolylinePoints(line, top)" class="fg-usage-line" style="--series: var(--fg-series-@line.Color)">
+                        <title>@line.Feed.Name: @line.Total.ToString("N0", CultureInfo.InvariantCulture)</title>
+                    </polyline>
+                }
+            </svg>
+            <div class="fg-usage-axis" aria-hidden="true">
+                <span>@Label(series.Starts[0])</span>
+                <span>@Label(series.Starts[series.Starts.Count / 2])</span>
+                <span>@Label(series.Starts[^1])</span>
+            </div>
+        </div>
+
+        <ul class="fg-usage-legend">
+            @foreach (var line in series.Lines.OrderByDescending(l => l.Total).ThenBy(l => l.Feed.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                <li>
+                    <span class="fg-series-dot" style="--series: var(--fg-series-@line.Color)" aria-hidden="true"></span>
+                    <span>@line.Feed.Name</span>
+                    <span class="fg-num fg-muted">@line.Total.ToString("N0", CultureInfo.InvariantCulture)</span>
+                </li>
+            }
+        </ul>
+        <p class="fg-muted fg-small">
+            @(Kind == FeedUsageKind.Download ? "Packages and files downloaded, cached copies included." : "Searches and package look-ups, counted once per search rather than per page.")
+            Times in UTC; updated every minute. Nothing about who used a feed is kept.
+        </p>
+    }
+</section>
+
+@code {
+    /// <summary>The feeds this page lists, which are the ones the reader may see.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<Feed> Feeds { get; set; } = [];
+
+    /// <summary>The page the choices link back to.</summary>
+    [Parameter, EditorRequired]
+    public string PagePath { get; set; } = "/";
+
+    [Parameter]
+    public string? RangeCode { get; set; }
+
+    [Parameter]
+    public string? KindCode { get; set; }
+
+    private UsageSeries? series;
+
+    private UsageRange Range => UsageRange.Parse(RangeCode);
+
+    private FeedUsageKind Kind => KindCode == "searches" ? FeedUsageKind.Search : FeedUsageKind.Download;
+
+    private string Summary => series is null
+        ? "No usage"
+        : $"{(Kind == FeedUsageKind.Download ? "Downloads" : "Searches")} over {Range.Label}: "
+            + string.Join(", ", series.Lines.Select(l => $"{l.Feed.Name} {l.Total.ToString(CultureInfo.InvariantCulture)}"));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var now = Time.GetUtcNow().UtcDateTime;
+        var hours = await Usage.ListAsync([.. Feeds.Select(f => f.Key)], Kind, now - Range.Span - TimeSpan.FromDays(1), CancellationToken.None);
+        series = UsageSeries.Build(Feeds, hours, Range, now);
+    }
+
+    private string Link(string range, string? kind) =>
+        $"{PagePath}?usage={Uri.EscapeDataString(range)}{(kind == "searches" ? "&metric=searches" : "")}#usage-title";
+
+    private string Label(DateTime start) =>
+        Range.Bucket >= TimeSpan.FromDays(1)
+            ? start.ToString("d MMM", CultureInfo.InvariantCulture)
+            : start.ToString(Range.Span > TimeSpan.FromDays(1) ? "d MMM HH:mm" : "HH:mm", CultureInfo.InvariantCulture);
+}

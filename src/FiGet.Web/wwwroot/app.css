@@ -50,6 +50,10 @@
   --shadow-1: 0 1px 2px rgb(30 27 20 / 0.06);
   --shadow-2: 0 8px 28px rgb(30 27 20 / 0.14);
 
+  /* Feed colours on the usage graph: eight that stay apart from each other and readable on this background. */
+  --fg-series-1: #2f6fb0; --fg-series-2: #c2410c; --fg-series-3: #2f855a; --fg-series-4: #9b3fb5;
+  --fg-series-5: #a86c12; --fg-series-6: #0f8588; --fg-series-7: #c53070; --fg-series-8: #5a6b7b;
+
   color-scheme: light;
 }
 
@@ -87,6 +91,9 @@
     --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
     --shadow-2: 0 8px 28px rgb(0 0 0 / 0.55);
 
+    --fg-series-1: #6fa8e8; --fg-series-2: #f08a4b; --fg-series-3: #5cc08a; --fg-series-4: #c98ae0;
+    --fg-series-5: #e3b04b; --fg-series-6: #4cc4c6; --fg-series-7: #ec7aa8; --fg-series-8: #9aabbb;
+
     color-scheme: dark;
   }
 }
@@ -117,6 +124,9 @@
 
   --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-2: 0 8px 28px rgb(0 0 0 / 0.55);
+
+  --fg-series-1: #6fa8e8; --fg-series-2: #f08a4b; --fg-series-3: #5cc08a; --fg-series-4: #c98ae0;
+  --fg-series-5: #e3b04b; --fg-series-6: #4cc4c6; --fg-series-7: #ec7aa8; --fg-series-8: #9aabbb;
 
   color-scheme: dark;
 }
@@ -1269,3 +1279,48 @@ textarea.fg-mono { font-family: var(--font-mono); font-size: 0.8rem; }
 
 /* The upstream a package comes from, beside its source badge. */
 .fg-source-upstream { margin-left: 0.4rem; white-space: nowrap; }
+
+/* The usage graph under the feed lists: one line and one dot per feed, in the feed's colour. */
+.fg-series-dot {
+  display: inline-block;
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 50%;
+  background: var(--series, var(--text-3));
+  flex: none;
+  vertical-align: baseline;
+}
+.fg-feed-name { display: inline-flex; align-items: center; gap: 0.45rem; }
+.fg-usage { margin-top: 1.6rem; }
+.fg-usage-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1rem; margin-bottom: 0.8rem; }
+.fg-usage-head h2 { margin: 0; }
+.fg-usage-choices { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
+.fg-pills { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.fg-usage-plot {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: 12rem auto;
+  gap: 0.3rem 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  padding: 0.9rem 1rem 0.6rem;
+}
+.fg-usage-scale { display: flex; flex-direction: column; justify-content: space-between; font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-3); text-align: right; }
+/* Each label centred on its grid line: the top and bottom ones would otherwise sit inside the plot. */
+.fg-usage-scale span { line-height: 1; }
+.fg-usage-scale span:first-child { transform: translateY(-50%); }
+.fg-usage-scale span:last-child { transform: translateY(50%); }
+.fg-usage-svg { width: 100%; height: 100%; overflow: visible; }
+.fg-usage-grid { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.fg-usage-line { fill: none; stroke: var(--series); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.fg-usage-axis { grid-column: 2; display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-3); }
+.fg-usage-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; list-style: none; margin: 0.8rem 0 0.4rem; padding: 0; font-size: 0.84rem; }
+.fg-usage-legend li { display: inline-flex; align-items: center; gap: 0.4rem; }
+
+/* The colour choice on a feed's settings: a row of dots to pick from. */
+.fg-swatches { border: 0; margin: 0 0 1rem; padding: 0; }
+.fg-swatches legend { font-size: 0.8rem; font-weight: 600; color: var(--text-2); margin-bottom: 0.35rem; padding: 0; }
+.fg-swatch { display: inline-flex; align-items: center; gap: 0.3rem; margin-right: 0.9rem; font-size: 0.84rem; cursor: pointer; }
+.fg-swatch .fg-series-dot { width: 0.9rem; height: 0.9rem; }
+.fg-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
