@@ -359,6 +359,13 @@ public static class FiGetApp
             app.UseMiddleware<RequestLogMiddleware>();
         }
 
+        // RFC 2324, asked for by the tester. A browser gets the error page for 418; a BREW request, which that page cannot be
+        // re-run for, gets the refusal as text.
+        app.MapMethods("/coffee", [HttpMethods.Get, HttpMethods.Head, "BREW"], (HttpContext http) =>
+            HttpMethods.IsGet(http.Request.Method) || HttpMethods.IsHead(http.Request.Method)
+                ? Results.StatusCode(StatusCodes.Status418ImATeapot)
+                : Results.Text("I'm a teapot. This server brews packages, not coffee.", "text/plain", statusCode: StatusCodes.Status418ImATeapot));
+
         app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
         app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 

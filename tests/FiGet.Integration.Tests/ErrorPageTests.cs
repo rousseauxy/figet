@@ -61,10 +61,25 @@ public sealed class ErrorPageTests(ErrorPageServerFixture server) : IClassFixtur
         Assert.Contains("Page not found", page, StringComparison.Ordinal);
     }
 
+    /// <summary>Asked for by the tester: the site is a teapot, as RFC 2324 allows.</summary>
+    [Fact]
+    public async Task Asking_for_coffee_is_refused_by_a_teapot()
+    {
+        using var client = server.CreateClient();
+        using var page = await client.GetAsync("/coffee");
+        HttpAssert.Status((HttpStatusCode)418, page);
+        Assert.Contains(">418<", await page.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+
+        using var brew = await client.SendAsync(new HttpRequestMessage(new HttpMethod("BREW"), "/coffee"));
+        HttpAssert.Status((HttpStatusCode)418, brew);
+        Assert.Contains("teapot", await brew.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(400, "Bad request")]
     [InlineData(403, "Access denied")]
     [InlineData(413, "Too large")]
+    [InlineData(418, "I&#x27;m a teapot")]
     [InlineData(503, "Service unavailable")]
     public async Task Each_code_has_its_own_explanation_and_answers_with_that_status(int code, string title)
     {

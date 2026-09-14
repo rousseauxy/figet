@@ -96,6 +96,7 @@
             404 => ("Page not found", "There is nothing at this address.", "It may have moved, been deleted, or never existed. Feeds and asset directories that need a token are not shown without one.", false),
             405 => ("Method not allowed", "This address does not accept that kind of request.", "If you followed a link or a bookmark, go back and try again from the page.", false),
             408 => ("Request timeout", "The server gave up waiting for the request.", "Try again.", false),
+            418 => ("I'm a teapot", "This server refuses to brew coffee because it is, permanently, a teapot (RFC 2324).", "It brews packages instead. Try the feeds.", false),
             413 => ("Too large", "The upload is larger than this server accepts.", "The limits are set by whoever runs this server.", false),
             429 => ("Too many requests", "Too many requests arrived in a short time.", "Wait a moment and try again.", false),
             500 => ("Something went wrong", "The server failed while handling the request. The error has been logged.", "Try again. If it keeps happening, report it with the request id below.", false),
