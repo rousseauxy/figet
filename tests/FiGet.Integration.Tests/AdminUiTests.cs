@@ -209,6 +209,54 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         Assert.Contains("fg-alert fg-alert-ok", created, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Asked for by the tester: signing in came back to the feed list, not to the page it was started from. The sign-in link
+    /// carries the page, and the sign-in returns to it. Another site's address is never carried.
+    /// </summary>
+    [Fact]
+    public async Task Signing_in_returns_to_the_page_it_was_started_from()
+    {
+        using var client = CreateBrowser();
+        var feedPage = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/feeds/public?q=something&page=2"));
+        Assert.Contains("href=\"/account/login?returnUrl=%2Ffeeds%2Fpublic%3Fq%3Dsomething%26page%3D2\">Sign in</a>", feedPage, StringComparison.Ordinal);
+
+        // A page that does not exist carries its own address, not the error page's.
+        using var missing = await client.GetAsync("/feeds/public/packages/No.Such.Package.Here");
+        Assert.Contains("returnUrl=%2Ffeeds%2Fpublic%2Fpackages%2FNo.Such.Package.Here\"", await missing.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), StringComparison.Ordinal);
+
+        // The start page and the sign-in page itself carry nothing.
+        Assert.Contains("href=\"/account/login\">Sign in</a>", await HttpAssert.SuccessBodyAsync(await client.GetAsync("/")), StringComparison.Ordinal);
+
+        var form = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/account/login/local?returnUrl=%2Ffeeds%2Fpublic%3Fq%3Dsomething"));
+        var fields = HiddenFields(FormBlock(form, "login"));
+        fields[BrowserSignIn.InputName(form, "username")] = FiGetServerFixture.AdminUserName;
+        fields[BrowserSignIn.InputName(form, "password")] = FiGetServerFixture.AdminPassword;
+        using var content = new FormUrlEncodedContent(fields);
+        // Posted where a browser posts a form without an action: to the page's own address, query included.
+        var signedIn = await client.PostAsync("/account/login/local?returnUrl=%2Ffeeds%2Fpublic%3Fq%3Dsomething", content);
+        HttpAssert.Status(HttpStatusCode.Redirect, signedIn);
+        Assert.EndsWith("/feeds/public?q=something", signedIn.Headers.Location!.OriginalString, StringComparison.Ordinal);
+    }
+
+    /// <summary>A package's licence and project links lead to another site, so they open in a new tab rather than leave this one.</summary>
+    [Fact]
+    public async Task A_packages_own_links_open_in_a_new_tab()
+    {
+        var id = FiGetServerFixture.UniqueId("Links.NewTab");
+        using (var admin = server.CreateClient(FiGetServerFixture.AdminToken))
+        using (var package = FiGet.Testing.TestPackages.Create(id, "1.0.0", builder => builder.ProjectUrl = new Uri("https://example.org/project")))
+        using (var multipart = new MultipartFormDataContent())
+        using (var file = new StreamContent(package))
+        {
+            multipart.Add(file, "package", "package.nupkg");
+            HttpAssert.Status(HttpStatusCode.Created, await admin.PutAsync("nuget/public/", multipart));
+        }
+
+        using var client = CreateBrowser();
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/feeds/public/packages/{id}?tab=metadata"));
+        Assert.Contains("<a href=\"https://example.org/project\" target=\"_blank\" rel=\"noopener noreferrer\"", page, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Feed_settings_can_be_changed()
     {

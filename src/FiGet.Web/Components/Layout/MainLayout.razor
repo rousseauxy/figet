@@ -60,7 +60,7 @@
                     </Authorized>
                     <NotAuthorized>
                         @* Reading is open on feeds that allow it; signing in is what adds the buttons. *@
-                        <a href="/account/login">Sign in</a>
+                        <a href="@SignInHref(HttpContext)">Sign in</a>
                     </NotAuthorized>
                 </AuthorizeView>
             </div>
@@ -75,6 +75,25 @@
 @code {
     [CascadingParameter]
     private FiGet.Web.Theming.ThemeBrand Brand { get; set; } = FiGet.Web.Theming.ThemeBrand.Default;
+
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    /// <summary>
+    /// The sign-in link, carrying the page it was clicked on so signing in comes back to it. Asked for by the tester, who
+    /// landed on the feed list after every sign-in. On an error page it is the address that failed, not the error page.
+    /// </summary>
+    public static string SignInHref(HttpContext? http)
+    {
+        var reExecuted = http?.Features.Get<Microsoft.AspNetCore.Diagnostics.IStatusCodeReExecuteFeature>();
+        var path = reExecuted is not null ? reExecuted.OriginalPath + reExecuted.OriginalQueryString : http?.Request.Path.Value + http?.Request.QueryString.Value;
+        return string.IsNullOrEmpty(path)
+            || path == "/"
+            || path.StartsWith("/account", StringComparison.OrdinalIgnoreCase)
+            || !ReturnUrls.IsLocal(path)
+                ? "/account/login"
+                : "/account/login?returnUrl=" + Uri.EscapeDataString(path);
+    }
 
     [Inject]
     private IOptions<FiGetOptions> Options { get; set; } = default!;

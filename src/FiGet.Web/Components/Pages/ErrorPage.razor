@@ -37,7 +37,7 @@
         <a href="/" class="fg-btn fg-btn-primary">Back to feeds</a>
         @if (code_ is 401 or 403 && userName is null)
         {
-            <a href="/account/login" class="fg-btn">Sign in</a>
+            <a href="@FiGet.Web.Components.Layout.MainLayout.SignInHref(HttpContext)" class="fg-btn">Sign in</a>
         }
     </p>
 </div>
