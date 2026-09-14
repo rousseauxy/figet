@@ -5,6 +5,7 @@
 @using System.ComponentModel.DataAnnotations
 @using FiGet.Domain.Feeds
 @inject IFeedStore FeedStore
+@inject IShareFolders Shares
 @inject FiGet.Http.AuditLog Audit
 @inject TimeProvider Time
 
@@ -107,6 +108,34 @@ else
         @if (IsAssets)
         {
             <label class="fg-check"><InputCheckbox @bind-Value="NewFeed!.AnonymousList" /> Anyone can list and browse the folders without a token</label>
+
+            @* A folder on the server as the content, chosen by name from the shares mount: a page never takes a path, since
+               one could name the database folder or the system. The operator decides what is under the mount. *@
+            @if (!Shares.IsConfigured)
+            {
+                <p class="fg-muted fg-small">
+                    A directory backed by a folder on the server needs the shares mount (<code>FiGet:Assets:SharesRoot</code>) or
+                    the server configuration (<code>FiGet:Feeds:N:Folder</code>); see docs/configuration.md.
+                </p>
+            }
+            else if (shares.Count == 0)
+            {
+                <p class="fg-muted fg-small">No folders under <code>@Shares.Root</code> yet: each share mounted as a sub-folder there can be a directory's content.</p>
+            }
+            else
+            {
+                <div class="fg-field">
+                    <label for="feed-folder">Content</label>
+                    <InputSelect id="feed-folder" @bind-Value="NewFeed!.Folder">
+                        <option value="">FiGet's own storage (uploads)</option>
+                        @foreach (var share in shares)
+                        {
+                            <option value="@share.Name">Folder @share.Name on the shares mount, read as it is</option>
+                        }
+                    </InputSelect>
+                </div>
+                <label class="fg-check"><InputCheckbox id="feed-folder-writes" @bind-Value="NewFeed!.FolderWrites" /> Uploads and deletes through FiGet act on the folder (folder-backed directories only; the share's own permissions still apply)</label>
+            }
         }
 
         @if (!IsAssets)
@@ -146,7 +175,14 @@ else
 
     private FeedKind Kind => IsAssets ? FeedKind.Assets : FeedKind.Curated;
 
-    protected override void OnInitialized() => NewFeed ??= new();
+    private IReadOnlyList<ShareFolder> shares = [];
+
+    protected override void OnInitialized()
+    {
+        NewFeed ??= new();
+        // Read on every render, the post included, so the options are there for the chosen one to match after a refusal.
+        shares = IsAssets ? Shares.List() : [];
+    }
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -161,6 +197,22 @@ else
             return;
         }
 
+        // The posted value is a name, and the resolver is the only way from it to a path: anything that is not on the
+        // list right now - a path, a name with a separator, a folder that is gone - creates nothing.
+        string? folderRoot = null;
+        var folderName = (NewFeed!.Folder ?? "").Trim();
+        if (IsAssets && folderName.Length > 0)
+        {
+            folderRoot = Shares.Resolve(folderName);
+            if (folderRoot is null)
+            {
+                (message, messageIsError) = ($"'{folderName}' is not a folder on the shares mount.", true);
+                return;
+            }
+        }
+
+        var folderWrites = folderRoot is not null && NewFeed!.FolderWrites;
+
         // Only the two a person chooses between, one per tab: a proxy feed is what a package feed becomes when it
         // gains an upstream, not something created as such. The package-only settings mean nothing to a directory.
         var created = await FeedStore.CreateAsync(
@@ -171,6 +223,8 @@ else
                 Kind = Kind,
                 AnonymousRead = NewFeed!.AnonymousRead,
                 AnonymousList = IsAssets && NewFeed!.AnonymousList,
+                FolderRoot = folderRoot,
+                FolderWritable = folderWrites,
                 AllowOverwrite = !IsAssets && NewFeed!.AllowOverwrite,
                 DeletionBehavior = IsAssets ? PackageDeletionBehavior.Unlist : NewFeed!.DeletionBehavior,
                 CreatedUtc = Time.GetUtcNow().UtcDateTime,
@@ -183,7 +237,8 @@ else
                 HttpContext,
                 "feed.create",
                 NewFeed!.Name,
-                $"kind={Kind} anonymousRead={NewFeed!.AnonymousRead} anonymousList={IsAssets && NewFeed!.AnonymousList} allowOverwrite={NewFeed!.AllowOverwrite} onDelete={NewFeed!.DeletionBehavior}");
+                $"kind={Kind} anonymousRead={NewFeed!.AnonymousRead} anonymousList={IsAssets && NewFeed!.AnonymousList} allowOverwrite={NewFeed!.AllowOverwrite} onDelete={NewFeed!.DeletionBehavior}"
+                + (IsAssets ? $" folder={(folderRoot is null ? "none" : folderName)} folderWrites={folderWrites}" : ""));
         }
 
         // Feeds and directories share one set of names, so the refusal cannot say which of the two holds it
@@ -206,6 +261,11 @@ else
         public bool AnonymousRead { get; set; }
 
         public bool AnonymousList { get; set; }
+
+        /// <summary>Empty for FiGet's own storage, else the name of a sub-folder of the shares mount. A name, never a path.</summary>
+        public string Folder { get; set; } = "";
+
+        public bool FolderWrites { get; set; }
 
         public bool AllowOverwrite { get; set; }
 

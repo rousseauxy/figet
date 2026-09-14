@@ -500,6 +500,7 @@ public static class FiGetApp
             (await feeds.ListAsync(CancellationToken.None)).Select(f => (f.Key, f.NameLower)),
             logger);
 
+        var shares = services.GetRequiredService<IShareFolders>();
         foreach (var seed in options.Feeds)
         {
             if (!FeedNames.IsValid(seed.Name))
@@ -524,7 +525,12 @@ public static class FiGetApp
 
                 // The one setting configuration keeps applying to an existing feed: the folder an asset directory is backed by,
                 // and whether FiGet writes to it. It is the operator's mount, so a moved mount must be followed on the next start.
-                if (existing.Kind == FeedKind.Assets && await feeds.UpdateFolderAsync(existing.Key, seed.Folder, seed.FolderWrites, CancellationToken.None))
+                // Configuration owns folders outside the shares mount and the pages own folders under it: a seed that names no
+                // folder detaches the directory only from a folder the pages could not have chosen, so a choice made on the
+                // settings page survives a restart while removing Folder from configuration still takes the operator's away.
+                if (existing.Kind == FeedKind.Assets
+                    && (!string.IsNullOrWhiteSpace(seed.Folder) || !shares.IsUnderRoot(existing.FolderRoot))
+                    && await feeds.UpdateFolderAsync(existing.Key, seed.Folder, seed.FolderWrites, CancellationToken.None))
                 {
                     logger.LogInformation("Asset directory {Feed} now follows folder {Folder} (writes {Writes}).", existing.Name, seed.Folder ?? "(none)", seed.FolderWrites ? "on" : "off");
                 }

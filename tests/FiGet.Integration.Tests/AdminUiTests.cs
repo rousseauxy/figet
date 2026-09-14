@@ -351,6 +351,9 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
         var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/assets"));
         var form = FormBlock(page, "create-feed");
         Assert.DoesNotContain("Delete behaviour", form, StringComparison.Ordinal);
+        // No shares mount configured: no chooser, and a line saying what a folder-backed directory needs.
+        Assert.DoesNotContain("id=\"feed-folder\"", form, StringComparison.Ordinal);
+        Assert.Contains("FiGet:Assets:SharesRoot", form, StringComparison.Ordinal);
         var fields = HiddenFields(form);
         fields[FieldName(form, "feed-name")] = name;
 
