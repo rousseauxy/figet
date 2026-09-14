@@ -679,6 +679,39 @@ input:focus, select:focus, textarea:focus, .fg-input:focus {
 }
 input::placeholder, textarea::placeholder { color: var(--text-3); }
 
+/* The list a select opens used to be the one thing on the page the browser drew itself: a white system menu next to
+   themed lists, which is how it was reported. Chromium-based browsers (135 and later; Edge among them) let the page
+   paint it, with no script: the picker becomes an element with its options, styled like the signed-in menu. Every
+   other browser ignores the block and keeps its own popup, which still works. The keyboard, the form and the value
+   are the native control's either way; this is paint only. */
+@supports (appearance: base-select) {
+  select, select::picker(select) { appearance: base-select; }
+  select { cursor: pointer; }
+  select::picker-icon { color: var(--text-2); font-size: 0.7rem; margin-left: auto; padding-left: 0.5rem; }
+  select:open { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  select::picker(select) {
+    margin-top: 4px;
+    min-width: anchor-size(width);
+    max-height: min(22rem, 60vh);
+    padding: 0.35rem;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: var(--r-2);
+    box-shadow: var(--shadow-2);
+  }
+  select option {
+    padding: 0.4rem 0.6rem;
+    border-radius: var(--r-1);
+    font-family: var(--font-ui);
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  select option:hover, select option:focus-visible { background: var(--hover); outline: none; }
+  select option:checked { color: var(--accent); font-weight: 600; }
+  select option::checkmark { display: none; }
+}
+
 input[type=checkbox] { width: auto; margin: 0; accent-color: var(--accent); }
 
 .fg-check { display: flex; gap: 0.5rem; align-items: center; font-size: 0.85rem; }
@@ -731,8 +764,8 @@ legend {
 }
 .fg-search-bar input[type=search]:focus { outline: none; box-shadow: none; }
 
-/* The one control a stylesheet cannot fully own: the popup list is drawn by the operating system.
-   Everything around it is styled and it sits inside the bar, so the seam does not show. */
+/* Where the browser still draws the popup list itself (see the base-select block above), everything around it is
+   styled and it sits inside the bar, so the seam does not show. */
 .fg-search-bar select {
   width: auto;
   flex: 0 0 auto;

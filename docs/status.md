@@ -2953,3 +2953,14 @@ mount point. It can, and the limit is what makes it safe: a free path in a form 
   neither sees nor posts it. `AdminUiTests`: without a root, the hint and no chooser.
 
 Suites: unit 200, integration 477, on SQLite and SQL Server.
+
+## The select's own popup, painted by the page - 2026-09-15
+
+The owner asked for the themed dropdown the customs application uses instead of the browser's select popup. That
+control is an interactive Blazor component - a circuit, event callbacks, a suggestion list - and FiGet's pages are
+static on purpose, so it cannot be used here. What can: Chromium-based browsers (135 and later, Edge among them) let a
+stylesheet paint the select's popup itself (`appearance: base-select`, `::picker(select)`), with no script. One block in
+`app.css` under `@supports` styles the picker and its options like the signed-in menu, in both themes; every other
+browser ignores it and keeps its own popup. The keyboard, the form and the posted value stay the native control's.
+Verified in headless Chrome 153: `appearance` computes to `base-select` and the closed control renders with the caret at
+its edge; the open list needs a real click, so that part is seen in the browser.
