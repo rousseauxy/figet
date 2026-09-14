@@ -17,6 +17,9 @@ public sealed class PackageIndexer : IPackageIndexer
     /// <summary>Longest normalised version accepted; keeps storage paths and index keys bounded.</summary>
     public const int MaxVersionLength = 64;
 
+    /// <summary>Largest nuspec read. A real one is kilobytes; the largest seen on a gallery is under a megabyte of tags.</summary>
+    public const int MaxNuspecBytes = 4 * 1024 * 1024;
+
     public async Task<IndexedPackage> IndexAsync(Stream nupkg, CancellationToken cancellationToken)
     {
         if (!nupkg.CanSeek)
@@ -112,9 +115,22 @@ public sealed class PackageIndexer : IPackageIndexer
             throw new InvalidPackageException("The package does not contain a nuspec file.", ex);
         }
 
+        // Read up to the cap, never whole: a zip entry declares any length it likes and deflate expands a thousandfold,
+        // so a package under the upload limit could still carry a nuspec of gigabytes, and this used to hold it all.
         await using var stream = reader.GetStream(nuspecPath);
         using var buffer = new MemoryStream();
-        await stream.CopyToAsync(buffer, cancellationToken);
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken)) > 0)
+        {
+            if (buffer.Length + read > MaxNuspecBytes)
+            {
+                throw new InvalidPackageException($"The nuspec is larger than {MaxNuspecBytes / (1024 * 1024)} MB.");
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
         return buffer.ToArray();
     }
 

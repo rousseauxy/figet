@@ -23,6 +23,7 @@ public sealed class PackageIngestionService(
     IPackageIndexer indexer,
     IPackageStorage storage,
     IPackageStore store,
+    TempFileSettings tempFiles,
     TimeProvider time,
     ILogger<PackageIngestionService> logger)
 {
@@ -125,53 +126,85 @@ public sealed class PackageIngestionService(
             return new PushResult(PushOutcome.NotFound, $"{indexed.Id} {normalized} must be pushed before its symbols.", indexed.Id, normalized);
         }
 
-        var pdbs = new List<(SymbolFile Row, byte[] Content)>();
-        snupkg.Position = 0;
-        using (var archive = new ZipArchive(snupkg, ZipArchiveMode.Read, leaveOpen: true))
+        // Each PDB is spooled to a temporary file that deletes itself, and the bytes actually read are counted against
+        // the limit rather than the length the archive declares. Nothing is held in memory: a symbol package can carry
+        // several PDBs of hundreds of megabytes, and holding them all until the last was checked was the review's S6.3.
+        var pdbs = new List<(SymbolFile Row, FileStream Content)>();
+        try
         {
-            foreach (var entry in archive.Entries.Where(e => e.FullName.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)))
+            snupkg.Position = 0;
+            using (var archive = new ZipArchive(snupkg, ZipArchiveMode.Read, leaveOpen: true))
             {
-                if (entry.Length > MaxPdbSize)
+                foreach (var entry in archive.Entries.Where(e => e.FullName.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)))
                 {
-                    return new PushResult(PushOutcome.Invalid, $"{entry.FullName} is larger than the symbol size limit.", indexed.Id, normalized);
-                }
+                    var content = tempFiles.Create("figet-symbol-");
+                    pdbs.Add((new SymbolFile { FeedKey = feed.Key, PackageVersionKey = version.Key, FileNameLower = entry.Name.ToLowerInvariant(), SymbolKeyLower = "" }, content));
 
-                var content = new byte[entry.Length];
-                await using (var stream = await entry.OpenAsync(cancellationToken))
-                {
-                    await stream.ReadExactlyAsync(content, cancellationToken);
-                }
+                    bool withinLimit;
+                    await using (var stream = await entry.OpenAsync(cancellationToken))
+                    {
+                        withinLimit = entry.Length <= MaxPdbSize && await SpoolAsync(stream, content, MaxPdbSize, cancellationToken);
+                    }
 
-                var symbolKey = TryReadPortablePdbKey(content);
-                if (symbolKey is null)
-                {
-                    return new PushResult(PushOutcome.Invalid, $"{entry.FullName} is not a portable PDB; only portable PDBs are accepted.", indexed.Id, normalized);
-                }
+                    if (!withinLimit)
+                    {
+                        return new PushResult(PushOutcome.Invalid, $"{entry.FullName} is larger than the symbol size limit.", indexed.Id, normalized);
+                    }
 
-                pdbs.Add((new SymbolFile
-                {
-                    FeedKey = feed.Key,
-                    PackageVersionKey = version.Key,
-                    FileNameLower = entry.Name.ToLowerInvariant(),
-                    SymbolKeyLower = symbolKey,
-                    Size = content.LongLength,
-                }, content));
+                    var symbolKey = TryReadPortablePdbKey(content);
+                    if (symbolKey is null)
+                    {
+                        return new PushResult(PushOutcome.Invalid, $"{entry.FullName} is not a portable PDB; only portable PDBs are accepted.", indexed.Id, normalized);
+                    }
+
+                    var row = pdbs[^1].Row;
+                    row.SymbolKeyLower = symbolKey;
+                    row.Size = content.Length;
+                }
+            }
+
+            if (pdbs.Count == 0)
+            {
+                return new PushResult(PushOutcome.Invalid, "The symbol package contains no PDB files.", indexed.Id, normalized);
+            }
+
+            foreach (var (row, content) in pdbs)
+            {
+                content.Position = 0;
+                await storage.SaveSymbolAsync(new SymbolStorageKey(feed.Key, row.FileNameLower, row.SymbolKeyLower), content, cancellationToken);
+            }
+
+            await store.ReplaceSymbolFilesAsync(version.Key, pdbs.Select(p => p.Row).ToList(), cancellationToken);
+            return new PushResult(PushOutcome.Created, $"Symbols for {indexed.Id} {normalized} stored.", indexed.Id, normalized);
+        }
+        finally
+        {
+            foreach (var (_, content) in pdbs)
+            {
+                await content.DisposeAsync();
             }
         }
+    }
 
-        if (pdbs.Count == 0)
+    /// <summary>Copies up to the limit; false once a byte past it arrives, however long the source said it was.</summary>
+    private static async Task<bool> SpoolAsync(Stream source, FileStream target, long limit, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[81920];
+        long total = 0;
+        int read;
+        while ((read = await source.ReadAsync(buffer, cancellationToken)) > 0)
         {
-            return new PushResult(PushOutcome.Invalid, "The symbol package contains no PDB files.", indexed.Id, normalized);
+            total += read;
+            if (total > limit)
+            {
+                return false;
+            }
+
+            await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
         }
 
-        foreach (var (row, content) in pdbs)
-        {
-            using var stream = new MemoryStream(content, writable: false);
-            await storage.SaveSymbolAsync(new SymbolStorageKey(feed.Key, row.FileNameLower, row.SymbolKeyLower), stream, cancellationToken);
-        }
-
-        await store.ReplaceSymbolFilesAsync(version.Key, pdbs.Select(p => p.Row).ToList(), cancellationToken);
-        return new PushResult(PushOutcome.Created, $"Symbols for {indexed.Id} {normalized} stored.", indexed.Id, normalized);
+        await target.FlushAsync(cancellationToken);
+        return true;
     }
 
     /// <summary>Unlists or hard-deletes a version, following the feed's deletion behaviour.</summary>
@@ -358,17 +391,23 @@ public sealed class PackageIngestionService(
     }
 
     /// <summary>Symbol server key of a portable PDB: 32 hex digits of the PDB id GUID plus <c>ffffffff</c>.</summary>
-    private static string? TryReadPortablePdbKey(byte[] content)
+    private static string? TryReadPortablePdbKey(FileStream content)
     {
         // Portable PDBs start with the ECMA-335 metadata signature "BSJB"; Windows PDBs do not.
-        if (content.Length < 4 || content[0] != 0x42 || content[1] != 0x53 || content[2] != 0x4A || content[3] != 0x42)
+        content.Position = 0;
+        var magic = new byte[4];
+        if (content.Length < 4
+            || content.ReadAtLeast(magic, 4, throwOnEndOfStream: false) < 4
+            || magic[0] != 0x42 || magic[1] != 0x53 || magic[2] != 0x4A || magic[3] != 0x42)
         {
             return null;
         }
 
+        content.Position = 0;
         try
         {
-            using var provider = MetadataReaderProvider.FromPortablePdbImage(System.Collections.Immutable.ImmutableArray.Create(content));
+            // Read from the file, not from a copy of it in memory; the stream is left open for the storage write after.
+            using var provider = MetadataReaderProvider.FromPortablePdbStream(content, MetadataStreamOptions.LeaveOpen);
             var header = provider.GetMetadataReader().DebugMetadataHeader;
             if (header is null || header.Id.Length < 16)
             {
@@ -381,6 +420,10 @@ public sealed class PackageIngestionService(
         catch (BadImageFormatException)
         {
             return null;
+        }
+        finally
+        {
+            content.Position = 0;
         }
     }
 }

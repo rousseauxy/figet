@@ -103,6 +103,7 @@ public static class FiGetApp
         services.AddSingleton<IPackageIndexer, PackageIndexer>();
         services.AddSingleton<IPackageStorage>(provider => new FileSystemPackageStorage(Path.Combine(provider.GetRequiredService<StoragePaths>().Root, "files")));
         services.AddSingleton<IAssetStorage>(provider => new FileSystemAssetStorage(Path.Combine(provider.GetRequiredService<StoragePaths>().Root, "files")));
+        services.AddSingleton(provider => new TempFileSettings { Root = provider.GetRequiredService<IOptions<FiGetOptions>>().Value.Storage.TempPath });
         services.AddScoped<PackageIngestionService>();
         services.AddScoped<RetentionService>();
         services.AddHostedService<RetentionJobService>();
