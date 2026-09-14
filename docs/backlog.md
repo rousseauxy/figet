@@ -9,7 +9,12 @@ Ordered roughly by when it is likely to be worth doing, not by importance.
 
 ## Next
 
-### Asset directories backed by a shared folder (next up, designed 2026-09-14)
+### ~~Asset directories backed by a shared folder~~ (designed and built 2026-09-14)
+
+Built as designed below - `docs/status.md`, "Asset directories backed by a shared folder" - with the folder from
+configuration, the two anonymous switches on every directory, writes off by default, and cache modes per folder. What
+stays open is the consumer questions under *Open before building*, which only the consumers answer. Not yet tried
+against a real SMB mount from a pod: the tests use folders on the test host.
 
 **Why.** Folders on a file share are published today through a web server's virtual folders, so that applications
 can download from them: device-management scripts, a CRM's assets, network appliances. The same folders are written
@@ -63,6 +68,59 @@ ids with a database row each, so a file placed on the share would not exist for 
 
 **Size.** Three to four days with tests on both databases, tried against a Samba share on the test host.
 
+### Scan uploads for malware (designed 2026-09-14)
+
+**Why.** Anyone with Publish on an asset directory or a feed can upload a file, and installers are exactly what
+malware pretends to be. Since the review nothing served from a directory can run as the site, and every write is
+audited by name; what is missing is a check on the bytes themselves. The files must never leave the network, which
+rules out any service that takes the file: what is sent is the file, so the scanner has to be ours.
+
+**Design.**
+1. **A port, `IContentScanner`**, with one call: scan a stream or a path, answer clean, infected with the signature
+   name, or unavailable. One adapter, for ClamAV's daemon over its own protocol (`INSTREAM` for a stream, `SCAN` for a
+   path the daemon can see); the protocol is small enough to write by hand, about forty lines, so no package.
+2. **The engine runs beside FiGet, never inside it.** ClamAV is a C library with a signature set of several hundred
+   megabytes that changes daily and one to two gigabytes of memory while loaded; in the process it would tie our
+   restarts, memory and updates to it, and there is no maintained .NET binding. On the cluster it is a **sidecar
+   container in the FiGet pod**: localhost or a Unix socket, so it is reachable from nowhere else, the same volume
+   mounted so large files are scanned by path, and one Deployment in the chart. Stand-alone it is a second, optional
+   service in `compose.example.yml`. FiGet only knows an address.
+3. **Every write path scans before its row exists**, which is where each already stages its bytes: an asset upload, a
+   multipart completion, each entry of an archive import, a fetch by URL, a package push after its upload buffer, and a
+   copy cached from an upstream. A hit refuses the write with a plain reason, stores nothing, and writes an audit entry
+   (`asset.refused`, `package.refused`) with the file, the signature and who sent it.
+4. **Off unless configured** (`FiGet:Scanning:ClamdAddress`). When configured and the daemon is down, writes are
+   refused and the reason logged, never let through; reads are never affected.
+5. **Large files.** The daemon's stream limit defaults to 25 MB and its scan size to 100 MB. Installers go by path on the
+   shared volume, with `MaxFileSize` and `MaxScanSize` raised in its configuration; a 400 MB scan takes seconds to a
+   minute inside the upload request, which the fetch path already allows for.
+6. **Signatures** need `freshclam` to reach a mirror, or an internal mirror: one egress rule on the cluster.
+
+**What the reference server does.** Nothing of this kind, checked 2026-09-14. It scans no file contents: known malicious
+*packages* are treated as vulnerabilities, matched by package identity against a database it downloads nightly, and
+its answer on a forum is that by the time a package is known to be malicious the public gallery has usually removed
+it. Asset directories get no scanning at all. Its installation guide goes further and tells operators that its storage
+and processes must not be scanned, filtered or quarantined by antivirus, EDR or file-integrity tools, because they
+slow its file-heavy work and mistake ordinary package contents - libraries, scripts, executables - for threats. Two
+consequences for the design above: scan at write time inside the request and never let an on-access scanner near the
+storage volume, and expect false positives on installers and scripts, so a scan hit must name its signature in the
+audit entry and a directory must be able to turn scanning off.
+
+**What it does not buy.** Known malware only. A vendor installer tampered with upstream, or a bespoke tool, passes. The
+next step in that direction is verifying Authenticode signatures on `.exe` and `.msi` uploads and showing the signer
+on the file's row; a hash lookup against a reputation service (the SHA-256 leaves, the file does not) is a possible
+second opinion, weak for internal files.
+
+**Open before building.**
+- Whether the organisation already runs a scanner with an ICAP interface, which most enterprise products expose for
+  proxies; if so, an ICAP adapter behind the same port is half a day and uses the engine the security team maintains.
+- Whether shared-folder directories (above) should scan at all: the file server's own antivirus already scans what
+  lands on the share.
+- Memory request for the sidecar on the cluster, and where `freshclam` may fetch from.
+
+**Size.** One to two days: the port and adapter, the six hooks, a stub scanner in the tests, and the EICAR string
+against the real daemon as a CI service container. The sidecar and compose service come with the phase 6 chart.
+
 ### Find-Module is slow for a package with thousands of versions
 
 `Find-Module PnP.PowerShell` took 44s over v2 where `Find-PSResource` took 3.1s over v3 (2026-09-12).
@@ -102,9 +160,9 @@ PSResourceGet release carries the fix, re-run the 2.2.4 / 2.2.5 saves over v3 an
   answers 409), the header name for user metadata marked `includeInResponseHeader` (FiGet sends none), and the
   body of an import response (FiGet answers counts). The reference client has since run every asset command
   against FiGet, which settled the metadata shape. Needs an API key for the reference instance.
-- **Drive the upload drop zone in a real browser.** The requests it sends - an upload, and an archive import -
-  are covered by tests and the page was checked visually, but the script's drag, progress,
-  confirm-before-replace and import-result path has not been clicked through by a person yet.
+- ~~**Drive the upload drop zone in a real browser.**~~ Done 2026-09-14 by the owner on the live instance (docs/status.md,
+  "The drop zone, clicked through"): single and multiple drops, a 400 MB file, the replace question, an archive import
+  with and without replacing. Two things it found are fixed in the same entry.
 
 
 ### When the repository goes public: split validation from publishing
@@ -171,23 +229,30 @@ come through ESO, the chart is Helm, storage may be S3 or a ReadWriteMany volume
 
 Each is Low, and none is reachable without an account that already has rights; ids refer to the review.
 
-- **S6.1, S6.3** Cap the nuspec entry read into memory at a few megabytes, and stream symbol PDBs to storage instead
-  of holding each one whole.
-- **S6.4** Validate an asset's content type set through the metadata call (`MediaTypeHeaderValue`, length cap); a
-  line break in it is a 500 today. Harmless to the browser since assets are served with a sandbox policy.
+- ~~**S6.1, S6.3** Cap the nuspec entry read into memory at a few megabytes, and stream symbol PDBs to storage instead
+  of holding each one whole.~~ Done 2026-09-14 (docs/status.md, "Four of the smaller review items").
+- ~~**S6.4** Validate an asset's content type set through the metadata call.~~ Done 2026-09-14, same entry.
 - **S9.2** A sweep or `figet verify` that lists files no row names: a failed delete or two concurrent replaces of an
   asset leave one.
-- **Name uniqueness across feeds and alternate names** is a check in the store, not an index: a `Names` table with the
-  unique index, written by both paths.
+- ~~**Name uniqueness across feeds and alternate names** is a check in the store, not an index: a `Names` table with the
+  unique index, written by both paths.~~ Done 2026-09-14 (docs/status.md, "Names as one table").
 - **Hash verification on v2 cache fill** (the v2 client library exposes the hash; v3 does not).
-- **S1.3** Locked-out and disabled answers say a name exists after five attempts; **S5.1** four more reserved IPv4 ranges
-  in the fetch-by-URL guard; **S7.2** rate limits are per replica; the two connector display divergences (review 3.4);
-  the appearance page's "Reload packs" acts on one replica.
+- **S1.3** Locked-out and disabled answers say a name exists after five attempts; **S7.2** rate limits are per replica;
+  the two connector display divergences (review 3.4). ~~S5.1 reserved IPv4 ranges; the appearance page's "Reload packs"
+  acts on one replica.~~ Done 2026-09-14, same entry.
 - **A download attempt for an id no upstream lists** is still made per upstream. Kept on purpose: a package published a
   minute ago can be downloadable before a gallery's listing shows it, and the attempts are bounded by the rate limit.
 
 ## Later
 
+- **A picture on the account** (suggested 2026-09-14, "maybe integrate gravatar"). Not built, because it is a decision
+  rather than work: a Gravatar is an image the *browser* fetches from gravatar.com by a hash of the account's email, so
+  every page with the menu bar would tell a third party which hashed addresses use this server, from every client, and
+  would show a broken image on a network without internet. If wanted: an opt-in switch on the appearance page (off by
+  default), the SHA-256 of the trimmed lower-cased email, `?d=mp` so an address without one gets a silhouette, the
+  picture in the signed-in menu and on the profile, and the email carried as a claim so the menu bar reads no row for
+  it. An hour or two. The alternative that sends nothing anywhere is initials in a coloured circle, from the display
+  name and the account key's colour.
 - **History tab** on a version: the audit log exists now (filter by feed on its page); a per-version view of it is not built.
 - **Usage per version.** Usage per feed is counted since 2026-09-14 (`FeedUsage`, the graph under the feed lists). What is
   not: which versions are used, and whether a download came from the cache or the upstream. That needs per-version

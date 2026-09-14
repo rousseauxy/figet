@@ -2791,3 +2791,126 @@ not counted, falsified by counting every page; the lines and legend; bucket alig
 colour. Suites: unit 148, integration 437, both databases.
 
 Also asked, and added: `/coffee` answers 418 I'm a teapot (the error page for a browser; a `BREW` request gets text).
+
+## The drop zone, clicked through - 2026-09-14
+
+The owner drove the asset upload zone on the live instance: one file, several files at once, a 400 MB file, a file
+that already exists, and an archive import with and without the replace switch. Uploads, the progress rows, the
+skip-then-replace behaviour of an import and the audit entries (`asset.upload`, `asset.import`) were as designed. Two
+things were not, and are changed here:
+
+- **A drop during an upload vanished.** The runner refused new files while one was uploading and said nothing, so a
+  second drop during a large upload was simply lost. Every zone now has one queue: files dropped or picked at any time
+  join the end and take their turn, and an archive import waits in the same line.
+- **The replace question was a browser dialog.** `window.confirm` stopped the whole page. The question is now asked in
+  the file's own row with two buttons, Replace and Keep, while the other files carry on; the listing reloads once the
+  queue is empty and no row is still asking. The "replace files that already exist" switch, which only applied to
+  archive imports, now applies to dropped and picked files too, so it says so and stands on its own line.
+
+Script only, no server change: the requests are the same ones the tests already cover, and the page tests still pass.
+Not yet clicked through: the owner is asked to drop a file during a large upload, answer the row's question both ways,
+tick the switch and drop an existing file, and import an archive with a failing entry, on the next deployment.
+
+## Four of the smaller review items - 2026-09-14
+
+The Low items from the 2026-09-14 review that needed no decision, each with a test that was seen to fail without it:
+
+- **S6.1 The nuspec is read up to a cap** of 4 MB (`PackageIndexer.MaxNuspecBytes`) and refused past it. A zip entry
+  declares any length it likes and deflate expands a thousandfold, so a package well under the upload limit could carry a
+  nuspec of gigabytes, which the indexer used to copy whole into memory - on a push, and on a cache fill from an upstream.
+  `PackageLimitTests`: a five-megabyte description in a package of a few kilobytes is refused, a hundred-kilobyte one indexes.
+- **S6.3 Symbol PDBs are spooled, one at a time, to temporary files** under `Storage:TempPath`, counted against the
+  512 MB limit on bytes actually read, and read for their key from the file. They were held in memory, all of them, until
+  the last was checked. `TempFileSettings` in Application carries the path the host binds, beside `ConnectorSettings`.
+- **S6.4 A content type set through the metadata call is checked as a media type** and against the column's width before
+  it is stored; a line break in it used to fail every download of the file with a 500, and a long one failed the save the
+  same way. Refused with 400 and the old type kept (`AssetDirectoryTests.Metadata`).
+- **S5.1 The fetch-by-URL guard refuses the documentation, benchmark and protocol-assignment IPv4 ranges** (192.0.0.0/24,
+  192.0.2.0/24, 198.18.0.0/15, 198.51.100.0/24, 203.0.113.0/24) as it refuses link-local.
+- The appearance page's *Reload packs from disk* says, when `ExpectedReplicas` is above one, that it read the folder on
+  this instance and the others read it when they next start; `docs/configuration.md` says the same under `Theming:Path`.
+
+Suites: unit 156, integration 447, on SQLite and SQL Server.
+
+## A colour row instead of a list - 2026-09-14
+
+The tester's feedback on the feed settings page: the colour choice was a column of nine radio buttons, one per line, and
+read as a form of its own. Now one row of dots, the dot itself being the control (the native radio is hidden and the
+chosen dot wears a ring), with *Automatic* first. Not the dropdown or colour picker suggested: a dropdown cannot show
+a colour, and a picker would lose the point of the palette, nine hues chosen to stay apart from each other on the usage
+graph in both themes. `AdminUiTests` still posts each value.
+
+## Names as one table, alternate names only from a rename - 2026-09-14
+
+- **`Names` is the one set of names** across feeds and alternate names: primary key `NameLower`, a row per feed and per
+  alternate name, written in the same transaction as the feed or the rename, deleted with them. Uniqueness across the
+  two tables was a check in the store, which two creates at once could pass together; now it is the primary key, and
+  the second of two racing creates fails on it (`FeedRenameTests`, a race test with both paths). Backfilled by the
+  `FeedNames` migration from what the two tables held.
+- **The add-alias form is gone.** An alternate name now comes only from a rename that keeps the old one, which is the
+  one use anyone could name for it (the owner: "don't see the use unless it was for a rename"). `IFeedStore.AddAliasAsync`
+  removed with it; removing an alternate name stays.
+
+## Asset directories backed by a shared folder - 2026-09-14
+
+The design in `docs/backlog.md` of the same date, built:
+
+- **`FiGet:Feeds:N:Folder`** makes an asset directory whose content is that folder on the server, read as it is
+  (`SharedFolderAssets` behind the `IFolderAssets` port; `AssetService` branches on `Feed.IsFolderBacked`). No copy, no
+  row per file: a file placed on the share is served at once, a deleted one is gone. Items carry size, modified time
+  and a type from the extension, no hashes; the `ETag` is size and modified time and a repeat request with it is 304.
+  Applied on every start, since the mount is the operator's. Hidden and system files, `web.config`, `Thumbs.db`,
+  `desktop.ini` and `~$` lock files are never listed or served; the root and every resolved path are checked to stay
+  under it, and a reparse point on the way is refused.
+- **Writes are off unless `FolderWrites` is on**: every write answers 403 *ReadOnly*, the browse page shows no upload
+  or delete controls and says the files come from a folder on the server. On, uploads go through a temporary file in
+  the target folder and a rename. Metadata and multipart uploads stay 403 on a folder-backed directory, since nothing
+  can be stored beside the files.
+- **Two anonymous switches on every asset directory**, not one: *download* (`AnonymousRead`) and *list*
+  (`AnonymousList`, new; `FiGet:Feeds:N:AnonymousList`, default the download switch). `FeedAccess.ResolveAssetsAsync`
+  takes `listing: true` from `/dir/`, `/export/` and the browse page; a folder's `/metadata/` is 404 for a stranger.
+  The `SharedFolders` migration sets the new switch from the old one, so every existing directory keeps behaving as it
+  did. Settings page, create form and the two lists show it ("Anonymous, no listing").
+- **Cache modes per folder**, inherited downward: inherit, no-store (the three headers the consumers' web server sends
+  today) or max-age N, set on the browse page under *Cache* (`/admin/assets/{directory}/cache`, audited as
+  `asset.cache`), stored in `AssetCachePolicies`, applied by `AssetEndpoints.Nearest` on every download; a file's own
+  `ttl` metadata still wins.
+- `SharedFolderTests` (a fixture with a read-only and a writable folder made on the test host): served as it is, the
+  never-served names and a folder answer the same 404 as a missing file, listing and export need credentials unless the
+  switch says otherwise, writes are 403 until turned on and then land in the folder, cache modes apply to a folder and
+  those below it and the header is compared as a set of directives.
+
+## The profile page rearranged - 2026-09-14
+
+Owner's feedback with a screenshot:
+
+- **The password changes on the profile page**, in a popover beside *Save profile* rather than on a page of its own: a
+  `<details>` the browser opens, no script, styled as a button; it stays open across a post that was refused, with the
+  reason inside (`AccountTests.The_password_changes_on_the_profile_page`). The save button stands outside its form
+  (`form="profile-form"`) so the two forms share a row. `/account/password` remains for the one flow that needs a page of
+  its own: an account that must choose a password before anything else.
+- **Sign-in providers sit beside the profile** when there are any (`fg-panel-grid`; alone, the profile fills the row).
+- **The key accordion starts closed**, also with no key yet.
+- **A picture on the account** ("maybe gravatar"): recorded in the backlog with the trade-off, not built.
+
+## Allowed networks per feed and directory - 2026-09-14
+
+- **Each feed and asset directory can be limited to listed addresses and ranges** (`Feed.AllowedNetworks`, CIDR, one
+  per line; `FeedNetworks` in Domain parses and matches; migration `FeedAllowedNetworks`). Empty means any. From
+  elsewhere every protocol request answers 403 "not reachable from your network address" before any credential is
+  looked at - a key does not move it - and the feed is not on the public pages (`FeedAccess.ReachableFrom`, applied in
+  the resolver and on the six public pages). The settings pages are not limited: a feed's own setting must not lock
+  its administrator out of undoing it. Refusals are audited as `feed.network.refused`, once per feed and address per
+  ten minutes.
+- **Parsing is strict on purpose**: `10.0.0.1/8` and `10.0.0` are refused and named, where the runtime's parsers read
+  them as `10.0.0.0/8` and `10.0.0.0`. IPv4 and IPv6 are separate families, so a client that comes both ways is listed
+  twice; an IPv4-mapped IPv6 address is compared as IPv4 (`FeedNetworksTests`).
+- **On the settings page under an accordion of its own**, *Allowed networks: any* / *N listed*, closed until asked and
+  reopened on a refusal; saved lists are audited as `feed.networks` with the list. The feed lists say "listed networks"
+  beside the read column. The address is the connection's as the forwarded-headers middleware resolves it, so behind a
+  proxy the documented `ASPNETCORE_FORWARDEDHEADERS_ENABLED` is what makes the list mean anything; the page says so.
+- `FeedNetworkTests`, behind the forwarded-headers fixture: 403 and off the pages from loopback with or without a key,
+  everything as before from a listed address, the settings page reachable from anywhere; the form refuses `10.0.0.1/8`
+  by name, saves a list, and clears it.
+
+Suites: unit 176, integration 458, on SQLite and SQL Server.
