@@ -316,6 +316,8 @@ pre code { padding: 0; background: none; }
 
 .fg-page-head { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .fg-page-head h1 { margin-bottom: 0; }
+/* A list straight under the heading - the feed and asset directory lists - gets the same room as the usage graph under its own. */
+.fg-page-head + :is(.fg-table-wrap, .fg-empty) { margin-top: 0.8rem; }
 
 /* The publisher's icon. Removed by app.js when it fails to load, which an air-gapped install
    guarantees, so nothing here has to style a broken image. */
