@@ -376,6 +376,60 @@
         }
     });
 
+    // ── Modal dialogs ───────────────────────────────────────────────────────────────────────────
+    // A link carrying data-dialog-open="id" opens that <dialog> as a modal: centred, the page behind it darkened and inert,
+    // Escape to close. Without script the link simply goes where its href says. A dialog rendered with
+    // data-open-on-load - a refused form coming back - opens as soon as the page loads, with the reason inside.
+    // A click on the darkened backdrop closes it, as does a button carrying data-dialog-close.
+
+    function openDialog(dialog) {
+        if (!dialog || typeof dialog.showModal !== "function" || dialog.open) {
+            return false;
+        }
+
+        dialog.showModal();
+        var first = dialog.querySelector("input:not([type=hidden]), select, textarea");
+        if (first) {
+            first.focus();
+        }
+
+        return true;
+    }
+
+    document.addEventListener("click", function (event) {
+        var opener = event.target.closest ? event.target.closest("[data-dialog-open]") : null;
+        if (opener) {
+            if (openDialog(document.getElementById(opener.getAttribute("data-dialog-open")))) {
+                event.preventDefault();
+            }
+
+            return;
+        }
+
+        var closer = event.target.closest ? event.target.closest("[data-dialog-close]") : null;
+        if (closer) {
+            var owner = closer.closest("dialog");
+            if (owner) {
+                owner.close();
+            }
+
+            return;
+        }
+
+        // A click on the dialog element itself, outside its box, is a click on the backdrop.
+        if (event.target.tagName === "DIALOG" && event.target.open) {
+            var box = event.target.getBoundingClientRect();
+            if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) {
+                event.target.close();
+            }
+        }
+    });
+
+    var toOpen = document.querySelectorAll("dialog[data-open-on-load]");
+    for (var d = 0; d < toOpen.length; d++) {
+        openDialog(toOpen[d]);
+    }
+
     // ── Icons that fail to load ──────────────────────────────────────────────────────────────────
     // A package icon is a URL chosen by whoever published the package, and it points at somewhere we do
     // not control — often unreachable from an air-gapped install. A broken image should leave no trace

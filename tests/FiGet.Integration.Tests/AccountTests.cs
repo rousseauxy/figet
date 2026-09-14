@@ -98,8 +98,8 @@ public sealed partial class AccountTests(SqliteServerFixture server) : IClassFix
     }
 
     /// <summary>
-    /// The password changes on the profile page itself, in a popover beside the profile form: a refusal comes back with
-    /// the popover open and the reason inside; a change signs the account in again and leaves by redirect. The key
+    /// The password changes on the profile page itself, in a dialog opened beside the profile form: a refusal comes back with
+    /// the dialog marked to open and the reason inside; a change signs the account in again and leaves by redirect. The key
     /// accordion below stays closed until asked, also with no key yet.
     /// </summary>
     [Fact]
@@ -110,13 +110,14 @@ public sealed partial class AccountTests(SqliteServerFixture server) : IClassFix
         HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client, name, Password));
 
         var profile = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/account/profile"));
-        Assert.Contains("<details class=\"fg-popover\" id=\"password\">", profile, StringComparison.Ordinal);
+        Assert.Contains("<a class=\"fg-btn\" href=\"/account/password\" data-dialog-open=\"password\">Change password</a>", profile, StringComparison.Ordinal);
+        Assert.Contains("<dialog class=\"fg-modal\" id=\"password\" aria-labelledby=\"password-title\">", profile, StringComparison.Ordinal);
         Assert.Contains("form=\"profile-form\"", profile, StringComparison.Ordinal);
         Assert.Contains("<details class=\"fg-accordion\" id=\"create-key\">", profile, StringComparison.Ordinal);
 
         var refused = await ChangePasswordAsync(client, "not-the-password", "a-proper-new-password", "/account/profile");
         Assert.Contains("The current password is not right.", refused, StringComparison.Ordinal);
-        Assert.Contains("<details class=\"fg-popover\" id=\"password\" open>", refused, StringComparison.Ordinal);
+        Assert.Contains("<dialog class=\"fg-modal\" id=\"password\" aria-labelledby=\"password-title\" data-open-on-load=\"true\">", refused, StringComparison.Ordinal);
 
         var changed = await ChangePasswordAsync(client, Password, "a-proper-new-password", "/account/profile");
         Assert.Contains("Password changed.", changed, StringComparison.Ordinal);
@@ -338,7 +339,7 @@ public sealed partial class AccountTests(SqliteServerFixture server) : IClassFix
         return await scope.ServiceProvider.GetRequiredService<IUserStore>().FindByUserNameAsync(name, CancellationToken.None);
     }
 
-    /// <summary>Posts the change-password form of a page: the full page for a forced change, or the profile's popover.</summary>
+    /// <summary>Posts the change-password form of a page: the full page for a forced change, or the profile's dialog.</summary>
     private static async Task<string> ChangePasswordAsync(HttpClient client, string current, string next, string path = "/account/password")
     {
         var page = FormElement().Matches(await HttpAssert.SuccessBodyAsync(await client.GetAsync(path)))

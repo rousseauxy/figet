@@ -18,7 +18,7 @@
 @*
     The signed-in account's own page: profile, password, sign-in providers and personal API keys.
 
-    The password changes here, in a popover beside "Save profile", rather than on a page of its own: a <details> the
+    The password changes here, in a dialog opened beside "Save profile", rather than on a page of its own: a <details> the
     browser opens, so it works with no script, and it stays open when the change was refused so the reason is in view.
     The separate page remains for the one case that needs it - an account that must choose a password before anything
     else - where nothing but that form may be reachable. Sign-in providers sit beside the profile when there are any.
@@ -61,8 +61,8 @@
         </div>
     </EditForm>
 
-    @* The save button stands outside its form (form="profile-form", plain HTML) so the password popover - a form of
-       its own, which cannot nest inside the profile's - can sit on the same row. *@
+    @* The save button stands outside its form (form="profile-form", plain HTML) so the password button - whose form
+       cannot nest inside the profile's - can sit on the same row. *@
     <div class="fg-form-actions">
         <button type="submit" form="profile-form" class="fg-btn fg-btn-primary">Save profile</button>
         @if (user.PasswordHash is null)
@@ -71,35 +71,40 @@
         }
         else
         {
-            <details class="fg-popover" id="password" open="@passwordOpen">
-                <summary class="fg-btn">Change password</summary>
-                <div class="fg-popover-body">
-                    <EditForm Model="Password!" FormName="change-password" OnValidSubmit="ChangePasswordAsync" method="post" class="fg-form">
-                        <DataAnnotationsValidator />
-                        <p class="fg-muted fg-small">At least @AccountService.MinimumPasswordLength characters. Every other session of this account is signed out.</p>
-                        <div class="fg-field">
-                            <label for="current-password">Current password</label>
-                            <InputText id="current-password" type="password" autocomplete="current-password" @bind-Value="Password!.Current" />
-                            <ValidationMessage For="() => Password!.Current" />
-                        </div>
-                        <div class="fg-field">
-                            <label for="new-password">New password</label>
-                            <InputText id="new-password" type="password" autocomplete="new-password" @bind-Value="Password!.New" />
-                            <ValidationMessage For="() => Password!.New" />
-                        </div>
-                        <div class="fg-field">
-                            <label for="confirm-password">New password again</label>
-                            <InputText id="confirm-password" type="password" autocomplete="new-password" @bind-Value="Password!.Confirm" />
-                            <ValidationMessage For="() => Password!.Confirm" />
-                        </div>
-                        @if (passwordError is not null)
-                        {
-                            <p class="fg-error">@passwordError</p>
-                        }
+            @* A modal dialog, centred over a darkened page. Opened by the page script; without script the link goes to the
+               password page, which does the same. A refused change comes back with the dialog marked to open again, the
+               reason inside it. *@
+            <a class="fg-btn" href="/account/password" data-dialog-open="password">Change password</a>
+            <dialog class="fg-modal" id="password" aria-labelledby="password-title" data-open-on-load="@(passwordOpen ? "true" : null)">
+                <h2 id="password-title">Change password</h2>
+                <EditForm Model="Password!" FormName="change-password" OnValidSubmit="ChangePasswordAsync" method="post" class="fg-form">
+                    <DataAnnotationsValidator />
+                    <p class="fg-muted fg-small">At least @AccountService.MinimumPasswordLength characters. Every other session of this account is signed out.</p>
+                    <div class="fg-field">
+                        <label for="current-password">Current password</label>
+                        <InputText id="current-password" type="password" autocomplete="current-password" @bind-Value="Password!.Current" />
+                        <ValidationMessage For="() => Password!.Current" />
+                    </div>
+                    <div class="fg-field">
+                        <label for="new-password">New password</label>
+                        <InputText id="new-password" type="password" autocomplete="new-password" @bind-Value="Password!.New" />
+                        <ValidationMessage For="() => Password!.New" />
+                    </div>
+                    <div class="fg-field">
+                        <label for="confirm-password">New password again</label>
+                        <InputText id="confirm-password" type="password" autocomplete="new-password" @bind-Value="Password!.Confirm" />
+                        <ValidationMessage For="() => Password!.Confirm" />
+                    </div>
+                    @if (passwordError is not null)
+                    {
+                        <p class="fg-error">@passwordError</p>
+                    }
+                    <div class="fg-form-actions">
                         <button type="submit" class="fg-btn fg-btn-primary">Save password</button>
-                    </EditForm>
-                </div>
-            </details>
+                        <button type="button" class="fg-btn" data-dialog-close>Cancel</button>
+                    </div>
+                </EditForm>
+            </dialog>
         }
     </div>
 
@@ -304,7 +309,7 @@
         NewKey ??= new();
         Password ??= new();
 
-        // Posted and not yet redirected away: the change was refused, or a field was missing, and the popover stays open
+        // Posted and not yet redirected away: the change was refused, or a field was missing, and the dialog opens again
         // with the reason in it. A change that succeeded leaves by redirect and arrives closed.
         passwordOpen = HttpMethods.IsPost(HttpContext.Request.Method)
             && HttpContext.Request.HasFormContentType

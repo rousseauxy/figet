@@ -1016,35 +1016,25 @@ h2 + .fg-panel { margin-top: 0.5rem; }
   border-top: 1px solid var(--border);
 }
 
-/* A row of buttons under a form, when one of them belongs to another form (form="...") or opens a popover. */
+/* A row of buttons under a form, when one of them belongs to another form (form="...") or opens a dialog. */
 .fg-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin-top: 0.75rem; }
 
-/* A small form that opens beside the button that asks for it - the password change on the profile - as a <details>,
-   like the signed-in menu: no script, and it stays open across a post that was refused. The body floats over what is
-   below rather than pushing it down, so the page keeps its shape while the form is open. */
-.fg-popover { position: relative; display: inline-block; }
-.fg-popover > summary { list-style: none; }
-.fg-popover > summary::-webkit-details-marker { display: none; }
-.fg-popover[open] > summary { background: var(--hover); }
-.fg-popover-body {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 1080;
-  width: min(24rem, calc(100vw - 3rem));
-  padding: 0.9rem 1rem;
+/* A modal dialog - the password change on the profile - centred over a darkened page. The browser centres a dialog opened
+   with showModal() and draws the backdrop; this only gives both the site's look. */
+.fg-modal {
+  width: min(28rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1.2rem 1.3rem 1.1rem;
   background: var(--surface);
+  color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--r-2);
   box-shadow: var(--shadow-2);
 }
-/* On a phone a popover beside its button has no room to its right: it opens in the page flow instead, below the buttons
-   and as wide as the panel, pushing what follows down rather than running off the screen. */
-@media (max-width: 600px) {
-  .fg-popover { display: block; flex-basis: 100%; }
-  .fg-popover > summary { display: inline-flex; }
-  .fg-popover-body { position: static; width: auto; margin-top: 0.6rem; box-shadow: none; }
-}
+.fg-modal::backdrop { background: rgb(12 11 9 / 0.6); }
+.fg-modal h2 { margin: 0 0 0.6rem; }
+.fg-modal .fg-form-actions { margin-top: 0.9rem; }
 
 /* The phone menu: hidden on a wide screen, where the column above does the job. */
 .fg-admin-menu { display: none; }
