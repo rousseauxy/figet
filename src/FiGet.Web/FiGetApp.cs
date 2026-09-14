@@ -1227,34 +1227,7 @@ public static class FiGetApp
             return NamingResult(target, outcome == FeedNameChange.Done ? name : target.Name, outcome, "renamed");
         });
 
-        adminOnly.MapPost("/feeds/{feed}/aliases/add", async (
-            string feed,
-            HttpContext http,
-            IFeedStore feeds,
-            AuditLog audit,
-            TimeProvider time,
-            CancellationToken cancellationToken) =>
-        {
-            var form = await http.Request.ReadFormAsync(cancellationToken);
-            var target = await feeds.FindAsync(feed, cancellationToken);
-            if (target is null)
-            {
-                return Results.NotFound();
-            }
-
-            var name = form["name"].ToString().Trim();
-            var outcome = FeedNames.IsValid(name)
-                ? await feeds.AddAliasAsync(target.Key, name, time.GetUtcNow().UtcDateTime, cancellationToken)
-                : FeedNameChange.Invalid;
-
-            if (outcome == FeedNameChange.Done)
-            {
-                audit.Record(http, "feed.alias.add", target.Name, $"alias={name}");
-            }
-
-            return NamingResult(target, target.Name, outcome, "alias-added");
-        });
-
+        // Only a rename makes an alternate name; removing one is the only other thing done to them.
         adminOnly.MapPost("/feeds/{feed}/aliases/remove", async (
             string feed,
             HttpContext http,

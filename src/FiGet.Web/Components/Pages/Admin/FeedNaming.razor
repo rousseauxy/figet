@@ -90,14 +90,7 @@
                 </table>
             </div>
         }
-        <form method="post" action="/admin/feeds/@feed.Name/aliases/add" class="fg-form fg-form-inline">
-            <AntiforgeryToken />
-            <div class="fg-field">
-                <label for="alias-name">Add an alternate name</label>
-                <input id="alias-name" name="name" required maxlength="64" autocomplete="off" />
-            </div>
-            <button type="submit" class="fg-btn">Add alternate name</button>
-        </form>
+        <p class="fg-muted fg-small">A rename with the old name kept is the only thing that makes an alternate name.</p>
     </section>
 
     <section class="fg-panel fg-panel-danger">
@@ -134,7 +127,6 @@
     private (string Text, bool IsError)? NamingMessage => Naming switch
     {
         "renamed" => ($"Renamed to '{Target!.Name}'.", false),
-        "alias-added" => ("Alternate name added.", false),
         "alias-removed" => ("Alternate name removed. A client still using it now gets 404.", false),
         "taken" => ("That name is already taken by a feed, an asset directory, or an alternate name of one.", true),
         "invalid" => ("Use letters, digits, dot, dash or underscore, starting with a letter or digit (at most 64).", true),

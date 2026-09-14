@@ -35,15 +35,22 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
             return false;
         }
 
+        // The feed and its name row in one transaction: the name row's primary key is what refuses a name another feed,
+        // or an alternate name of one, took in the same instant.
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         db.Feeds.Add(feed);
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+            db.Names.Add(new FeedName { NameLower = feed.NameLower, FeedKey = feed.Key });
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return true;
         }
         catch (DbUpdateException)
         {
-            db.Entry(feed).State = EntityState.Detached;
+            db.ChangeTracker.Clear();
+            feed.Key = 0;
             return false;
         }
     }
@@ -112,6 +119,7 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
             .ExecuteDeleteAsync(cancellationToken);
         await db.Packages.Where(p => p.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.FeedAliases.Where(a => a.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
+        await db.Names.Where(n => n.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.FeedUsage.Where(u => u.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.AccessTokens.Where(t => t.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
         await db.FeedPermissions.Where(p => p.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
@@ -150,6 +158,7 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
             }
 
             // One of this feed's own alternate names is the name it goes back to, and stops being an alternate.
+            var ownAlias = false;
             if (await db.FeedAliases.FirstOrDefaultAsync(a => a.NameLower == lower, cancellationToken) is { } alias)
             {
                 if (alias.FeedKey != key)
@@ -158,11 +167,36 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
                 }
 
                 db.FeedAliases.Remove(alias);
+                ownAlias = true;
             }
 
+            // The name rows move with the names: the new name claims its row (or turns its alternate row back into the
+            // feed's own), and the old name's row stays as an alternate or goes.
+            var oldRow = await db.Names.FirstOrDefaultAsync(n => n.NameLower == feed.NameLower, cancellationToken);
             if (keepOldName)
             {
                 db.FeedAliases.Add(new FeedAlias { FeedKey = key, Name = feed.Name, NameLower = feed.NameLower, CreatedUtc = nowUtc });
+                if (oldRow is not null)
+                {
+                    oldRow.IsAlias = true;
+                }
+                else
+                {
+                    db.Names.Add(new FeedName { NameLower = feed.NameLower, FeedKey = key, IsAlias = true });
+                }
+            }
+            else if (oldRow is not null)
+            {
+                db.Names.Remove(oldRow);
+            }
+
+            if (ownAlias && await db.Names.FirstOrDefaultAsync(n => n.NameLower == lower, cancellationToken) is { } newRow)
+            {
+                newRow.IsAlias = false;
+            }
+            else
+            {
+                db.Names.Add(new FeedName { NameLower = lower, FeedKey = key });
             }
         }
 
@@ -174,7 +208,7 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         }
         catch (DbUpdateException)
         {
-            // Taken by a request that got there between the check and the save.
+            // Taken by a request that got there between the check and the save: the name row's primary key refused it.
             db.ChangeTracker.Clear();
             return FeedNameChange.NameTaken;
         }
@@ -186,34 +220,6 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
     public async Task<IReadOnlyList<FeedAlias>> ListAliasesAsync(int key, CancellationToken cancellationToken) =>
         await db.FeedAliases.AsNoTracking().Where(a => a.FeedKey == key).OrderBy(a => a.NameLower).ToListAsync(cancellationToken);
 
-    public async Task<FeedNameChange> AddAliasAsync(int key, string name, DateTime nowUtc, CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        var lower = name.ToLowerInvariant();
-        if (!await db.Feeds.AnyAsync(f => f.Key == key, cancellationToken))
-        {
-            return FeedNameChange.NotFound;
-        }
-
-        if (await NameTakenAsync(lower, cancellationToken))
-        {
-            return FeedNameChange.NameTaken;
-        }
-
-        var alias = new FeedAlias { FeedKey = key, Name = name, NameLower = lower, CreatedUtc = nowUtc };
-        db.FeedAliases.Add(alias);
-        try
-        {
-            await db.SaveChangesAsync(cancellationToken);
-            return FeedNameChange.Done;
-        }
-        catch (DbUpdateException)
-        {
-            db.Entry(alias).State = EntityState.Detached;
-            return FeedNameChange.NameTaken;
-        }
-    }
-
     public async Task<string?> RemoveAliasAsync(int key, int aliasKey, CancellationToken cancellationToken)
     {
         var alias = await db.FeedAliases.FirstOrDefaultAsync(a => a.Key == aliasKey && a.FeedKey == key, cancellationToken);
@@ -222,8 +228,11 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
             return null;
         }
 
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         db.FeedAliases.Remove(alias);
         await db.SaveChangesAsync(cancellationToken);
+        await db.Names.Where(n => n.NameLower == alias.NameLower && n.FeedKey == key).ExecuteDeleteAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         return alias.Name;
     }
 
@@ -231,12 +240,11 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         db.FeedAliases.Where(a => a.NameLower == nameLower).ExecuteUpdateAsync(s => s.SetProperty(a => a.LastUsedUtc, nowUtc), cancellationToken);
 
     /// <summary>
-    /// Whether a feed, a directory or an alternate name has the name. Two tables, so no index enforces this across both; an
-    /// admin renaming one feed while another admin creates a feed of the same name in the same instant is the gap left.
+    /// Whether a feed, a directory or an alternate name has the name, for a friendly refusal before the write; the
+    /// <c>Names</c> table's primary key is what makes the answer hold when two writes race.
     /// </summary>
-    private async Task<bool> NameTakenAsync(string lower, CancellationToken cancellationToken) =>
-        await db.Feeds.AnyAsync(f => f.NameLower == lower, cancellationToken)
-        || await db.FeedAliases.AnyAsync(a => a.NameLower == lower, cancellationToken);
+    private Task<bool> NameTakenAsync(string lower, CancellationToken cancellationToken) =>
+        db.Names.AnyAsync(n => n.NameLower == lower, cancellationToken);
 
     public Task<int> CountAssetsAsync(int key, CancellationToken cancellationToken) =>
         db.AssetItems.CountAsync(a => a.FeedKey == key && !a.IsDirectory, cancellationToken);

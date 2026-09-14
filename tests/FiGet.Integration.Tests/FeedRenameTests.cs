@@ -5,6 +5,7 @@ using FiGet.Application.Ports;
 using FiGet.Domain.Entities;
 using FiGet.Integration.Tests.Infrastructure;
 using FiGet.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FiGet.Integration.Tests;
@@ -94,31 +95,29 @@ public abstract partial class FeedRenameTests
         Assert.True(await CreateFeedAsync(old, FeedKind.Curated));
     }
 
-    /// <summary>One set of names: another feed's name, and another feed's alternate name, are both taken.</summary>
+    /// <summary>
+    /// One set of names: another feed's name, and another feed's alternate name, are both taken. The alternate name comes
+    /// from a rename with the old name kept, which is the only way one is made.
+    /// </summary>
     [Fact]
     public async Task A_name_another_feed_answers_to_is_refused()
     {
         var first = Unique("first");
         var second = Unique("second");
-        var alternate = Unique("alternate");
+        var renamed = Unique("renamed");
         await CreateFeedAsync(first, FeedKind.Curated);
         await CreateFeedAsync(second, FeedKind.Curated);
 
         using var admin = await AdminAsync();
-        using (var added = await PostAsync(admin, $"/admin/feeds/{first}", $"/admin/feeds/{first}/aliases/add", ("name", alternate)))
+        using (var response = await PostAsync(admin, $"/admin/feeds/{first}", $"/admin/feeds/{first}/rename", ("name", renamed), ("keepOldName", "true")))
         {
-            Assert.EndsWith("/name?naming=alias-added", added.Headers.Location?.OriginalString, StringComparison.Ordinal);
+            Assert.Equal($"/admin/feeds/{renamed}/name?naming=renamed", response.Headers.Location?.OriginalString);
         }
 
-        foreach (var taken in (string[])[first, alternate.ToUpperInvariant()])
+        foreach (var taken in (string[])[renamed, first.ToUpperInvariant()])
         {
             using var response = await PostAsync(admin, $"/admin/feeds/{second}", $"/admin/feeds/{second}/rename", ("name", taken), ("keepOldName", "true"));
             Assert.Equal($"/admin/feeds/{second}/name?naming=taken", response.Headers.Location?.OriginalString);
-        }
-
-        using (var response = await PostAsync(admin, $"/admin/feeds/{second}", $"/admin/feeds/{second}/aliases/add", ("name", first)))
-        {
-            Assert.EndsWith("/name?naming=taken", response.Headers.Location?.OriginalString, StringComparison.Ordinal);
         }
 
         using (var response = await PostAsync(admin, $"/admin/feeds/{second}", $"/admin/feeds/{second}/rename", ("name", "not a name")))
@@ -126,8 +125,37 @@ public abstract partial class FeedRenameTests
             Assert.EndsWith("/name?naming=invalid", response.Headers.Location?.OriginalString, StringComparison.Ordinal);
         }
 
-        Assert.Equal(first, (await FindAsync(alternate))!.Name);
+        Assert.Equal(renamed, (await FindAsync(first))!.Name);
         Assert.NotNull(await FindAsync(second));
+        Assert.False(await CreateFeedAsync(first, FeedKind.Assets));
+    }
+
+    /// <summary>
+    /// The gap the store's own check left: an admin renaming a feed to a name while another creates a feed of that name.
+    /// The Names table's primary key settles it, so however the two interleave exactly one of them owns the name after.
+    /// </summary>
+    [Fact]
+    public async Task A_rename_and_a_create_racing_for_one_name_leave_exactly_one_owner()
+    {
+        using var admin = await AdminAsync();
+        for (var round = 0; round < 8; round++)
+        {
+            var feed = Unique("racer");
+            var wanted = Unique("wanted");
+            await CreateFeedAsync(feed, FeedKind.Curated);
+
+            var rename = PostAsync(admin, $"/admin/feeds/{feed}", $"/admin/feeds/{feed}/rename", ("name", wanted), ("keepOldName", "true"));
+            var create = CreateFeedAsync(wanted, FeedKind.Curated);
+            await Task.WhenAll(rename, create);
+            (await rename).Dispose();
+
+            await using var scope = server.Services.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<FiGet.Infrastructure.Persistence.FiGetDbContext>();
+            var lower = wanted.ToLowerInvariant();
+            var feeds = await db.Feeds.CountAsync(f => f.NameLower == lower, TestContext.Current.CancellationToken);
+            var aliases = await db.FeedAliases.CountAsync(a => a.NameLower == lower, TestContext.Current.CancellationToken);
+            Assert.True(feeds + aliases == 1, $"Round {round}: '{wanted}' is owned {feeds} time(s) as a name and {aliases} as an alternate.");
+        }
     }
 
     /// <summary>Going back to the old name takes it off the list, and the name left behind takes its place.</summary>

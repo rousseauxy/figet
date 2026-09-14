@@ -64,9 +64,8 @@ public interface IFeedStore
     /// </summary>
     Task<FeedNameChange> RenameAsync(int key, string name, bool keepOldName, DateTime nowUtc, CancellationToken cancellationToken);
 
+    /// <summary>The names a rename left behind. Only a rename makes one; there is no other way to add a name.</summary>
     Task<IReadOnlyList<FeedAlias>> ListAliasesAsync(int key, CancellationToken cancellationToken);
-
-    Task<FeedNameChange> AddAliasAsync(int key, string name, DateTime nowUtc, CancellationToken cancellationToken);
 
     /// <summary>Removes one alternate name of the feed. Returns the name removed, or null when there was no such name.</summary>
     Task<string?> RemoveAliasAsync(int key, int aliasKey, CancellationToken cancellationToken);

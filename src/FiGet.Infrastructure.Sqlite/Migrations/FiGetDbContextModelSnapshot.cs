@@ -513,6 +513,25 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                     b.ToTable("FeedAliases", (string)null);
                 });
 
+            modelBuilder.Entity("FiGet.Domain.Entities.FeedName", b =>
+                {
+                    b.Property<string>("NameLower")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FeedKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsAlias")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("NameLower");
+
+                    b.HasIndex("FeedKey");
+
+                    b.ToTable("Names", (string)null);
+                });
+
             modelBuilder.Entity("FiGet.Domain.Entities.FeedPermission", b =>
                 {
                     b.Property<int>("Key")
@@ -1220,6 +1239,15 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                 });
 
             modelBuilder.Entity("FiGet.Domain.Entities.FeedAlias", b =>
+                {
+                    b.HasOne("FiGet.Domain.Entities.Feed", null)
+                        .WithMany()
+                        .HasForeignKey("FeedKey")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("FiGet.Domain.Entities.FeedName", b =>
                 {
                     b.HasOne("FiGet.Domain.Entities.Feed", null)
                         .WithMany()
