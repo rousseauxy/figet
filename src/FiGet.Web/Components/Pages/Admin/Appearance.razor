@@ -7,6 +7,7 @@
 @inject ISettingStore Settings
 @inject NavigationManager Navigation
 @inject FiGet.Http.AuditLog Audit
+@inject Microsoft.Extensions.Options.IOptions<FiGet.Web.Configuration.FiGetOptions> Options
 
 <PageTitle>Appearance · admin · FiGet</PageTitle>
 
@@ -129,7 +130,12 @@
     private Task ReloadAsync()
     {
         Themes.Reload();
-        message = $"Read the themes folder again: {Themes.Packs.Count} pack(s).";
+
+        // Packs are read into the memory of the instance that served this click. The others hold what they read when
+        // they started, so on a cluster the message says so rather than implying every replica now agrees.
+        message = Options.Value.Database.ExpectedReplicas > 1
+            ? $"Read the themes folder again on this instance: {Themes.Packs.Count} pack(s). The other replicas read it when they next start."
+            : $"Read the themes folder again: {Themes.Packs.Count} pack(s).";
         return Task.CompletedTask;
     }
 

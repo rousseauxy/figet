@@ -90,7 +90,7 @@ volume), not in this repository. Both shipped packs carry FiGet's own mark as th
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `Theme` | empty | Name of the pack to serve. Empty uses the built-in look. |
-| `Path` | `themes` under the web root | Where packs are read from. Point it at a mounted volume to change themes without rebuilding the image. |
+| `Path` | `themes` under the web root | Where packs are read from. Point it at a mounted volume to change themes without rebuilding the image. Packs are read at start; the appearance page's *Reload packs from disk* re-reads them on the instance that served the click, and other replicas read them when they next start. |
 
 ## FiGet:DataProtection
 
