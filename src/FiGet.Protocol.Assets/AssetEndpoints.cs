@@ -73,11 +73,20 @@ public static partial class AssetEndpoints
 
         ApplyCacheHeader(http, file);
 
+        // A file is served on this site's own origin, with a type its uploader chose. An HTML or SVG file opened from its link
+        // would run as a page of this site, with the cookie of whoever opened it - an admin, from the browse page. So nothing
+        // served here runs, and only types a browser shows without running anything open in it; the rest download. Download
+        // clients (Invoke-WebRequest, curl, win_get_url) ignore all three headers.
+        var contentType = file.ContentType ?? AssetContentTypes.Fallback;
+        http.Response.Headers.XContentTypeOptions = "nosniff";
+        http.Response.Headers.ContentSecurityPolicy = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox";
+
         // Results.File does the parts a download client relies on: Range for a resumed transfer,
         // If-None-Match and If-Modified-Since for a cache that already has it, and no body on HEAD.
         return Results.File(
             stream,
-            file.ContentType ?? AssetContentTypes.Fallback,
+            contentType,
+            fileDownloadName: AssetContentTypes.OpensInline(contentType) ? null : file.Name,
             lastModified: new DateTimeOffset(file.ModifiedUtc),
             entityTag: file.Sha256 is null ? null : new EntityTagHeaderValue($"\"{file.Sha256}\""),
             enableRangeProcessing: true);

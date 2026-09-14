@@ -33,4 +33,15 @@ public static class AssetContentTypes
 
         return ByExtension.TryGetContentType(fileName, out var guessed) ? guessed : Fallback;
     }
+
+    /// <summary>Types a browser displays without running anything: raster images and plain text. SVG is a document that can hold script, and PDF viewers run script too.</summary>
+    private static readonly HashSet<string> Inert = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/avif", "image/x-icon", "image/vnd.microsoft.icon",
+        "text/plain", "application/json",
+    };
+
+    /// <summary>Whether a browser may show a file of this type in place; anything else is sent as a download.</summary>
+    public static bool OpensInline(string? contentType) =>
+        MediaTypeHeaderValue.TryParse(contentType, out var parsed) && parsed.MediaType.HasValue && Inert.Contains(parsed.MediaType.Value);
 }

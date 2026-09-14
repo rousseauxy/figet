@@ -112,6 +112,12 @@ their write-side statuses were not recorded from the reference server either.
   `application/x-www-form-urlencoded` and `multipart/*`, where the file extension decides. curl labels
   `--data-binary` as a web form by default, so honouring it would serve an installer uploaded the documented
   way as a form.
+- **Nothing served runs as this site.** Every download carries `X-Content-Type-Options: nosniff` and
+  `Content-Security-Policy: default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox`, and only raster
+  images, `text/plain` and `application/json` open in a browser; every other type, HTML, SVG and PDF included, comes
+  with `Content-Disposition: attachment` under its own name. Files are served from the site's own origin with a
+  type the uploader chose, so an HTML upload would otherwise be a page that runs with the cookie of whoever opens
+  its link. Download clients ignore all three headers. (2026-09-14 review.)
 - **Hashes are computed while the upload is stored**, in one pass. MD5 and SHA-1 are reported because clients
   compare against them; nothing on the server trusts them.
 - **Cache header:** a `ttl` type with a whole number of seconds becomes `Cache-Control: public, max-age=N` on

@@ -75,6 +75,49 @@ public abstract partial class AssetDirectoryTests
     }
 
     /// <summary>
+    /// Found by the 2026-09-14 review: an HTML file came back inline as text/html, so anyone who could upload to a directory
+    /// had a page on this site's origin that ran with the cookie of whoever opened its link. Nothing served runs now, and
+    /// only raster images and plain text open in the browser; the rest download under their own name.
+    /// </summary>
+    [Theory]
+    [InlineData("page.html", "text/html", false)]
+    [InlineData("drawing.svg", "image/svg+xml", false)]
+    [InlineData("manual.pdf", "application/pdf", false)]
+    [InlineData("setup.exe", "application/octet-stream", false)]
+    [InlineData("logo.png", "image/png", true)]
+    [InlineData("notes.txt", "text/plain", true)]
+    public async Task A_file_is_served_so_nothing_in_it_runs_as_this_site(string name, string type, bool inline)
+    {
+        var path = $"endpoints/files/content/{Unique()}/{name}";
+        using var admin = server.CreateClient(FiGetServerFixture.AdminToken);
+        using var body = new ByteArrayContent(Encoding.UTF8.GetBytes("<!doctype html><script>document.title='ran'</script>"));
+        body.Headers.ContentType = new MediaTypeHeaderValue(type);
+        HttpAssert.Status(HttpStatusCode.Created, await admin.PutAsync(path, body));
+
+        using var anonymous = server.CreateClient();
+        using var response = await anonymous.GetAsync(path);
+        HttpAssert.Status(HttpStatusCode.OK, response);
+        Assert.Equal("nosniff", response.Headers.GetValues("X-Content-Type-Options").Single());
+        Assert.Contains("sandbox", response.Headers.GetValues("Content-Security-Policy").Single(), StringComparison.Ordinal);
+        Assert.Contains("default-src 'none'", response.Headers.GetValues("Content-Security-Policy").Single(), StringComparison.Ordinal);
+        if (inline)
+        {
+            Assert.Null(response.Content.Headers.ContentDisposition);
+        }
+        else
+        {
+            Assert.Equal("attachment", response.Content.Headers.ContentDisposition?.DispositionType);
+            Assert.Equal(name, response.Content.Headers.ContentDisposition?.FileNameStar ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
+        }
+
+        // A type set afterwards through the metadata call is served the same way.
+        using var metadata = new StringContent("{\"type\":\"text/html\"}", Encoding.UTF8, "application/json");
+        HttpAssert.Status(HttpStatusCode.OK, await admin.PostAsync(path.Replace("/content/", "/metadata/", StringComparison.Ordinal), metadata));
+        using var retyped = await anonymous.GetAsync(path);
+        Assert.Equal("attachment", retyped.Content.Headers.ContentDisposition?.DispositionType);
+    }
+
+    /// <summary>
     /// Found fetching a package from the gallery's CDN, which labels files <c>binary/octet-stream</c>: that
     /// says as little as <c>application/octet-stream</c> does, so the extension decides for both.
     /// </summary>
