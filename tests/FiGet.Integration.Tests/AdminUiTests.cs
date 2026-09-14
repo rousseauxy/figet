@@ -266,6 +266,9 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
 
         var before = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"/admin/feeds/{feed}"));
         var form = FormBlock(before, "feed-settings");
+
+        // The colours sit in one row: an element of their own, since the radio group component renders none to style.
+        Assert.Matches("<div class=\"fg-swatch-row\">\\s*<label class=\"fg-swatch\"", form);
         var fields = HiddenFields(form);
         fields[FieldName(form, "anonymous-read")] = "true";
         fields[FieldName(form, "allow-overwrite")] = "true";

@@ -58,7 +58,10 @@
                the palette - nine hues chosen to stay apart from each other on the graph in both themes. *@
             <fieldset class="fg-swatches">
                 <legend>Colour on the usage graph</legend>
-                <InputRadioGroup @bind-Value="Settings!.ChartColor" class="fg-swatch-row">
+                @* InputRadioGroup renders no element of its own, so a class on it went nowhere and the fieldset's grid stacked
+                   the swatches: the row is a div of its own. *@
+                <InputRadioGroup @bind-Value="Settings!.ChartColor">
+                <div class="fg-swatch-row">
                     <label class="fg-swatch" title="Picked for this @Noun, the same every time">
                         <InputRadio Value="0" /><span class="fg-series-dot" style="--series: var(--fg-series-@AutomaticColor)"></span><span>Automatic</span>
                     </label>
@@ -69,6 +72,7 @@
                             <InputRadio Value="value" /><span class="fg-series-dot" style="--series: var(--fg-series-@value)"></span><span class="fg-sr-only">Colour @value</span>
                         </label>
                     }
+                </div>
                 </InputRadioGroup>
             </fieldset>
 
