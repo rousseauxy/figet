@@ -32,6 +32,8 @@ public sealed class FakeOidcProvider : IAsyncDisposable
     private readonly ConcurrentDictionary<string, Grant> codes = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, FakeIdentity> accessTokens = new(StringComparer.Ordinal);
     private int tokenRequests;
+    private int discoveryRequests;
+    private int jwksRequests;
 
     private FakeOidcProvider(WebApplication app, RsaSecurityKey signingKey)
     {
@@ -47,28 +49,55 @@ public sealed class FakeOidcProvider : IAsyncDisposable
 
     public int TokenRequests => tokenRequests;
 
+    /// <summary>How often the discovery document was fetched: what a validator's metadata cache is measured by.</summary>
+    public int DiscoveryRequests => discoveryRequests;
+
+    /// <summary>How often the key set was fetched: what a validator's key-refresh limit is measured by.</summary>
+    public int JwksRequests => jwksRequests;
+
+    /// <summary>While true, discovery and the key set answer 503, as an issuer in an outage does.</summary>
+    public bool Broken { get; set; }
+
     /// <summary>
     /// An access token as an issuer hands one to an application or a CI job: signed with the provider's current key, for
     /// <paramref name="audience"/>, with the claims given. The parameters after it make the ways a token goes wrong.
     /// </summary>
+    /// <param name="issuer">An <c>iss</c> other than the provider's own, for tokens that only look like this issuer's.</param>
+    /// <param name="audiences">Several audiences instead of <paramref name="audience"/>, as Entra and Keycloak send them.</param>
+    /// <param name="omitKeyId">Sign with the current key but send no <c>kid</c>, as some issuers do.</param>
+    /// <param name="noExpiry">Leave out <c>exp</c> altogether.</param>
     public string CreateAccessToken(
         string audience,
         IDictionary<string, object> claims,
         TimeSpan? lifetime = null,
         DateTime? expires = null,
         SecurityKey? key = null,
-        string algorithm = SecurityAlgorithms.RsaSha256)
+        string algorithm = SecurityAlgorithms.RsaSha256,
+        string? issuer = null,
+        IEnumerable<string>? audiences = null,
+        bool omitKeyId = false,
+        DateTime? notBefore = null,
+        DateTime? issuedAt = null,
+        bool noExpiry = false)
     {
         var now = DateTime.UtcNow;
-        return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
+        var payload = new Dictionary<string, object>(claims);
+        if (audiences is not null)
         {
-            Issuer = Authority,
-            Audience = audience,
-            IssuedAt = now.AddMinutes(-2),
-            NotBefore = now.AddMinutes(-2),
-            Expires = expires ?? now + (lifetime ?? TimeSpan.FromMinutes(10)),
-            Claims = new Dictionary<string, object>(claims),
-            SigningCredentials = new SigningCredentials(key ?? signingKey, algorithm),
+            payload["aud"] = audiences.ToArray();
+        }
+
+        var signingKeyToUse = key ?? (omitKeyId ? new RsaSecurityKey(signingKey.Rsa) : signingKey);
+        var handler = new JsonWebTokenHandler { SetDefaultTimesOnTokenCreation = false };
+        return handler.CreateToken(new SecurityTokenDescriptor
+        {
+            Issuer = issuer ?? Authority,
+            Audience = audiences is null ? audience : null,
+            IssuedAt = issuedAt ?? now.AddMinutes(-2),
+            NotBefore = notBefore ?? now.AddMinutes(-2),
+            Expires = noExpiry ? null : expires ?? now + (lifetime ?? TimeSpan.FromMinutes(10)),
+            Claims = payload,
+            SigningCredentials = new SigningCredentials(signingKeyToUse, algorithm),
         });
     }
 
@@ -101,21 +130,36 @@ public sealed class FakeOidcProvider : IAsyncDisposable
 
     private void Map()
     {
-        app.MapGet("/.well-known/openid-configuration", () => Results.Json(new Dictionary<string, object>
+        app.MapGet("/.well-known/openid-configuration", () =>
         {
-            ["issuer"] = Authority,
-            ["authorization_endpoint"] = Authority + "/authorize",
-            ["token_endpoint"] = Authority + "/token",
-            ["userinfo_endpoint"] = Authority + "/userinfo",
-            ["jwks_uri"] = Authority + "/jwks",
-            ["response_types_supported"] = new[] { "code" },
-            ["subject_types_supported"] = new[] { "public" },
-            ["id_token_signing_alg_values_supported"] = new[] { "RS256" },
-            ["code_challenge_methods_supported"] = new[] { "S256" },
-        }));
+            Interlocked.Increment(ref discoveryRequests);
+            if (Broken)
+            {
+                return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            }
+
+            return Results.Json(new Dictionary<string, object>
+            {
+                ["issuer"] = Authority,
+                ["authorization_endpoint"] = Authority + "/authorize",
+                ["token_endpoint"] = Authority + "/token",
+                ["userinfo_endpoint"] = Authority + "/userinfo",
+                ["jwks_uri"] = Authority + "/jwks",
+                ["response_types_supported"] = new[] { "code" },
+                ["subject_types_supported"] = new[] { "public" },
+                ["id_token_signing_alg_values_supported"] = new[] { "RS256" },
+                ["code_challenge_methods_supported"] = new[] { "S256" },
+            });
+        });
 
         app.MapGet("/jwks", () =>
         {
+            Interlocked.Increment(ref jwksRequests);
+            if (Broken)
+            {
+                return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            }
+
             var parameters = signingKey.Rsa.ExportParameters(false);
             return Results.Json(new
             {
