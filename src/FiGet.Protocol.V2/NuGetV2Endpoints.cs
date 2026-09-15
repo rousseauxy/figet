@@ -90,6 +90,7 @@ public static class NuGetV2Endpoints
         group.MapGet("/GetUpdates()", GetUpdatesAsync);
 
         group.MapGet("/package/{id}/{version}", DownloadAsync);
+        group.MapGet("/package/{id}", LatestDownloadAsync);
 
         // nuget.exe pushes to the source URL itself, or to {source}/package when the source ends in /api/v2.
         group.MapPut("", PushAsync).DisableAntiforgery();
@@ -227,6 +228,26 @@ public static class NuGetV2Endpoints
 
         var rows = await SearchRowsAsync(store, connector, request!.Feed, "", filter?.StoreTerms ?? [], includePrerelease: true, semVer2, loggers, cancellationToken);
         return Page(http, request.Feed.Name, rows, filter, order, query);
+    }
+
+    /// <summary>
+    /// The package without a version: a redirect to the latest stable version, or to the newest prerelease when there is
+    /// no stable one. nuget.org's v2 answers this, and so did the server being replaced, so a script that fetched "the
+    /// latest" that way keeps working. On a proxy feed the latest is taken from the merged list, upstream versions included.
+    /// </summary>
+    private static async Task<IResult> LatestDownloadAsync(HttpContext http, string feed, string id, IPackageStore store, ConnectorService connector, CancellationToken cancellationToken)
+    {
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, TokenScopes.Read, cancellationToken);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        var rows = await RowsForIdAsync(store, connector, request!.Feed, id, includeSemVer2: true, cancellationToken);
+        var latest = rows.LastOrDefault(r => r.Entry.IsLatestVersion) ?? rows.LastOrDefault(r => r.Entry.IsAbsoluteLatestVersion);
+        return latest is null
+            ? Results.NotFound()
+            : Results.Redirect($"{Root(http, request.Feed.Name)}/package/{Uri.EscapeDataString(latest.Id)}/{Uri.EscapeDataString(latest.NormalizedVersion)}");
     }
 
     private static async Task<IResult> PackageByKeyAsync(HttpContext http, string feed, string id, string version, IPackageStore store, ConnectorService connector, CancellationToken cancellationToken)

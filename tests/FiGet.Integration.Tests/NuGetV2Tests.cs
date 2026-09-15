@@ -165,6 +165,39 @@ public abstract class NuGetV2Tests
         HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/public/Packages(Id='{id}',Version='1.1.1')"));
     }
 
+    /// <summary>
+    /// A download without a version redirects to the latest stable version, or to the newest prerelease when there is no
+    /// stable one, on both v2 roots, as nuget.org's v2 does. Found cross-checking other package servers' issue trackers
+    /// (2026-09-15): scripts that fetched "the latest" this way got 405.
+    /// </summary>
+    [Fact]
+    public async Task A_download_without_a_version_redirects_to_the_latest()
+    {
+        var id = FiGetServerFixture.UniqueId("V2.Latest");
+        await SeedAsync("public", id);
+        var prereleaseOnly = FiGetServerFixture.UniqueId("V2.OnlyBeta");
+        using (var package = TestPackages.Create(prereleaseOnly, "0.9.0-beta2"))
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("public", package));
+        }
+
+        using var client = server.CreateClient();
+        foreach (var root in new[] { "nuget/public", "nuget/public/api/v2" })
+        {
+            var stable = await client.GetAsync($"{root}/package/{id}");
+            HttpAssert.Status(HttpStatusCode.Redirect, stable);
+            Assert.EndsWith($"/{root}/package/{id}/1.1.0", stable.Headers.Location!.OriginalString, StringComparison.Ordinal);
+
+            var beta = await client.GetAsync($"{root}/package/{prereleaseOnly}");
+            Assert.EndsWith($"/{root}/package/{prereleaseOnly}/0.9.0-beta2", beta.Headers.Location!.OriginalString, StringComparison.Ordinal);
+
+            HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"{root}/package/{FiGetServerFixture.UniqueId("V2.Nobody")}"));
+        }
+
+        var redirect = await client.GetAsync($"nuget/public/package/{id}");
+        HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync(redirect.Headers.Location));
+    }
+
     [Fact]
     public async Task Search_finds_by_tag_the_way_Find_Module_asks()
     {
