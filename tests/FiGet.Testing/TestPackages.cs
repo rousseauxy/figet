@@ -38,6 +38,33 @@ public static class TestPackages
         return Save(builder);
     }
 
+    /// <summary>A symbol package carrying several PDB files, each at the path given.</summary>
+    public static MemoryStream CreateSymbols(string id, string version, IReadOnlyList<(string Path, byte[] Content)> files)
+    {
+        ArgumentNullException.ThrowIfNull(files);
+        var builder = new PackageBuilder
+        {
+            Id = id,
+            Version = NuGetVersion.Parse(version),
+            Description = $"Symbols for {id}",
+        };
+        builder.Authors.Add("FiGet Tests");
+        builder.PackageTypes.Add(new PackageType("SymbolsPackage", PackageType.EmptyVersion));
+        foreach (var (path, content) in files)
+        {
+            builder.Files.Add(new InMemoryFile(path, content));
+        }
+
+        return Save(builder);
+    }
+
+    /// <summary>Adds a file with the given bytes to the package.</summary>
+    public static void AddContent(this PackageBuilder builder, string path, byte[] content)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.Files.Add(new InMemoryFile(path, content));
+    }
+
     public static void AddDependency(this PackageBuilder builder, string framework, string id, string range)
     {
         var targetFramework = NuGetFramework.Parse(framework);
