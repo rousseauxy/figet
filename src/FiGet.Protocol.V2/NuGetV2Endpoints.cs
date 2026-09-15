@@ -205,6 +205,11 @@ public static class NuGetV2Endpoints
         // A search lists what a client may choose from: never an unlisted version, and a prerelease one only when
         // asked. The package search picks packages; this picks among each package's versions.
         bool Choosable(V2Row r) => r.Entry.Listed && (prerelease || !r.Version.IsPrerelease);
+        if (filter?.RequiredIds is { } batchedIds)
+        {
+            return Page(http, request!.Feed.Name, (await RowsForIdsAsync(store, connector, request.Feed, batchedIds, SemVer2(query), cancellationToken)).Where(Choosable).ToList(), filter, order, query);
+        }
+
         if (order.LeadsWithIdAscending)
         {
             return await ScanAsync(http, store, connector, request!.Feed, term, prerelease, SemVer2(query), Choosable, filter, order, query, cancellationToken);
@@ -239,6 +244,13 @@ public static class NuGetV2Endpoints
         if (filter?.RequiredId is { Length: > 0 } id)
         {
             return Page(http, request!.Feed.Name, await RowsForIdAsync(store, connector, request.Feed, id, semVer2, cancellationToken), filter, order, query);
+        }
+
+        // Update scripts ask about their modules thirty at a time, as an or of ids; on a proxy feed each id is looked up like
+        // a single one, upstream included, instead of scanning only what is cached (PSResourceGet #1045).
+        if (filter?.RequiredIds is { } ids)
+        {
+            return Page(http, request!.Feed.Name, await RowsForIdsAsync(store, connector, request.Feed, ids, semVer2, cancellationToken), filter, order, query);
         }
 
         if (order.LeadsWithIdAscending)
@@ -481,6 +493,17 @@ public static class NuGetV2Endpoints
         var merged = VersionListBuilder.Build(local.Select(VersionListBuilder.ToCandidate).Concat(upstream.Versions), includeSemVer2);
         var displayId = package?.Id ?? upstream.Spell(id);
         return merged.Where(e => e.Payload is not null).Select(e => new V2Row(displayId, e)).ToList();
+    }
+
+    private static async Task<IReadOnlyList<V2Row>> RowsForIdsAsync(IPackageStore store, ConnectorService connector, Feed feed, IReadOnlyList<string> ids, bool includeSemVer2, CancellationToken cancellationToken)
+    {
+        var rows = new List<V2Row>();
+        foreach (var id in ids)
+        {
+            rows.AddRange(await RowsForIdAsync(store, connector, feed, id, includeSemVer2, cancellationToken));
+        }
+
+        return rows;
     }
 
     /// <summary>

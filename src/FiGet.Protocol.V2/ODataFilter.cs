@@ -39,8 +39,9 @@ public sealed class ODataFilter
 {
     private readonly ODataExpression expression;
 
-    private ODataFilter(ODataExpression expression, string text, string? requiredId, bool latestOnly, IReadOnlyList<SearchTerm> storeTerms, bool storeCoversAll)
+    private ODataFilter(ODataExpression expression, string text, string? requiredId, bool latestOnly, IReadOnlyList<SearchTerm> storeTerms, bool storeCoversAll, IReadOnlyList<string>? requiredIds = null)
     {
+        RequiredIds = requiredIds;
         this.expression = expression;
         Text = text;
         RequiredId = requiredId;
@@ -53,6 +54,14 @@ public sealed class ODataFilter
 
     /// <summary>The id from a top-level <c>Id eq '…'</c>, so one package can be fetched instead of a page.</summary>
     public string? RequiredId { get; }
+
+    /// <summary>
+    /// The ids of a top-level <c>(Id eq 'a' or Id eq 'b' …)</c>, as update scripts batch them; null when there is none. At most
+    /// <see cref="MaxRequiredIds"/>: a longer list is left to the filter alone.
+    /// </summary>
+    public IReadOnlyList<string>? RequiredIds { get; }
+
+    public const int MaxRequiredIds = 50;
 
     /// <summary>True when a top-level term keeps only the latest version of each package.</summary>
     public bool LatestOnly { get; }
@@ -84,6 +93,7 @@ public sealed class ODataFilter
         Flatten(parsed, conjuncts);
 
         string? requiredId = null;
+        List<string>? requiredIds = null;
         var latestOnly = false;
         var storeTerms = new List<SearchTerm>();
         var covered = true;
@@ -104,6 +114,10 @@ public sealed class ODataFilter
                 case ODataProperty { Name: var bare } when IsLatestFlag(bare):
                     latestOnly = true;
                     break;
+                case ODataLogical { Operator: "or" } alternatives when IdAlternatives(alternatives) is { Count: > 0 and <= MaxRequiredIds } ids:
+                    requiredIds = ids;
+                    covered = false;
+                    break;
                 default:
                     if (StoreTerm(Unwrapped(conjunct)) is { } term)
                     {
@@ -121,7 +135,36 @@ public sealed class ODataFilter
 
         // A value with the store's wildcard in it would widen or change a LIKE: such a term is left to the filter alone.
         storeTerms.RemoveAll(t => !NoWildcard(t.Value.TrimEnd('*')));
-        return new ODataFilter(parsed, text, requiredId, latestOnly, storeTerms, covered && storeTerms.All(t => NoWildcard(t.Value.TrimEnd('*'))));
+        return new ODataFilter(parsed, text, requiredId, latestOnly, storeTerms, covered && storeTerms.All(t => NoWildcard(t.Value.TrimEnd('*'))), requiredIds);
+    }
+
+    /// <summary>The ids of an <c>or</c> made only of <c>Id eq '…'</c> comparisons, or null.</summary>
+    private static List<string>? IdAlternatives(ODataExpression expression)
+    {
+        var ids = new List<string>();
+        var pending = new Stack<ODataExpression>([expression]);
+        while (pending.Count > 0)
+        {
+            switch (pending.Pop())
+            {
+                case ODataLogical { Operator: "or" } or:
+                    pending.Push(or.Right);
+                    pending.Push(or.Left);
+                    break;
+                case ODataComparison { Operator: "eq", Left: var side, Right: ODataLiteral { Value: string id } } when IsId(side):
+                    ids.Add(id);
+                    break;
+                default:
+                    return null;
+            }
+
+            if (ids.Count > MaxRequiredIds)
+            {
+                return null;
+            }
+        }
+
+        return [.. ids.Distinct(StringComparer.OrdinalIgnoreCase)];
     }
 
     /// <summary><c>f(…) eq true</c> is <c>f(…)</c>.</summary>

@@ -1025,6 +1025,29 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         await scope.ServiceProvider.GetRequiredService<IPackageStorage>().DeletePackageAsync(new PackageStorageKey(feed!.Key, idLower, versionLower), TestContext.Current.CancellationToken);
     }
 
+    /// <summary>
+    /// Update scripts ask about their modules in batches, as an or of ids. On a proxy feed each id is found as a lookup of
+    /// that one id would find it, upstream included, not only among what is cached. Found cross-checking PSResourceGet's
+    /// issues (#1045, 2026-09-15).
+    /// </summary>
+    [Fact]
+    public async Task A_batched_or_of_ids_finds_packages_nobody_has_cached()
+    {
+        var first = FiGetServerFixture.UniqueId("Proxy.BatchA");
+        var second = FiGetServerFixture.UniqueId("Proxy.BatchB");
+        AddUpstream(first, "1.0.0");
+        AddUpstream(second, "2.0.0");
+
+        using var client = server.CreateClient();
+        foreach (var route in new[] { "Packages()", "Search()" })
+        {
+            var body = await HttpAssert.SuccessBodyAsync(await client.GetAsync(
+                $"nuget/proxy/{route}?$filter=IsLatestVersion and IsPrerelease eq false and (Id eq '{first}' or Id eq '{second}')&$top=100"));
+            var entries = XDocument.Parse(body).Root!.Elements(Atom + "entry").ToList();
+            Assert.Equal([first, second], entries.Select(e => Property(e, "Id")).Order(StringComparer.Ordinal).ToArray());
+        }
+    }
+
     [Fact]
     public async Task A_denied_id_is_not_returned_by_search_either()
     {
