@@ -46,12 +46,30 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
         // includeUnlisted: true, because this has to answer for every version the upstream holds, not only
         // the ones it advertises: a pinned dependency asks for an exact version and does not care whether
         // the gallery still lists it. What FiGet lists is decided after the merge, not here.
-        var items = await metadata.GetMetadataAsync(idLower, includePrerelease: true, includeUnlisted: true, cache, NullLogger.Instance, timeout.Token);
-        var described = items.Select(ToMetadata).ToList();
+        List<UpstreamMetadata> described;
+        string casedId;
+        try
+        {
+            var items = await metadata.GetMetadataAsync(idLower, includePrerelease: true, includeUnlisted: true, cache, NullLogger.Instance, timeout.Token);
+            described = [.. items.Select(ToMetadata)];
 
-        // The gallery's own spelling, which only the metadata carries: the version resources answer for an
-        // id they were given and hand back nothing about how it is written.
-        var casedId = items.Select(m => m.Identity.Id).FirstOrDefault(i => !string.IsNullOrEmpty(i)) ?? "";
+            // The gallery's own spelling, which only the metadata carries: the version resources answer for an
+            // id they were given and hand back nothing about how it is written.
+            casedId = items.Select(m => m.Identity.Id).FirstOrDefault(i => !string.IsNullOrEmpty(i)) ?? "";
+        }
+        catch (Exception ex) when (ex is ArgumentException or FormatException)
+        {
+            // NuGet's v2 parser gave up on the whole answer over one entry it could not read - a version it cannot parse.
+            // Read the entries one by one instead, and keep every valid version rather than losing the id. A v3 source's
+            // failure is not this one and is passed on.
+            if (await repository.GetResourceAsync<ServiceIndexResourceV3>(timeout.Token) is not null)
+            {
+                throw;
+            }
+
+            described = [.. await TolerantV2Catalog.ReadAsync(repository, upstream.Url, idLower, timeout.Token)];
+            casedId = "";
+        }
 
         // A source with no v3 service index is a v2 gallery, where the walk above already listed every
         // version and a second resource would only repeat it.

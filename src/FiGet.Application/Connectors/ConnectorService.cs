@@ -849,6 +849,20 @@ public sealed class ConnectorService(
         }
     }
 
+    /// <summary>A timeout, a refused or dropped connection, an HTTP failure: anywhere in the exception's chain.</summary>
+    private static bool IsConnectionFailure(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is HttpRequestException or TimeoutException or TaskCanceledException or IOException or System.Net.Sockets.SocketException)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Deny wins over allow, and an empty allow list means every id is allowed.</summary>
     public static bool Allows(FeedUpstream upstream, string idLower)
     {
@@ -1003,7 +1017,13 @@ public sealed class ConnectorService(
             // A timeout lands here too, which is why the answer is "not authoritative": a version missing
             // from a list we never received must not be mistaken for a version withdrawn upstream.
             logger.LogWarning(ex, "Upstream {Upstream} did not answer for {Id}, and nothing was cached; unknown ids are not asked of it for {Pause}.", upstream.Name, idLower, settings.UnreachableBackoff);
-            metadataCache.SetUnreachable(upstream.Key, time.GetUtcNow().UtcDateTime);
+            // Only a failure to reach it pauses the upstream: an answer it gave that could not be read is about this id, not
+            // about whether the upstream is there.
+            if (IsConnectionFailure(ex))
+            {
+                metadataCache.SetUnreachable(upstream.Key, time.GetUtcNow().UtcDateTime);
+            }
+
             return (new UpstreamCatalog([], []), false, null);
         }
     }

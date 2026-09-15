@@ -115,7 +115,7 @@ public sealed class StubUpstreamClient : IUpstreamClient
 
         if (Fails)
         {
-            throw new InvalidOperationException("The stub upstream is unreachable.");
+            throw new HttpRequestException("The stub upstream is unreachable.");
         }
     }
 
