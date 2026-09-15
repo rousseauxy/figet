@@ -1,0 +1,118 @@
+@page "/admin/storage"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@layout AdminLayout
+@inject IStorageAudit StorageAudit
+@inject FiGet.Http.AuditLog Audit
+
+@*
+    Stored files no database row names, found on request and removed on request. Nothing runs by itself: a file this finds
+    is already costing nothing but space, and removing it is an admin's call.
+*@
+
+<PageTitle>Storage check · admin · FiGet</PageTitle>
+
+<h1>Storage check</h1>
+<p class="fg-lede">
+    Package, symbol and asset files in storage that no package, symbol or asset in the database names: left by a failed
+    delete, two replaces of one file at the same moment, or a stop between writing a file and its record. Files written in
+    the last hour are never counted, so an upload in progress is left alone. Folders a shared-folder directory publishes are
+    not FiGet's storage and are not looked at.
+</p>
+
+@if (removed is not null)
+{
+    <div class="fg-alert fg-alert-ok" role="status">Removed @removed.Count stray @(removed.Count == 1 ? "file" : "files") (@Size(removed.Sum(f => f.Size))).</div>
+}
+
+<EditForm Model="Scan!" FormName="storage-scan" OnSubmit="ScanAsync" method="post">
+    <button type="submit" class="fg-btn fg-btn-primary">Look for stray files</button>
+</EditForm>
+
+@if (report is not null)
+{
+    <section class="fg-panel">
+        @if (report.StrayCount == 0)
+        {
+            <p>No stray files among @report.Scanned stored @(report.Scanned == 1 ? "file" : "files").</p>
+        }
+        else
+        {
+            <p>
+                @report.StrayCount stray @(report.StrayCount == 1 ? "file" : "files"), @Size(report.StrayBytes), among @report.Scanned stored.
+                @if (report.StrayCount > report.Stray.Count)
+                {
+                    <span class="fg-muted">The first @report.Stray.Count are listed and removed; look again for the rest.</span>
+                }
+            </p>
+            <div class="fg-table-wrap">
+                <table class="fg-table">
+                    <thead><tr><th>File</th><th>Size</th><th>Last written (UTC)</th></tr></thead>
+                    <tbody>
+                        @foreach (var file in report.Stray)
+                        {
+                            <tr><td><code class="fg-small">@file.Path</code></td><td>@Size(file.Size)</td><td>@file.ModifiedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+}
+
+@* Always rendered, so the post that removes files finds its form; its fields and button only once a check listed files. *@
+<form method="post" action="/admin/storage" @formname="storage-remove" hidden="@(report is not { StrayCount: > 0 })"
+      data-confirm="@($"Remove {report?.Stray.Count} stray files? They are deleted from storage.")" data-confirm-button="Remove">
+    <AntiforgeryToken />
+    @if (report is { StrayCount: > 0 })
+    {
+        @foreach (var file in report.Stray)
+        {
+            <input type="hidden" name="Remove.Paths" value="@file.Path" />
+        }
+
+        <button type="submit" class="fg-btn fg-btn-danger">Remove these files</button>
+    }
+</form>
+
+@code {
+    private StorageAuditReport? report;
+    private IReadOnlyList<StrayFile>? removed;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "storage-scan")]
+    private ScanInput? Scan { get; set; }
+
+    [SupplyParameterFromForm(FormName = "storage-remove")]
+    private RemoveInput? Remove { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Scan ??= new();
+        if (Remove?.Paths is { Count: > 0 } paths)
+        {
+            removed = await StorageAudit.RemoveStrayFilesAsync(paths, HttpContext.RequestAborted);
+            Audit.Record(HttpContext, "storage.stray.removed", $"{removed.Count} files", $"bytes={removed.Sum(f => f.Size)}");
+        }
+    }
+
+    private async Task ScanAsync() => report = await StorageAudit.FindStrayFilesAsync(HttpContext.RequestAborted);
+
+    private static string Size(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
+        < 1024L * 1024 * 1024 => $"{bytes / (1024.0 * 1024):0.#} MB",
+        _ => $"{bytes / (1024.0 * 1024 * 1024):0.##} GB",
+    };
+
+    private sealed class ScanInput
+    {
+    }
+
+    private sealed class RemoveInput
+    {
+        public List<string> Paths { get; set; } = [];
+    }
+}
