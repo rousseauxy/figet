@@ -166,6 +166,28 @@ public abstract class PackageManagementTests
     }
 
     /// <summary>
+    /// <c>version=latest</c> and <c>latest-unstable</c> on the download, as the reference API documents them. Found
+    /// cross-checking other package servers' issue trackers (2026-09-15): FiGet answered 404 "not found".
+    /// </summary>
+    [Fact]
+    public async Task A_download_by_latest_or_latest_unstable_serves_that_version()
+    {
+        var id = FiGetServerFixture.UniqueId("Mgmt.Latest");
+        await PushAsync("public", id, "1.0.0");
+        await PushAsync("public", id, "2.0.0-beta1");
+        using var client = server.CreateClient();
+
+        foreach (var (word, expected) in new[] { ("latest", "1.0.0"), ("LATEST", "1.0.0"), ("latest-unstable", "2.0.0-beta1") })
+        {
+            using var download = await client.GetAsync($"api/packages/public/download?name={id}&version={word}");
+            HttpAssert.Status(HttpStatusCode.OK, download);
+            Assert.Equal($"{id}.{expected}.nupkg", download.Content.Headers.ContentDisposition?.FileNameStar ?? download.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
+        }
+
+        HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"api/packages/public/download?name={FiGetServerFixture.UniqueId("Mgmt.Nobody")}&version=latest"));
+    }
+
+    /// <summary>
     /// Found by running the reference client: before a download or a delete it asks what kind of feed this
     /// is, and without an answer it stops with 404 before sending the request it was asked to make.
     /// </summary>

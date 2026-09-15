@@ -124,7 +124,7 @@ public static class PackageManagementEndpoints
             return error;
         }
 
-        if (await FindAsync(request!.Feed, name, version, store, cancellationToken) is not { } row)
+        if (await FindForDownloadAsync(request!.Feed, name, version, store, cancellationToken) is not { } row)
         {
             return NotFound(name, version);
         }
@@ -198,7 +198,7 @@ public static class PackageManagementEndpoints
             return Results.Text("Download overrides and deprecation are not supported; only listed can be set.", "text/plain", statusCode: StatusCodes.Status400BadRequest);
         }
 
-        if (await FindAsync(request!.Feed, name, version, store, cancellationToken) is not { } row)
+        if (await FindForDownloadAsync(request!.Feed, name, version, store, cancellationToken) is not { } row)
         {
             return NotFound(name, version);
         }
@@ -268,6 +268,35 @@ public static class PackageManagementEndpoints
 
         var package = await store.GetPackageAsync(feed.Key, name.Trim().ToLowerInvariant(), includeDependencies: false, cancellationToken);
         return package is null ? [] : [package];
+    }
+
+    /// <summary>
+    /// The version a download names, where the reference API also accepts <c>latest</c> (the version <c>/latest</c> reports
+    /// with stableOnly) and <c>latest-unstable</c> (the highest listed, prerelease included). Download only: deleting or
+    /// relisting "the latest" by a word would act on whichever version that happens to be at the time.
+    /// </summary>
+    private static async Task<PackageVersion?> FindForDownloadAsync(Feed feed, string? name, string? version, IPackageStore store, CancellationToken cancellationToken)
+    {
+        var word = version?.Trim();
+        var stable = string.Equals(word, "latest", StringComparison.OrdinalIgnoreCase);
+        if (!stable && !string.Equals(word, "latest-unstable", StringComparison.OrdinalIgnoreCase))
+        {
+            return await FindAsync(feed, name, version, store, cancellationToken);
+        }
+
+        if (string.IsNullOrWhiteSpace(name) || await store.GetPackageAsync(feed.Key, name.Trim().ToLowerInvariant(), includeDependencies: false, cancellationToken) is not { } package)
+        {
+            return null;
+        }
+
+        var latest = VersionListBuilder.BuildLocal(package.Versions, includeSemVer2: true)
+            .FirstOrDefault(e => stable ? e.IsLatestVersion : e.IsAbsoluteLatestVersion)?.Payload;
+        if (latest is not null)
+        {
+            latest.Package ??= package;
+        }
+
+        return latest;
     }
 
     private static async Task<PackageVersion?> FindAsync(Feed feed, string? name, string? version, IPackageStore store, CancellationToken cancellationToken)

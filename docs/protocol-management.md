@@ -23,7 +23,7 @@ FiGet.
 | GET | `` (the feed itself) | Read | `{"id", "name", "feedType": "nuget", "packageType": "nuget"}` |
 | GET | `/versions?name=&version=` | Read | Every stored version, newest first; `name` and `version` narrow it. `[]` when nothing matches. |
 | GET | `/latest?name=&stableOnly=` | Read | A list with one entry per package: the highest listed version, or the highest listed stable one. |
-| GET | `/download?name=&version=` | Read | The `.nupkg`. 404 when the feed does not store that version. |
+| GET | `/download?name=&version=` | Read | The `.nupkg`. `version` may also be `latest` (the version `/latest?stableOnly=true` reports) or `latest-unstable` (the highest listed, prerelease included). 404 when the feed does not store that version. |
 | POST | `/delete?name=&version=` | Delete | 200; 404 when not found. |
 | POST | `/status?name=&version=` | Delete | Body `{"listed": true\|false}`. 200. |
 | PUT, POST | `/upload`, `/upload/{fileName}` | Push | The body is the package. 201; 409 when the version exists and the feed does not allow overwrite. |
