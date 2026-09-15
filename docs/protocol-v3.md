@@ -68,6 +68,9 @@ All under `/nuget/{feed}/v3`, plus the symbol server.
   wildcard in any value. All terms must match. An exact id match on the first term ranks first, then
   ids in order.
 - **`totalDownloads` and per-version `downloads`** count successful nupkg downloads from the flat container.
+- **A feed used for one kind of package** (`Feeds:N:Purpose`) refuses a push of another kind with 400, and the
+  reason phrase names what was found in the package - a `chocolateyInstall.ps1`, a `{id}.psd1`, a `lib/` folder.
+  Copies cached from an upstream are not judged this way: what a gallery serves is the gallery's business.
 - **Symbols**: only portable PDBs are accepted; the key is the 32 hex digits of the PDB id followed by
   `ffffffff`, matched case-insensitively. A symbol package for a version that does not exist is 404; a
   symbol package pushed to the package endpoint is 400.
