@@ -184,6 +184,26 @@ public sealed class RequestLogTests(RequestLogFixture server) : IClassFixture<Re
     }
 
     /// <summary>
+    /// Behind a proxy that terminates HTTPS, with neither forwarded headers nor a public base URL configured, FiGet builds
+    /// http:// addresses that current NuGet clients refuse; the first such request logs a warning naming both remedies, once.
+    /// Found cross-checking NuGet/Home's issues (#13364, 2026-09-15).
+    /// </summary>
+    [Fact]
+    public async Task A_request_through_an_https_proxy_that_FiGet_cannot_see_warns_once()
+    {
+        using var client = server.CreateClient();
+        for (var i = 0; i < 3; i++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "nuget/public/v3/index.json");
+            request.Headers.Add("X-Forwarded-Proto", "https");
+            HttpAssert.Status(HttpStatusCode.OK, await client.SendAsync(request));
+        }
+
+        Assert.NotNull(await WaitForLineAsync("X-Forwarded-Proto: https"));
+        Assert.Single(server.Logs.Lines, l => l.Contains("X-Forwarded-Proto: https", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// A client that drops a download half way - a cancelled install, a closed laptop - is ordinary, and must not fill the log
     /// with errors and stack traces, one per disconnect. Found cross-checking other package servers' issue trackers
     /// (2026-09-15): an open question until this test.

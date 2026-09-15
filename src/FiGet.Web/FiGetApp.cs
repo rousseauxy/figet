@@ -268,6 +268,26 @@ public static class FiGetApp
             return next(context);
         });
 
+        // A proxy that terminates TLS says so in X-Forwarded-Proto. When that header is still on the request here, the
+        // forwarded-headers middleware is not running, so without a public base URL every protocol URL is built as http:// -
+        // and NuGet clients since mid-2025 refuse http:// resources under an https:// source (NuGet/Home #13364), while the
+        // site and older clients keep working. Said once, in the log, with both remedies.
+        var publicBaseUrl = app.Services.GetRequiredService<IOptions<PublicUrlOptions>>().Value.PublicBaseUrl;
+        var proxyWarned = 0;
+        app.Use((context, next) =>
+        {
+            if (proxyWarned == 0
+                && context.Request.Headers["X-Forwarded-Proto"].ToString().Contains("https", StringComparison.OrdinalIgnoreCase)
+                && (string.IsNullOrWhiteSpace(publicBaseUrl) ? context.Request.Scheme == "http" : publicBaseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+                && Interlocked.Exchange(ref proxyWarned, 1) == 0)
+            {
+                context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("FiGet.Startup").LogWarning(
+                    "Requests arrive through a proxy that terminates HTTPS (X-Forwarded-Proto: https), but FiGet builds http:// addresses for them. Current NuGet clients refuse those under an https:// source. Set FiGet:PublicBaseUrl to the https:// address, or ASPNETCORE_FORWARDEDHEADERS_ENABLED=true.");
+            }
+
+            return next(context);
+        });
+
         if (app.Services.GetRequiredService<IOptions<FiGetOptions>>().Value.CompressProtocolResponses)
         {
             app.UseWhen(
