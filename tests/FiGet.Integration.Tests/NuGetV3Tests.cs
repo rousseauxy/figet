@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using FiGet.Integration.Tests.Infrastructure;
 using FiGet.Testing;
+using Microsoft.Extensions.DependencyInjection;
 using NuGet.Common;
 using NuGet.Packaging;
 using NuGet.Protocol;
@@ -439,6 +440,53 @@ public abstract class NuGetV3Tests
         await HttpAssert.SuccessBodyAsync(served);
         Assert.Equal(pdb, await served.Content.ReadAsByteArrayAsync());
         HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/public/symbols/Lib.pdb/{new string('0', 40)}/Lib.pdb"));
+    }
+
+    /// <summary>
+    /// A second symbol package for a version follows the feed's overwrite setting, as the package does: refused where
+    /// overwriting is not allowed, and where it is, the new symbols replace the old ones and the old file is gone. Found
+    /// cross-checking other package servers' issue trackers (BaGet #688).
+    /// </summary>
+    [Fact]
+    public async Task A_second_symbol_package_follows_the_overwrite_setting()
+    {
+        var first = TestPackages.PortablePdb();
+        var second = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "FiGet.Integration.Tests.pdb"));
+        Assert.NotEqual(PortablePdbKey(first), PortablePdbKey(second));
+        using var client = server.CreateClient();
+
+        foreach (var (feed, overwrite) in new[] { ("public", false), ("overwrite", true) })
+        {
+            var id = FiGetServerFixture.UniqueId("Symbols.Twice");
+            using (var package = TestPackages.Create(id, "1.0.0"))
+            {
+                HttpAssert.Status(HttpStatusCode.Created, await PushRawAsync(feed, package, FiGetServerFixture.AdminToken));
+            }
+
+            using (var symbols = TestPackages.CreateSymbols(id, "1.0.0", first, "Lib.pdb"))
+            {
+                HttpAssert.Status(HttpStatusCode.Created, await PushRawAsync(feed, symbols, FiGetServerFixture.AdminToken, "symbolpublish"));
+            }
+
+            using (var again = TestPackages.CreateSymbols(id, "1.0.0", second, "Lib.pdb"))
+            {
+                HttpAssert.Status(overwrite ? HttpStatusCode.Created : HttpStatusCode.Conflict, await PushRawAsync(feed, again, FiGetServerFixture.AdminToken, "symbolpublish"));
+            }
+
+            var kept = overwrite ? second : first;
+            var gone = overwrite ? first : second;
+            var served = await client.GetAsync($"nuget/{feed}/symbols/Lib.pdb/{PortablePdbKey(kept)}/Lib.pdb");
+            HttpAssert.Status(HttpStatusCode.OK, served);
+            Assert.Equal(kept, await served.Content.ReadAsByteArrayAsync());
+            HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/{feed}/symbols/Lib.pdb/{PortablePdbKey(gone)}/Lib.pdb"));
+
+            // Not only unlisted: the replaced PDB's file is removed from storage.
+            await using var scope = server.Services.CreateAsyncScope();
+            var feedKey = (await scope.ServiceProvider.GetRequiredService<FiGet.Application.Ports.IFeedStore>().FindAsync(feed, CancellationToken.None))!.Key;
+            await using var file = await scope.ServiceProvider.GetRequiredService<FiGet.Application.Ports.IPackageStorage>()
+                .OpenSymbolAsync(new FiGet.Application.Ports.SymbolStorageKey(feedKey, "lib.pdb", PortablePdbKey(gone)), CancellationToken.None);
+            Assert.True(file is null, $"The {(overwrite ? "replaced" : "refused")} PDB's file is in storage.");
+        }
     }
 
     [Fact]

@@ -135,6 +135,14 @@ public sealed class PackageIngestionService(
             return new PushResult(PushOutcome.NotFound, $"{indexed.Id} {normalized} must be pushed before its symbols.", indexed.Id, normalized);
         }
 
+        // The same rule as the package: on a feed that does not allow overwriting, a second build's symbols are refused, so
+        // the symbols served for a version stay the ones built with the package that feed kept (BaGet #688).
+        var previous = await store.GetSymbolFilesAsync(version.Key, cancellationToken);
+        if (previous.Count > 0 && !feed.AllowOverwrite)
+        {
+            return new PushResult(PushOutcome.Conflict, $"Symbols for {indexed.Id} {normalized} already exist in feed '{feed.Name}'.", indexed.Id, normalized);
+        }
+
         // Each PDB is spooled to a temporary file that deletes itself, and the bytes actually read are counted against
         // the limit rather than the length the archive declares. Nothing is held in memory: a symbol package can carry
         // several PDBs of hundreds of megabytes, and holding them all until the last was checked was the review's S6.3.
@@ -184,7 +192,18 @@ public sealed class PackageIngestionService(
             }
 
             await store.ReplaceSymbolFilesAsync(version.Key, pdbs.Select(p => p.Row).ToList(), cancellationToken);
-            return new PushResult(PushOutcome.Created, $"Symbols for {indexed.Id} {normalized} stored.", indexed.Id, normalized);
+
+            // The files of the symbols replaced, unless the new set or another version still names the same file.
+            foreach (var old in previous)
+            {
+                if (!pdbs.Any(p => p.Row.FileNameLower == old.FileNameLower && p.Row.SymbolKeyLower == old.SymbolKeyLower)
+                    && await store.FindSymbolFileAsync(feed.Key, old.FileNameLower, old.SymbolKeyLower, cancellationToken) is null)
+                {
+                    await storage.DeleteSymbolAsync(new SymbolStorageKey(feed.Key, old.FileNameLower, old.SymbolKeyLower), cancellationToken);
+                }
+            }
+
+            return new PushResult(previous.Count > 0 ? PushOutcome.Replaced : PushOutcome.Created, $"Symbols for {indexed.Id} {normalized} stored.", indexed.Id, normalized);
         }
         finally
         {
