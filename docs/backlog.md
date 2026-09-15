@@ -194,23 +194,15 @@ FiGet does not have. What applies is below, in this section and under *Soon* and
 
 ### Protocol and connector gaps from the cross-check
 
-- **Symbol pushes ignore `AllowOverwrite` and leave replaced PDBs behind** (BaGet #688). A second build's snupkg answers
-  201 on a feed that refuses its nupkg with 409, so the symbols stop matching the package. Refuse when symbol files exist
-  and overwrite is off; delete files no row references when replacing.
-- **`Packages(Id=,Version=)` compares the version as text.** `Packages(Id='X',Version='1.0')` is 404 for a stored 1.0.0
-  while `package/X/1.0` downloads; PackageManagement's v2 provider and `nuget install -Version` send the version as typed.
-  Normalise the URL version, keep the original spelling as a fallback.
-- **`GET /nuget/{feed}/package/{id}` without a version is not served.** nuget.org's v2 and the reference server answer it
-  with the latest stable; a script that fetched "the latest" that way gets 405. Map it on both v2 roots: latest stable,
-  else absolute latest, as a 302 to the versioned URL; on a proxy feed the upstream's latest.
-- **`version=latest` and `latest-unstable` on the management download.** Documented by the reference API; FiGet answers
-  404 "not found". Map them for `/download` from the rule `/latest` uses, and document it in `docs/protocol-management.md`.
-- **An upstream credential cannot carry a user name.** The client sends the fixed user name `figet`, which galleries that
-  read only the key accept and a Basic-protected feed (Artifactory, Nexus, another instance of the reference server)
-  refuses. Accept `user:password` in the secret, a bare key unchanged.
-- **API access tokens, from the pre-publication review:** measure the 24-hour cap from `iat` (or `nbf`) to `exp` when the
-  token carries it, not only from now, so a token minted for 30 hours is refused for all of its life; validate a refused
-  token once per request instead of again for the audit reason; forget the issuer metadata of a deleted provider.
+All done 2026-09-15 (docs/status.md, "The cross-check's Soon items"):
+
+- ~~**Symbol pushes ignored `AllowOverwrite` and left replaced PDBs behind**~~ (BaGet #688).
+- ~~**`Packages(Id=,Version=)` compared the version as text.**~~
+- ~~**`GET /nuget/{feed}/package/{id}` without a version was not served.**~~
+- ~~**`version=latest` and `latest-unstable` on the management download.**~~
+- ~~**An upstream credential could not carry a user name.**~~ `user:password` in the secret now sends that user.
+- ~~**API access tokens, from the pre-publication review:**~~ the 24-hour cap over the token's whole life, one check of a
+  refused token per request, the keys of a removed issuer dropped.
 
 ### When the repository goes public: split validation from publishing
 

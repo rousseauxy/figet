@@ -126,7 +126,8 @@ What a token must be, checked on every request (`ApiTokenValidator`):
   issuer cannot be reached, the keys fetched before keep checking tokens.
 - **Audience**: one of the provider's audiences, which are required: with a shared issuer (gitlab.com, GitHub Actions)
   anything else would accept anyone's token.
-- **Lifetime**: an expiry is required, one minute of clock skew, and a token valid for more than 24 hours is refused.
+- **Lifetime**: an expiry is required, one minute of clock skew, and a token issued for more than 24 hours - measured from
+  its `iat` or `nbf`, else from now - is refused for the whole of its life.
 - **Not an ID token**: a token with a `nonce` is a sign-in's ID token and is refused, since Entra and Authentik put the
   client id in the audience of both.
 - **Required claims**: every `name=value` rule the provider lists, such as `ref_protected=true`.

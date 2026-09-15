@@ -3082,3 +3082,35 @@ Seen once during these runs: `ShareFolderChoiceTests.A_directory_created_on_a_fo
 failed in one full run and passed alone and in the next two full runs. Not investigated yet.
 
 Suites: unit 213, integration 529, on SQLite and SQL Server.
+
+## The cross-check's Soon items - 2026-09-15
+
+The *Soon* list from the issue cross-check and the pre-publication review (`docs/backlog.md`). Every change below has a test
+that was run failing against the code without it, except where noted.
+
+- **`Packages(Id=,Version=)` by the version as typed.** `'1.1'` and `'1.1.0.0'` find a stored 1.1.0, as the download
+  routes already did; the published spelling is tried first. `NuGetV2Tests.A_single_package_is_addressable_by_id_and_version`.
+- **`GET /package/{id}` without a version** redirects (302) to the latest stable version, or the newest prerelease when
+  there is no stable one, on both v2 roots, from the merged list on a proxy feed.
+  `NuGetV2Tests.A_download_without_a_version_redirects_to_the_latest`.
+- **`version=latest` and `latest-unstable`** on `/api/packages/{feed}/download`, from the rule `/latest` uses; download
+  only. `PackageManagementTests.A_download_by_latest_or_latest_unstable_serves_that_version`; the route table in
+  `docs/protocol-management.md` says so.
+- **An upstream secret written as `user:password`** sends that user name (split at the first colon); a bare key keeps
+  `figet`. `UpstreamCredentialTests` checks both against a stub gallery that records the Basic credentials; documented in
+  `docs/configuration.md`.
+- **A second symbol package for a version** is 409 on a feed that does not allow overwriting; where it does, it replaces
+  the symbols and deletes the old PDB file unless another row names it. `NuGetV3Tests.A_second_symbol_package_follows_the_overwrite_setting`
+  checks the answer, which PDB the symbol server serves and that the replaced file is gone from storage; each half was
+  falsified on its own.
+- **API access tokens:** the 24-hour cap is measured over the life the token was issued for (from `iat` or `nbf`), so a
+  token minted for 30 hours is refused seven hours in - Fable's probe had recorded it passing and now asserts 401, with a
+  23-hour token passing. A refused token is checked once per request: the audit description reuses the first answer
+  instead of validating again. The issuer keys of a provider that is deleted or stops accepting tokens are dropped on the
+  next token check. The last two have no test of their own; the token suites pass with them.
+- **A race in the issuer key fetch,** found by `Concurrent_first_requests_share_one_fetch_of_the_issuer_metadata` failing
+  once under a loaded full run: a request that found no keys could reach the lock just after the shared fetch finished and
+  start a second one. The cache is looked at again under the lock; two full runs since passed.
+
+Suites: unit 213, integration 535, on SQLite and SQL Server. The credential test now takes about 20 seconds: it asks three
+upstreams in turn, each answering 401.
