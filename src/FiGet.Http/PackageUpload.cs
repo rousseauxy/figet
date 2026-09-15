@@ -36,6 +36,48 @@ public static class PackageUpload
 {
     private const int BufferSize = 81920;
 
+    /// <summary>
+    /// Reads and discards the body of a push that is being refused, up to the package limit, before the refusal is sent. A
+    /// NuGet client with a stored user name and password sends the push without credentials first and expects 401; left
+    /// unread, the body is drained by the server with a 30 MB cap and a 5-second timeout, and a larger or slower upload has
+    /// its connection reset - the client never sees the 401 and never retries with credentials. The anonymous rate limit
+    /// already bounds how often a stranger can make the server read.
+    /// </summary>
+    public static async Task DiscardRefusedBodyAsync(HttpRequest request, IResult refusal, UploadOptions options, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(options);
+        if (refusal is not IStatusCodeHttpResult { StatusCode: StatusCodes.Status401Unauthorized or StatusCodes.Status403Forbidden }
+            || (request.ContentLength is null or 0 && !request.Headers.TransferEncoding.Any(v => v?.Contains("chunked", StringComparison.OrdinalIgnoreCase) == true)))
+        {
+            return;
+        }
+
+        if (request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } sizeFeature)
+        {
+            sizeFeature.MaxRequestBodySize = options.MaxPackageSizeBytes + (1024 * 1024);
+        }
+
+        try
+        {
+            var buffer = new byte[BufferSize];
+            long total = 0;
+            int read;
+            while ((read = await request.Body.ReadAsync(buffer, cancellationToken)) > 0)
+            {
+                total += read;
+                if (total > options.MaxPackageSizeBytes + (1024 * 1024))
+                {
+                    return;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or BadHttpRequestException or OperationCanceledException)
+        {
+            // The client went away or sent more than a package may be: the refusal is sent, or not, either way.
+        }
+    }
+
     public static async Task<FileStream?> ReadAsync(HttpRequest request, UploadOptions options, CancellationToken cancellationToken)
     {
         var sizeFeature = request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();

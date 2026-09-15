@@ -467,6 +467,7 @@ public static class NuGetV3Endpoints
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Push, cancellationToken);
         if (error is not null)
         {
+            await PackageUpload.DiscardRefusedBodyAsync(http.Request, error, upload.Value, cancellationToken);
             return error;
         }
 
@@ -492,6 +493,7 @@ public static class NuGetV3Endpoints
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Push, cancellationToken);
         if (error is not null)
         {
+            await PackageUpload.DiscardRefusedBodyAsync(http.Request, error, upload.Value, cancellationToken);
             return error;
         }
 

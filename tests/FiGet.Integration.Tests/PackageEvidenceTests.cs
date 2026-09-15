@@ -265,3 +265,39 @@ public sealed class PublicBaseUrlProtocolTests(HttpsPublicAddressServerFixture s
         Assert.DoesNotContain(server.BaseAddress.Authority, service, StringComparison.Ordinal);
     }
 }
+
+/// <summary>
+/// A push whose client authenticates by challenge: the first attempt carries no credentials and a large body, gets 401, and
+/// is sent again with Basic credentials. Found cross-checking Gitea's NuGet issues (#21864, #33671; 2026-09-15): past 30 MB,
+/// or after 5 seconds, the unread body of the refused attempt had the connection reset, and the client never saw the 401.
+/// </summary>
+public sealed class ChallengedPushTests(SqliteServerFixture server) : IClassFixture<SqliteServerFixture>
+{
+    [Fact]
+    public async Task A_large_push_answering_a_challenge_succeeds_and_a_refused_one_is_told_why()
+    {
+        var id = FiGetServerFixture.UniqueId("Evidence.Challenged");
+        var noise = new byte[40 * 1024 * 1024];
+        Random.Shared.NextBytes(noise);
+        var bytes = TestPackages.Create(id, "1.0.0", b => b.AddContent("tools/noise.bin", noise)).ToArray();
+
+        using (var challenged = new HttpClient(new HttpClientHandler { Credentials = new NetworkCredential("ci", FiGetServerFixture.AdminToken), PreAuthenticate = false }) { BaseAddress = server.BaseAddress, Timeout = TimeSpan.FromMinutes(2) })
+        {
+            foreach (var (path, version) in new[] { ("nuget/public/v3/publish", "1.0.0"), ("nuget/public/", "2.0.0") })
+            {
+                var body = version == "1.0.0" ? bytes : TestPackages.Create(id, version, b => b.AddContent("tools/noise.bin", noise)).ToArray();
+                using var content = new MultipartFormDataContent();
+                content.Add(new StreamContent(new MemoryStream(body)) { Headers = { ContentType = new MediaTypeHeaderValue("application/octet-stream") } }, "package", "package.nupkg");
+                using var request = new HttpRequestMessage(HttpMethod.Put, path) { Content = content };
+                request.Headers.TransferEncodingChunked = true;
+                HttpAssert.Status(HttpStatusCode.Created, await challenged.SendAsync(request));
+            }
+        }
+
+        using var wrongKey = new HttpClient { BaseAddress = server.BaseAddress, Timeout = TimeSpan.FromMinutes(2) };
+        wrongKey.DefaultRequestHeaders.Add("X-NuGet-ApiKey", "figet_not_a_real_key");
+        using var refusedContent = new MultipartFormDataContent();
+        refusedContent.Add(new StreamContent(new MemoryStream(bytes)) { Headers = { ContentType = new MediaTypeHeaderValue("application/octet-stream") } }, "package", "package.nupkg");
+        HttpAssert.Status(HttpStatusCode.Forbidden, await wrongKey.PutAsync("nuget/public/v3/publish", refusedContent));
+    }
+}
