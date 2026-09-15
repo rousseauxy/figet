@@ -550,6 +550,59 @@ public abstract partial class AssetDirectoryTests
     }
 
     /// <summary>
+    /// Asked for 2026-09-15: the listing comes first and the folder's actions under it, rows can be ticked and deleted
+    /// together, and every delete asks in the page's own dialog. One post carries every ticked path; a folder goes with its
+    /// contents, and what was not ticked stays.
+    /// </summary>
+    [Fact]
+    public async Task Ticked_files_and_folders_are_deleted_together_from_under_the_listing()
+    {
+        var folder = Unique();
+        using (var admin = server.CreateClient(FiGetServerFixture.AdminToken))
+        {
+            foreach (var name in new[] { "a.txt", "b.txt", "keep.txt", "sub/inner.txt" })
+            {
+                HttpAssert.Status(HttpStatusCode.Created, await admin.PutAsync($"endpoints/files/content/{folder}/{name}", new ByteArrayContent([1])));
+            }
+        }
+
+        using var browser = CreateBrowser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(browser));
+        var page = await HttpAssert.SuccessBodyAsync(await browser.GetAsync($"assets/files?path={folder}"));
+
+        // The list first, then the bulk button, then the folder's actions.
+        var table = page.IndexOf("<table class=\"fg-table\">", StringComparison.Ordinal);
+        var bulk = page.IndexOf("<form id=\"asset-bulk-delete\"", StringComparison.Ordinal);
+        var actions = page.IndexOf("<div class=\"fg-asset-actions\">", StringComparison.Ordinal);
+        Assert.True(table > 0 && bulk > table && actions > bulk, $"Order was table {table}, bulk {bulk}, actions {actions}.");
+        Assert.Contains($"name=\"path\" value=\"{folder}/a.txt\" form=\"asset-bulk-delete\"", page, StringComparison.Ordinal);
+        Assert.Contains("data-confirm=\"Delete a.txt?\" data-confirm-button=\"Delete\"", page, StringComparison.Ordinal);
+
+        var bulkForm = page[bulk..page.IndexOf("</form>", bulk, StringComparison.Ordinal)];
+        var fields = new List<KeyValuePair<string, string>>
+        {
+            new("__RequestVerificationToken", WebUtility.HtmlDecode(Regex.Match(bulkForm, "name=\"__RequestVerificationToken\"[^>]*value=\"(?<v>[^\"]+)\"").Groups["v"].Value)),
+            new("returnUrl", $"/assets/files?path={folder}"),
+            new("path", $"{folder}/a.txt"),
+            new("path", $"{folder}/b.txt"),
+            new("path", $"{folder}/sub"),
+            new("path", $"{folder}/not-there.txt"),
+        };
+        using (var content = new FormUrlEncodedContent(fields))
+        {
+            HttpAssert.Status(HttpStatusCode.Redirect, await browser.PostAsync("admin/assets/files/delete", content));
+        }
+
+        using var reader = server.CreateClient();
+        foreach (var gone in new[] { "a.txt", "b.txt", "sub/inner.txt" })
+        {
+            HttpAssert.Status(HttpStatusCode.NotFound, await reader.GetAsync($"endpoints/files/content/{folder}/{gone}"));
+        }
+
+        HttpAssert.Status(HttpStatusCode.OK, await reader.GetAsync($"endpoints/files/content/{folder}/keep.txt"));
+    }
+
+    /// <summary>
     /// The admin buttons are plain form posts, which a browser will send from any page the admin has open.
     /// The antiforgery token is what makes such a post come from this server's own page.
     /// </summary>

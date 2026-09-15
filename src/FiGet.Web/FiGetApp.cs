@@ -1028,12 +1028,18 @@ public static class FiGetApp
         {
             var form = await http.Request.ReadFormAsync(cancellationToken);
             var target = await feeds.FindAsync(directory, cancellationToken);
-            if (target is { Kind: FeedKind.Assets }
-                && AssetPath.TryParse(form["path"].ToString(), out var path)
-                && !path.IsRoot
-                && await assets.DeleteAsync(target, path, recursive: true, cancellationToken) == AssetOutcome.Deleted)
+
+            // One path from a row's own button, or every path ticked for the bulk button under the list. Each is its own delete
+            // and its own audit entry; a path that is not there any more is skipped rather than failing the others.
+            foreach (var posted in form["path"].Distinct(StringComparer.Ordinal))
             {
-                audit.Record(http, "asset.delete", path.Value, $"directory={target.Name} recursive=True");
+                if (target is { Kind: FeedKind.Assets }
+                    && AssetPath.TryParse(posted, out var path)
+                    && !path.IsRoot
+                    && await assets.DeleteAsync(target, path, recursive: true, cancellationToken) == AssetOutcome.Deleted)
+                {
+                    audit.Record(http, "asset.delete", path.Value, $"directory={target.Name} recursive=True");
+                }
             }
 
             return Back(form["returnUrl"].ToString(), $"/assets/{Uri.EscapeDataString(directory)}");

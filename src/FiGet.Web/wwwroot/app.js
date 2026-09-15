@@ -532,6 +532,49 @@
         dialog.querySelector("[data-dialog-close]").focus();
     }, true);
 
+    // ── Picking several rows ─────────────────────────────────────────────────────────────────────
+    // A header checkbox with data-select-all="form id" ticks every row checkbox belonging to that form, and a button with
+    // data-needs-selection="field" is enabled only while at least one of its form's checkboxes of that field is ticked.
+
+    function refreshSelection() {
+        var buttons = document.querySelectorAll("[data-needs-selection]");
+        for (var i = 0; i < buttons.length; i++) {
+            var button = buttons[i];
+            button.disabled = !button.form || selectedCount(button.form, button.getAttribute("data-needs-selection")) === 0;
+        }
+
+        var headers = document.querySelectorAll("input[data-select-all]");
+        for (var h = 0; h < headers.length; h++) {
+            var boxes = document.querySelectorAll("input[type=checkbox][form='" + headers[h].getAttribute("data-select-all") + "']");
+            var ticked = 0;
+            for (var b = 0; b < boxes.length; b++) {
+                if (boxes[b].checked) {
+                    ticked++;
+                }
+            }
+
+            headers[h].checked = boxes.length > 0 && ticked === boxes.length;
+            headers[h].indeterminate = ticked > 0 && ticked < boxes.length;
+        }
+    }
+
+    document.addEventListener("change", function (event) {
+        var target = event.target;
+        if (target.hasAttribute && target.hasAttribute("data-select-all")) {
+            var boxes = document.querySelectorAll("input[type=checkbox][form='" + target.getAttribute("data-select-all") + "']");
+            for (var i = 0; i < boxes.length; i++) {
+                boxes[i].checked = target.checked;
+            }
+        }
+
+        if (target.type === "checkbox") {
+            refreshSelection();
+        }
+    });
+
+    refreshSelection();
+    window.addEventListener("pageshow", refreshSelection);
+
     // ── Uploading into an asset directory ────────────────────────────────────────────────────────
     // One request per file, one file at a time, the file itself as the body: that is what lets a gigabyte
     // installer through without the browser or the server holding it in memory, and it is the same way a

@@ -1074,6 +1074,15 @@ h2 + .fg-panel { margin-top: 0.5rem; }
 .fg-confirm { width: min(26rem, calc(100vw - 2rem)); }
 .fg-confirm-text { margin: 0; line-height: 1.5; }
 
+/* The asset listing's row checkboxes, and the bulk button under the table; the actions for the folder below both. */
+/* 1% with no wrapping: the column shrinks to its checkbox instead of taking a share of the table's width. More specific than
+   the rule giving a table's first cell room for a name, which would otherwise make it 8rem wide. */
+.fg-table tr > :is(td, th).fg-cell-check { width: 1%; min-width: 0; white-space: nowrap; padding-right: 0.25rem; }
+/* The name after it keeps the room a first cell gets, which it no longer is. */
+.fg-table td.fg-cell-check + td { white-space: normal; overflow-wrap: anywhere; min-width: 8rem; }
+.fg-bulk-actions { margin: 0.6rem 0 0; }
+.fg-bulk-actions .fg-btn[disabled] { opacity: 0.45; cursor: default; }
+.fg-asset-actions { margin-top: 1.4rem; }
 
 /* The phone menu: hidden on a wide screen, where the column above does the job. */
 .fg-admin-menu { display: none; }

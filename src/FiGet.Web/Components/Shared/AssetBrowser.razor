@@ -58,15 +58,104 @@
     <button type="button" class="fg-copy" data-copy="@BaseUrl" title="Copy this URL" aria-label="Copy the download URL of this folder">Copy</button>
 </p>
 
-<Accordion Id="download" Title="Download from a script" Group="asset-actions">
-    <Instructions Lines="@FiGet.Domain.Feeds.InstructionTemplates.Render(Feed.FileInstructions, FiGet.Domain.Feeds.InstructionTemplates.DefaultFiles, new Dictionary<string, string> { ["directory"] = Feed.Name, ["folderUrl"] = BaseUrl })" />
-</Accordion>
-
 @if (missing)
 {
     <p class="fg-empty">There is no folder <code>@Folder.Value</code> in this directory.</p>
     return;
 }
+
+<p class="fg-result-count">
+    @FolderCount folder@(FolderCount == 1 ? "" : "s"), @FileCount file@(FileCount == 1 ? "" : "s").
+    @if (items.Count > 0)
+    {
+        <span>Download @(Folder.IsRoot ? "everything" : "this folder") as <a href="@ExportLink("zip")" download>.zip</a> or <a href="@ExportLink("tgz")" download>.tar.gz</a>.</span>
+    }
+</p>
+
+@if (items.Count == 0)
+{
+    <p class="fg-empty">This folder is empty.</p>
+}
+else
+{
+    <div class="fg-table-wrap">
+        <table class="fg-table">
+            <thead>
+                <tr>
+                    @if (Level >= FeedAccessLevel.Publish && AssetService.AcceptsWrites(Feed))
+                    {
+                        <th class="fg-cell-check"><input type="checkbox" data-select-all="asset-bulk-delete" title="Select everything in this folder" aria-label="Select everything in this folder" /></th>
+                    }
+                    <th>Name</th>
+                    <th>Size</th>
+                    <th>Modified</th>
+                    <th>Type</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in items)
+                {
+                    <tr>
+                        @if (Level >= FeedAccessLevel.Publish && AssetService.AcceptsWrites(Feed))
+                        {
+                            @* The checkbox belongs to the bulk form under the table, by its form attribute: a table row cannot hold a
+                               form of its own around the row's own delete form. *@
+                            <td class="fg-cell-check"><input type="checkbox" name="path" value="@item.Path" form="asset-bulk-delete" aria-label="Select @item.Name" /></td>
+                        }
+                        @if (item.IsDirectory)
+                        {
+                            AssetPath.TryParse(item.Path, out var folder);
+                            <td><a href="@FolderLink(folder)">@item.Name/</a></td>
+                            <td class="fg-num">@Display.None</td>
+                            <td class="fg-num">@Display.Date(item.ModifiedUtc)</td>
+                            <td><span class="fg-badge fg-badge-plain">Folder</span></td>
+                        }
+                        else
+                        {
+                            <td><a href="@ContentUrl(item)" title="Download @item.Name">@Display.BreakableId(item.Name)</a></td>
+                            <td class="fg-num">@Display.Size(item.Size)</td>
+                            <td class="fg-num">@Display.Date(item.ModifiedUtc)</td>
+                            <td class="fg-small fg-muted">@(item.ContentType ?? AssetContentTypes.Resolve(null, item.Name))</td>
+                        }
+                        <td class="fg-cell-actions">
+                            @if (!item.IsDirectory)
+                            {
+                                <button type="button" class="fg-copy" data-copy="@ContentUrl(item)" title="Copy the download URL" aria-label="Copy the download URL of @item.Name">Copy URL</button>
+                            }
+                            @if (Level >= FeedAccessLevel.Publish && AssetService.AcceptsWrites(Feed))
+                            {
+                                <form method="post" action="/admin/assets/@Uri.EscapeDataString(Feed.Name)/delete"
+                                      data-confirm="@(item.IsDirectory ? $"Delete the folder {item.Name} and everything in it?" : $"Delete {item.Name}?")" data-confirm-button="Delete">
+                                    <AntiforgeryToken />
+                                    <input type="hidden" name="path" value="@item.Path" />
+                                    <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                                    <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Delete</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (Level >= FeedAccessLevel.Publish && AssetService.AcceptsWrites(Feed))
+    {
+        <form id="asset-bulk-delete" class="fg-bulk-actions" method="post" action="/admin/assets/@Uri.EscapeDataString(Feed.Name)/delete"
+              data-confirm="Delete the selected items? A folder goes with everything in it." data-confirm-button="Delete" data-confirm-count="path">
+            <AntiforgeryToken />
+            <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+            <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger" data-needs-selection="path">Delete selected</button>
+        </form>
+    }
+}
+
+@* What to do with this folder, under what is in it: the listing is what a reader comes for. *@
+<div class="fg-asset-actions">
+<Accordion Id="download" Title="Download from a script" Group="asset-actions">
+    <Instructions Lines="@FiGet.Domain.Feeds.InstructionTemplates.Render(Feed.FileInstructions, FiGet.Domain.Feeds.InstructionTemplates.DefaultFiles, new Dictionary<string, string> { ["directory"] = Feed.Name, ["folderUrl"] = BaseUrl })" />
+</Accordion>
 
 @if (Level >= FeedAccessLevel.Manage)
 {
@@ -162,73 +251,7 @@
         </form>
     </Accordion>
 }
-
-<p class="fg-result-count">
-    @FolderCount folder@(FolderCount == 1 ? "" : "s"), @FileCount file@(FileCount == 1 ? "" : "s").
-    @if (items.Count > 0)
-    {
-        <span>Download @(Folder.IsRoot ? "everything" : "this folder") as <a href="@ExportLink("zip")" download>.zip</a> or <a href="@ExportLink("tgz")" download>.tar.gz</a>.</span>
-    }
-</p>
-
-@if (items.Count == 0)
-{
-    <p class="fg-empty">This folder is empty.</p>
-}
-else
-{
-    <div class="fg-table-wrap">
-        <table class="fg-table">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Size</th>
-                    <th>Modified</th>
-                    <th>Type</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var item in items)
-                {
-                    <tr>
-                        @if (item.IsDirectory)
-                        {
-                            AssetPath.TryParse(item.Path, out var folder);
-                            <td><a href="@FolderLink(folder)">@item.Name/</a></td>
-                            <td class="fg-num">@Display.None</td>
-                            <td class="fg-num">@Display.Date(item.ModifiedUtc)</td>
-                            <td><span class="fg-badge fg-badge-plain">Folder</span></td>
-                        }
-                        else
-                        {
-                            <td><a href="@ContentUrl(item)" title="Download @item.Name">@Display.BreakableId(item.Name)</a></td>
-                            <td class="fg-num">@Display.Size(item.Size)</td>
-                            <td class="fg-num">@Display.Date(item.ModifiedUtc)</td>
-                            <td class="fg-small fg-muted">@(item.ContentType ?? AssetContentTypes.Resolve(null, item.Name))</td>
-                        }
-                        <td class="fg-cell-actions">
-                            @if (!item.IsDirectory)
-                            {
-                                <button type="button" class="fg-copy" data-copy="@ContentUrl(item)" title="Copy the download URL" aria-label="Copy the download URL of @item.Name">Copy URL</button>
-                            }
-                            @if (Level >= FeedAccessLevel.Publish && AssetService.AcceptsWrites(Feed))
-                            {
-                                <form method="post" action="/admin/assets/@Uri.EscapeDataString(Feed.Name)/delete"
-                                      data-confirm="@(item.IsDirectory ? $"Delete the folder {item.Name} and everything in it?" : $"Delete {item.Name}?")">
-                                    <AntiforgeryToken />
-                                    <input type="hidden" name="path" value="@item.Path" />
-                                    <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                                    <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Delete</button>
-                                </form>
-                            }
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
-}
+</div>
 
 @code {
     private IReadOnlyList<FiGet.Domain.Entities.AssetItem> items = [];
