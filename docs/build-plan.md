@@ -135,9 +135,11 @@ every client auto-detects correctly:
 | `/nuget/{feed}/v3/index.json` | dotnet, nuget.exe, PSResourceGet in v3 mode, PackageManagement's NuGet provider 3.0.0.1 (bundled with PackageManagement 1.4.8.1) | URI ends with `/v3/index.json`; the provider reads the service index `version` |
 
 `/nuget/{feed}/` and `/nuget/{feed}/api/v2` are the **same** v2 root; implement once, route
-twice. Also serve the PSResourceGet "NuGet.Server" shape: a URI ending in `/nuget` is treated
-by PSResourceGet as NuGet.Server and queried with `Packages()?$filter=Id eq '…'`; support that
-by making `/nuget/{feed}/nuget` an alias too.
+twice. ~~Also serve the PSResourceGet "NuGet.Server" shape by making `/nuget/{feed}/nuget` an
+alias.~~ Dropped 2026-09-15: PSResourceGet's NuGet.Server mode cannot find exact versions
+(PSResourceGet #1206, #1896), so the alias would lead clients into a broken mode. A feed named
+`nuget` is warned about on its settings page, and `Packages(Id,Version)/Download` redirects to the
+package download for a client already in that mode.
 
 ### 4.1 URL compatibility contract
 

@@ -232,6 +232,37 @@ public abstract class NuGetV2Tests
         Assert.Contains($"\"version\":\"{packed}\"", registration, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A feed named <c>nuget</c> is warned about on its settings page, since PSResourceGet takes its address for a NuGet.Server
+    /// feed; and NuGet.Server's download address, which that mode uses, redirects to the package download. Found
+    /// cross-checking PSResourceGet's issues (#1206, #1896; 2026-09-15).
+    /// </summary>
+    [Fact]
+    public async Task A_feed_named_nuget_is_warned_about_and_the_NuGet_Server_download_address_redirects()
+    {
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            var feeds = scope.ServiceProvider.GetRequiredService<FiGet.Application.Ports.IFeedStore>();
+            if (await feeds.FindAsync("nuget", CancellationToken.None) is null)
+            {
+                Assert.True(await feeds.CreateAsync(new FiGet.Domain.Entities.Feed { Name = "nuget", NameLower = "nuget", Kind = FiGet.Domain.Entities.FeedKind.Curated, AnonymousRead = true, CreatedUtc = DateTime.UtcNow }, CancellationToken.None));
+            }
+        }
+
+        using var admin = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = true, CookieContainer = new System.Net.CookieContainer() }) { BaseAddress = server.BaseAddress };
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(admin));
+        Assert.Contains("NuGet.Server feed", await HttpAssert.SuccessBodyAsync(await admin.GetAsync("/admin/feeds/nuget")), StringComparison.Ordinal);
+        Assert.DoesNotContain("NuGet.Server feed", await HttpAssert.SuccessBodyAsync(await admin.GetAsync("/admin/feeds/public")), StringComparison.Ordinal);
+
+        var id = FiGetServerFixture.UniqueId("V2.ServerDownload");
+        await SeedAsync("public", id);
+        using var client = server.CreateClient();
+        var redirect = await client.GetAsync($"nuget/public/Packages(Id='{id}',Version='1.1.0')/Download");
+        HttpAssert.Status(HttpStatusCode.Redirect, redirect);
+        Assert.EndsWith($"/nuget/public/package/{id}/1.1.0", redirect.Headers.Location!.OriginalString, StringComparison.Ordinal);
+        HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync(redirect.Headers.Location));
+    }
+
     [Fact]
     public async Task Search_finds_by_tag_the_way_Find_Module_asks()
     {

@@ -23,6 +23,10 @@ else
         }
     </p>
     <h1>@(Section ?? Feed.Name)</h1>
+    @if (Section is null && FeedNames.ClientWarning(Feed.Name, Feed.Kind) is { } warning)
+    {
+        <div class="fg-alert fg-alert-warn" role="note">@warning</div>
+    }
     @if (Lede is not null)
     {
         <p class="fg-lede">@Lede</p>

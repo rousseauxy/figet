@@ -107,6 +107,11 @@ public static class NuGetV2Endpoints
         group.MapGet("/package/{id}/{version}", DownloadAsync);
         group.MapGet("/package/{id}", LatestDownloadAsync);
 
+        // NuGet.Server's download address, which PSResourceGet uses for a feed it takes for NuGet.Server (an address ending
+        // in /nuget): sent on to the package download.
+        group.MapGet("/Packages(Id='{id}',Version='{version}')/Download", (HttpContext http, string feed, string id, string version) =>
+            Results.Redirect($"{Root(http, feed)}/package/{Uri.EscapeDataString(id)}/{Uri.EscapeDataString(version)}"));
+
         // nuget.exe pushes to the source URL itself, or to {source}/package when the source ends in /api/v2.
         group.MapPut("", PushAsync).DisableAntiforgery();
         group.MapPut("/package", PushAsync).DisableAntiforgery();
