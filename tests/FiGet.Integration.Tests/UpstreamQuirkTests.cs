@@ -93,16 +93,59 @@ public sealed class UpstreamQuirkTests : IDisposable
         Assert.Equal(["1.0.0", "2.0.0"], catalog.Versions.Select(v => v.Version.ToNormalizedString()).ToArray());
     }
 
+    /// <summary>
+    /// A v2 gallery publishes each package's hash. A download that matches it is served; one that does not - truncated,
+    /// altered, a different file behind the name - is refused, so it is never cached as that version. Backlog item from the
+    /// 2026-09-14 review.
+    /// </summary>
+    [Fact]
+    public async Task A_v2_download_is_checked_against_the_published_hash()
+    {
+        using var good = TestPackages.Create("Quirk.Hash", "1.0.0");
+        using var other = TestPackages.Create("Quirk.Hash", "2.0.0");
+        var goodBytes = good.ToArray();
+        var published = new Dictionary<string, string>
+        {
+            ["1.0.0"] = Convert.ToBase64String(System.Security.Cryptography.SHA512.HashData(goodBytes)),
+            ["2.0.0"] = Convert.ToBase64String(System.Security.Cryptography.SHA512.HashData(goodBytes)),
+        };
+        var served = new Dictionary<string, byte[]> { ["1.0.0"] = goodBytes, ["2.0.0"] = other.ToArray() };
+
+        await using var feed = await StartAsync(app =>
+        {
+            app.MapGet("/", (HttpContext http) => Results.Text(
+                $"""<?xml version="1.0" encoding="utf-8"?><service xml:base="{Base(http)}" xmlns:atom="http://www.w3.org/2005/Atom" xmlns="http://www.w3.org/2007/app"><workspace><atom:title type="text">Default</atom:title><collection href="Packages"><atom:title type="text">Packages</atom:title></collection></workspace></service>""",
+                "application/xml"));
+            app.MapGet("/FindPackagesById()", (HttpContext http) => Results.Text(Feed(Base(http), ["1.0.0", "2.0.0"], "Quirk.Hash", published), "application/atom+xml;type=feed;charset=utf-8"));
+            app.MapGet("/Packages(Id='{id}',Version='{version}')", (HttpContext http, string version) => Results.Text(Feed(Base(http), [version], "Quirk.Hash", published), "application/atom+xml;type=feed;charset=utf-8"));
+            app.MapGet("/package/Quirk.Hash/{version}", (string version) => Results.Bytes(served[version], "application/zip"));
+        });
+
+        using var client = new NuGetUpstreamClient(new ConnectorSettings { TempPath = tempPath });
+        var upstream = new FeedUpstream { Key = 3, Name = "hashing-gallery", Url = feed.Address + "/", Kind = UpstreamKind.V2 };
+
+        await using (var stream = await client.OpenPackageAsync(upstream, "quirk.hash", NuGetVersion.Parse("1.0.0"), CancellationToken.None))
+        {
+            Assert.NotNull(stream);
+            Assert.Equal(goodBytes.Length, stream.Length);
+        }
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => client.OpenPackageAsync(upstream, "quirk.hash", NuGetVersion.Parse("2.0.0"), CancellationToken.None));
+        Assert.Empty(Directory.GetFiles(tempPath));
+    }
+
     private static string Base(HttpContext http) => $"{http.Request.Scheme}://{http.Request.Host}/";
 
-    private static string Feed(string root, IEnumerable<string> versions)
+    private static string Feed(string root, IEnumerable<string> versions) => Feed(root, versions, "Quirk.V2", new Dictionary<string, string>());
+
+    private static string Feed(string root, IEnumerable<string> versions, string id, IReadOnlyDictionary<string, string> hashes)
     {
         var builder = new StringBuilder();
         builder.Append(CultureInfo.InvariantCulture, $"""<?xml version="1.0" encoding="utf-8"?><feed xml:base="{root}" xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices" xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata" xmlns="http://www.w3.org/2005/Atom"><id>{root}FindPackagesById()</id><title type="text">Packages</title><updated>2026-09-15T00:00:00Z</updated>""");
         foreach (var version in versions)
         {
             var v = SecurityElement.Escape(version);
-            builder.Append(CultureInfo.InvariantCulture, $"""<entry><id>{root}Packages(Id='Quirk.V2',Version='{v}')</id><category term="NuGetGallery.OData.V2FeedPackage" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" /><title type="text">Quirk.V2</title><updated>2026-01-01T00:00:00Z</updated><author><name>Quirks</name></author><content type="application/zip" src="{root}package/Quirk.V2/{v}" /><m:properties><d:Id>Quirk.V2</d:Id><d:Version>{v}</d:Version><d:NormalizedVersion>{v}</d:NormalizedVersion><d:Description>A quirky package</d:Description><d:IsLatestVersion m:type="Edm.Boolean">false</d:IsLatestVersion><d:IsAbsoluteLatestVersion m:type="Edm.Boolean">false</d:IsAbsoluteLatestVersion><d:IsPrerelease m:type="Edm.Boolean">false</d:IsPrerelease><d:Published m:type="Edm.DateTime">2026-01-01T00:00:00Z</d:Published><d:Dependencies /><d:Tags /></m:properties></entry>""");
+            builder.Append(CultureInfo.InvariantCulture, $"""<entry><id>{root}Packages(Id='{id}',Version='{v}')</id><category term="NuGetGallery.OData.V2FeedPackage" scheme="http://schemas.microsoft.com/ado/2007/08/dataservices/scheme" /><title type="text">{id}</title><updated>2026-01-01T00:00:00Z</updated><author><name>Quirks</name></author><content type="application/zip" src="{root}package/{id}/{v}" /><m:properties><d:Id>{id}</d:Id><d:Version>{v}</d:Version><d:NormalizedVersion>{v}</d:NormalizedVersion><d:Description>A quirky package</d:Description><d:IsLatestVersion m:type="Edm.Boolean">false</d:IsLatestVersion><d:IsAbsoluteLatestVersion m:type="Edm.Boolean">false</d:IsAbsoluteLatestVersion><d:IsPrerelease m:type="Edm.Boolean">false</d:IsPrerelease><d:Published m:type="Edm.DateTime">2026-01-01T00:00:00Z</d:Published><d:Dependencies /><d:Tags /><d:PackageHash>{(hashes.TryGetValue(version, out var hash) ? hash : "")}</d:PackageHash><d:PackageHashAlgorithm>SHA512</d:PackageHashAlgorithm></m:properties></entry>""");
         }
 
         builder.Append("</feed>");

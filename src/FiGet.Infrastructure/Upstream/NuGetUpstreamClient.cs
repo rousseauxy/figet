@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using FiGet.Application.Connectors;
 using FiGet.Application.Ports;
 using FiGet.Domain.Entities;
@@ -140,6 +141,7 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
                 return null;
             }
 
+            await VerifyV2HashAsync(upstream, idLower, version, file, timeout.Token);
             file.Position = 0;
             return file;
         }
@@ -147,6 +149,54 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
         {
             await file.DisposeAsync();
             throw;
+        }
+    }
+
+    /// <summary>
+    /// A v2 gallery publishes each package's hash; a download that does not match it - truncated by a proxy, altered on the
+    /// way, or a different file behind the same name - is refused rather than cached and served as that version. A v3 source
+    /// publishes no hash to compare with. A gallery that does not answer the question, or states no hash, is not held to one.
+    /// </summary>
+    private async Task VerifyV2HashAsync(FeedUpstream upstream, string idLower, NuGetVersion version, FileStream file, CancellationToken cancellationToken)
+    {
+        var repository = Repository(upstream);
+        if (await repository.GetResourceAsync<ServiceIndexResourceV3>(cancellationToken) is not null
+            || (await repository.GetResourceAsync<HttpSourceResource>(cancellationToken))?.HttpSource is not { } http)
+        {
+            return;
+        }
+
+        V2FeedPackageInfo? published;
+        try
+        {
+            published = await new V2FeedParser(http, upstream.Url).GetPackage(new NuGet.Packaging.Core.PackageIdentity(idLower, version), cache, NullLogger.Instance, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(published?.PackageHash))
+        {
+            return;
+        }
+
+        using HashAlgorithm? algorithm = (published.PackageHashAlgorithm ?? "SHA512").ToUpperInvariant() switch
+        {
+            "SHA512" or "" => SHA512.Create(),
+            "SHA256" => SHA256.Create(),
+            _ => null,
+        };
+        if (algorithm is null)
+        {
+            return;
+        }
+
+        file.Position = 0;
+        var actual = Convert.ToBase64String(await algorithm.ComputeHashAsync(file, cancellationToken));
+        if (!string.Equals(actual, published.PackageHash.Trim(), StringComparison.Ordinal))
+        {
+            throw new InvalidDataException($"The package {idLower} {version.ToNormalizedString()} from upstream '{upstream.Name}' does not match the hash the upstream publishes for it.");
         }
     }
 
