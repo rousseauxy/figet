@@ -76,9 +76,11 @@ public sealed partial class AdminUiTests
         Assert.Contains("fg-nav-dropdown-version", page, StringComparison.Ordinal);
 
         // Nothing stamps a version here, and the SDK's default 1.0.0 counts as nothing said, so the menu
-        // must admit that rather than announce a release nobody cut.
-        Assert.Contains("version not set", page, StringComparison.Ordinal);
-        Assert.DoesNotContain(">1.0.0<", page, StringComparison.Ordinal);
+        // must admit that rather than announce a release nobody cut. Read out of the chip itself: the page
+        // also lists package versions, and one of those may legitimately be 1.0.0.
+        var chip = System.Text.RegularExpressions.Regex.Match(page, "<div class=\"fg-nav-dropdown-version\">(?<version>[^<]*)</div>");
+        Assert.True(chip.Success, "The menu has no version chip.");
+        Assert.Equal("version not set", chip.Groups["version"].Value.Trim());
     }
 
     /// <summary>
