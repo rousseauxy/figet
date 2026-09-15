@@ -33,8 +33,23 @@ public static class NuGetV2Endpoints
     /// </summary>
     public const int DefaultTop = 100;
 
-    /// <summary>PSResourceGet asks for 6000 at a time; it pages with $skip when it gets fewer.</summary>
+    /// <summary>The most rows one page answers, unless the query is one of the two shapes below.</summary>
     public const int MaxTop = 1000;
+
+    /// <summary>
+    /// A tag or command search's page: PSResourceGet asks for 6000 but steps its $skip by 100, so a larger page repeats
+    /// packages in every following one. The PowerShell Gallery's page is 100 too.
+    /// </summary>
+    public const int TagSearchTop = 100;
+
+    /// <summary>
+    /// A latest-only listing's page: PSResourceGet's <c>Find-PSResource -Name *</c> asks for 6000 and steps $skip by 6000,
+    /// never reading a next link, so a smaller page loses every package after it.
+    /// </summary>
+    public const int ListingTop = 6000;
+
+    /// <summary>The package-type markers PowerShell clients add to every tag search; not a tag search on their own.</summary>
+    private static readonly string[] TypeMarkers = ["psmodule", "psscript"];
 
     /// <summary>How many packages a listing ordered other than by id may read; an id-first order is read in chunks, uncapped.</summary>
     private const int MaxPackagesScanned = 2000;
@@ -530,7 +545,7 @@ public static class NuGetV2Endpoints
         CancellationToken cancellationToken)
     {
         var skip = Math.Max(0, Int(query["$skip"], 0));
-        var top = Math.Clamp(Int(query["$top"], DefaultTop), 0, MaxTop);
+        var top = PageSize(query, filter);
         var countOnly = http.Request.Path.Value?.EndsWith("/$count", StringComparison.Ordinal) == true;
         var counting = countOnly || query["$inlinecount"].ToString().Equals("allpages", StringComparison.OrdinalIgnoreCase);
 
@@ -699,7 +714,7 @@ public static class NuGetV2Endpoints
         }
 
         var skip = Math.Max(0, Int(query["$skip"], 0));
-        var top = Math.Clamp(Int(query["$top"], DefaultTop), 0, MaxTop);
+        var top = PageSize(query, filter);
         var window = ordered.Skip(skip).Take(top).ToList();
 
         if (http.Request.Path.Value?.EndsWith("/$count", StringComparison.Ordinal) == true)
@@ -720,6 +735,23 @@ public static class NuGetV2Endpoints
         return Xml(
             AtomWriter.Feed(window, Root(http, feedName), SelfUrl(http), count, next),
             "application/atom+xml;type=feed;charset=utf-8");
+    }
+
+    /// <summary>
+    /// How many rows a page may hold for this query: what the client asked for, capped by the shape of the query so that the
+    /// fixed $skip steps PSResourceGet pages with meet the pages answered (PSResourceGet #1016, cross-check of 2026-09-15).
+    /// </summary>
+    private static int PageSize(IQueryCollection query, ODataFilter? filter)
+    {
+        var requested = Math.Max(0, Int(query["$top"], DefaultTop));
+        var terms = SearchQueryParser.Parse(Unquote(query["searchTerm"]) ?? "");
+        var tags = filter?.TagSubstrings ?? [];
+        var cap = terms.Any(t => t.Field == SearchField.Tag) || tags.Any(t => !TypeMarkers.Contains(t, StringComparer.OrdinalIgnoreCase))
+            ? TagSearchTop
+            : filter is { LatestOnly: true, StoreCoversAll: true } && terms.Count == 0 && tags.Count == 0
+                ? ListingTop
+                : MaxTop;
+        return Math.Min(requested, cap);
     }
 
     private static ODataFilter? ParseFilter(string? text) =>

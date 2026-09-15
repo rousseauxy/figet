@@ -22,6 +22,10 @@ public sealed class SqlServerLargeFeedSearchTests(SqlServerServerFixture fixture
 public abstract class LargeFeedSearchTests
 {
     private const int PackageCount = 2_501;
+
+    /// <summary>How many of them carry the tag <c>Big</c>.</summary>
+    private const int TaggedCount = 250;
+
     private static readonly XNamespace Atom = "http://www.w3.org/2005/Atom";
     private static readonly XNamespace Data = "http://schemas.microsoft.com/ado/2007/08/dataservices";
     private static readonly XNamespace Meta = "http://schemas.microsoft.com/ado/2007/08/dataservices/metadata";
@@ -68,6 +72,41 @@ public abstract class LargeFeedSearchTests
         Assert.Equal(["Scan.P2345"], middle.Entries.Select(e => Property(e, "Id")).ToArray());
     }
 
+    /// <summary>
+    /// Pages sized for the way PSResourceGet steps through them: <c>Find-PSResource -Name *</c> asks for 6000 and steps by
+    /// 6000, so it must get every package in one page; a tag search asks for 6000 and steps by 100, so it must get pages of
+    /// 100 or see packages again. Found cross-checking PSResourceGet's issues (#1016, 2026-09-15).
+    /// </summary>
+    [Fact]
+    public async Task Pages_fit_the_steps_PSResourceGet_takes()
+    {
+        var feed = await CreateLargeFeedAsync();
+        using var client = server.CreateClient();
+
+        var listing = await EntriesAsync(client, $"nuget/{feed}/Search()?$filter=IsLatestVersion&$inlinecount=allpages&$skip=0&$top=6000");
+        Assert.Equal(PackageCount, listing.Entries.Count);
+
+        foreach (var query in new[]
+        {
+            "$filter=IsLatestVersion and substringof('PSModule', Tags) eq true and substringof('Big', Tags) eq true&$inlinecount=allpages",
+            "$filter=IsLatestVersion&searchTerm='tag:Big'&$inlinecount=allpages",
+        })
+        {
+            var ids = new List<string>();
+            var first = await EntriesAsync(client, $"nuget/{feed}/Search()?{query}&$skip=0&$top=6000");
+            var total = int.Parse(first.Count!, CultureInfo.InvariantCulture);
+            ids.AddRange(first.Entries.Select(e => Property(e, "Id")));
+            for (var skip = 100; skip < total; skip += 100)
+            {
+                ids.AddRange((await EntriesAsync(client, $"nuget/{feed}/Search()?{query}&$skip={skip}&$top=6000")).Entries.Select(e => Property(e, "Id")));
+            }
+
+            Assert.Equal(TaggedCount, total);
+            Assert.Equal(TaggedCount, ids.Count);
+            Assert.Equal(TaggedCount, ids.Distinct(StringComparer.Ordinal).Count());
+        }
+    }
+
     private async Task<string> CreateLargeFeedAsync()
     {
         var name = "large" + Guid.NewGuid().ToString("N")[..8];
@@ -100,8 +139,9 @@ public abstract class LargeFeedSearchTests
                             Listed = true,
                             Origin = PackageOrigin.Pushed,
                             Description = "A package of the large feed.",
-                            SearchTextLower = id.ToLowerInvariant() + "\na package of the large feed.",
-                            TagsLower = "  ",
+                            Tags = i < TaggedCount ? "PSModule Big" : "PSModule",
+                            SearchTextLower = id.ToLowerInvariant() + "\na package of the large feed.\n" + (i < TaggedCount ? "psmodule big" : "psmodule"),
+                            TagsLower = i < TaggedCount ? " psmodule big " : " psmodule ",
                             PackageTypes = "|Dependency|",
                             PackageTypesLower = "|dependency|",
                             PublishedUtc = now,

@@ -70,6 +70,9 @@ public sealed class ODataFilter
     /// </summary>
     public bool StoreCoversAll { get; }
 
+    /// <summary>The values of top-level <c>substringof(…, Tags)</c> terms, lower-cased.</summary>
+    public IReadOnlyList<string> TagSubstrings => [.. StoreTerms.Where(t => t.Field == SearchField.Any).Select(t => t.Value)];
+
     public bool Matches(V2Row row) => ODataValues.ToBool(expression.Evaluate(row));
 
     /// <summary>Parses the expression, or throws <see cref="ODataFilterException"/> naming it.</summary>
