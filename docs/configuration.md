@@ -58,7 +58,7 @@ the next start creates a new, empty feed of the configured name.
 | `Feeds:N:AllowOverwrite` | `false` | When true, pushing an existing version replaces it instead of answering 409. |
 | `Feeds:N:DeletionBehavior` | `Unlist` | `Unlist` hides the version from search and keeps it downloadable; `HardDelete` removes the metadata and the files. |
 | `Feeds:N:MergePushedIdsWithUpstreams` | `false` | When false, an id with a version pushed to the feed is served only from the feed: its upstreams are not asked about it, and copies of it cached from an upstream are unlisted. When true, the pushed and upstream versions are merged into one list, so the higher version of either is latest. Only right when the upstream package really is the same package. |
-| `Feeds:N:Upstreams:M:Name` | required with an upstream | A name for logs and the UI, unique within the feed. |
+| `Feeds:N:Upstreams:M:Name` | `upstream-1`, `upstream-2`, … | A name for logs and the UI, unique within the feed. Left out, the upstream is named after its position in the list. |
 | `Feeds:N:Upstreams:M:Url` | required with an upstream | A v3 service index (`https://api.nuget.org/v3/index.json`) or a v2 feed root (`https://www.powershellgallery.com/api/v2`, `https://community.chocolatey.org/api/v2`). |
 | `Feeds:N:Upstreams:M:Kind` | `V3` | `V3` or `V2`. The URL alone cannot always tell, so it is stated. |
 | `Feeds:N:Upstreams:M:Allow:X` | empty | Regular expressions on the package id. Empty allows every id; otherwise an id must match one to be listed or fetched. |
@@ -75,7 +75,7 @@ Applies to every proxy feed. Upstreams themselves are configured per feed, above
 | --- | --- | --- |
 | `UpstreamIndexTtl` | `00:05:00` | How old one upstream's cached catalogue for a package may get before it is fetched again. Not an expiry: a catalogue older than this is still served immediately and refreshed behind the request, so only the first ever view of a package waits for the upstream. A new upstream release becomes visible to the reader after this window, on the view that follows the refresh. |
 | `UpstreamTimeout` | `00:00:30` | How long one upstream call may take before that upstream counts as unavailable for this request. Listing a package with hundreds of versions on a v2 gallery is a paged walk of several megabytes, so this is not the latency of one request. A timeout is treated as "the upstream did not answer": the last known list is served and nothing is considered withdrawn. |
-| `MaxDescribedPackages` | `500` | Package ids one replica keeps upstream descriptions in memory for before dropping the oldest. The descriptions are the large part and every replica holds its own copy, so this decides the memory a busy instance settles at. Lowering it costs listings their description text until the next refresh, never their correctness. |
+| `MaxDescribedPackages` | `500` (`0` or less means the default) | Package ids one replica keeps upstream descriptions in memory for before dropping the oldest. The descriptions are the large part and every replica holds its own copy, so this decides the memory a busy instance settles at. Lowering it costs listings their description text until the next refresh, never their correctness. |
 
 ## FiGet:Theming
 
@@ -186,7 +186,7 @@ not get around the limit: a request is counted as anonymous after its key has be
 | Key | Default | Meaning |
 |---|---|---|
 | `Json` | `false` | Write logs as JSON to the console. Always on when `DOTNET_RUNNING_IN_CONTAINER=true` (set in the image). |
-| `Requests` | `false` | One line per request: method, path, status, duration, caller address, forwarded address, token or user, user agent. Off by default; turn it on to see whether a client reached this server and what it asked for. Skipped: health probes, the framework's own paths, and browser assets — stylesheets, scripts, icons and fonts, which a browser re-fetches on every page. Anything under `/nuget` is always kept, whatever it is named. |
+| `Requests` | `false` | One line per request: method, path, status, duration, caller address, forwarded address, token or user, user agent. Off by default; turn it on to see whether a client reached this server and what it asked for. Skipped: health probes, the framework's own paths, and browser assets — stylesheets, scripts, icons and fonts, which a browser re-fetches on every page. Anything under `/nuget` or `/endpoints` is always kept, whatever it is named, so a package called `something.css` or an installer called `setup.js` is never filtered away. The query string is logged except on the sign-in callback, where it would carry a provider's authorization code. |
 
 ### The audit log
 
@@ -217,7 +217,7 @@ the row is still stored.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `FiGet:Audit:RetentionDays` | `365` | Entries older than this are deleted, checked every six hours by every replica. `0` keeps them forever. |
+| `FiGet:Audit:RetentionDays` | `365` | Entries older than this are deleted. `0` keeps them forever. The check runs every six hours and takes a lease in the database first, so with several replicas one of them prunes and the others skip it. |
 
 ## What survives a restart
 
