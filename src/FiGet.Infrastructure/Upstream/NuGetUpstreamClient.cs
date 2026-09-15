@@ -254,11 +254,25 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
             var secret = ReadSecret(upstream.CredentialRef);
             if (secret is not null)
             {
-                source.Credentials = new PackageSourceCredential(source.Name, "figet", secret, isPasswordClearText: true, validAuthenticationTypesText: null);
+                var (userName, password) = SplitCredential(secret);
+                source.Credentials = new PackageSourceCredential(source.Name, userName, password, isPasswordClearText: true, validAuthenticationTypesText: null);
             }
 
             return NuGet.Protocol.Core.Types.Repository.Factory.GetCoreV3(source);
         });
+
+    /// <summary>
+    /// A secret written as <c>user:password</c> sends that user name, for an upstream that checks both - Artifactory, Nexus,
+    /// another package server behind Basic authentication. A bare key is sent with the user name <c>figet</c>, which
+    /// galleries that read only the key ignore. Split at the first colon, so a password may contain more.
+    /// </summary>
+    internal static (string UserName, string Password) SplitCredential(string secret)
+    {
+        var colon = secret.IndexOf(':', StringComparison.Ordinal);
+        return colon > 0 && colon < secret.Length - 1
+            ? (secret[..colon], secret[(colon + 1)..])
+            : ("figet", secret);
+    }
 
     /// <summary>
     /// Secrets are referenced by name and read from the environment, never stored in the database. Checked here as well as

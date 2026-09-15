@@ -33,8 +33,11 @@ public sealed class UpstreamCredentialTests(SqliteServerFixture server) : IClass
         var allowed = FeedUpstream.CredentialPrefix + "PROBE_" + suffix;
         var outsideValue = "outside-" + Guid.NewGuid().ToString("N");
         var allowedValue = "allowed-" + Guid.NewGuid().ToString("N");
+        var withUser = FeedUpstream.CredentialPrefix + "PROBE_USER_" + suffix;
+        var withUserValue = "alice:pass:" + Guid.NewGuid().ToString("N");
         Environment.SetEnvironmentVariable(outside, outsideValue);
         Environment.SetEnvironmentVariable(allowed, allowedValue);
+        Environment.SetEnvironmentVariable(withUser, withUserValue);
 
         var passwords = new ConcurrentQueue<string>();
         var builder = WebApplication.CreateBuilder();
@@ -59,19 +62,23 @@ public sealed class UpstreamCredentialTests(SqliteServerFixture server) : IClass
         try
         {
             using var client = server.CreateClient();
-            foreach (var (reference, path) in new[] { (outside, "outside"), (allowed, "allowed") })
+            foreach (var (reference, path) in new[] { (outside, "outside"), (allowed, "allowed"), (withUser, "with-user") })
             {
                 var feed = await CreateFeedAsync($"{address}/{path}/v3/index.json", reference);
                 using var response = await client.GetAsync($"/nuget/{feed}/v3/flatcontainer/probe.pkg/index.json");
             }
 
             var deadline = DateTime.UtcNow.AddSeconds(20);
-            while (DateTime.UtcNow < deadline && !passwords.Any(p => p.EndsWith(allowedValue, StringComparison.Ordinal)))
+            while (DateTime.UtcNow < deadline && !(passwords.Any(p => p.EndsWith(allowedValue, StringComparison.Ordinal)) && passwords.Any(p => p.EndsWith(withUserValue[6..], StringComparison.Ordinal))))
             {
                 await Task.Delay(200);
             }
 
             Assert.Contains(passwords, p => p == "figet:" + allowedValue);
+
+            // A secret written as user:password sends that user, for an upstream that checks both; the password keeps its
+            // own colons. Found cross-checking other package servers' issue trackers (2026-09-15).
+            Assert.Contains(passwords, p => p == withUserValue);
             Assert.DoesNotContain(passwords, p => p.Contains(outsideValue, StringComparison.Ordinal));
         }
         finally
@@ -79,6 +86,7 @@ public sealed class UpstreamCredentialTests(SqliteServerFixture server) : IClass
             await stub.StopAsync();
             Environment.SetEnvironmentVariable(outside, null);
             Environment.SetEnvironmentVariable(allowed, null);
+            Environment.SetEnvironmentVariable(withUser, null);
         }
     }
 
