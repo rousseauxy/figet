@@ -44,13 +44,16 @@ public abstract class NuGetV3Tests
             "SearchQueryService", "SearchQueryService/3.0.0-beta", "SearchQueryService/3.0.0-rc", "SearchQueryService/3.5.0",
             "SearchAutocompleteService", "SearchAutocompleteService/3.0.0-beta", "SearchAutocompleteService/3.0.0-rc",
             "RegistrationsBaseUrl", "RegistrationsBaseUrl/3.0.0-beta", "RegistrationsBaseUrl/3.4.0", "RegistrationsBaseUrl/3.6.0",
-            "PackageBaseAddress/3.0.0", "PackagePublish/2.0.0", "SymbolPackagePublish/4.9.0",
+            "PackageBaseAddress/3.0.0", "PackagePublish/2.0.0", "SymbolPackagePublish/4.9.0", "LegacyGallery/2.0.0",
         })
         {
             Assert.Contains(type, types);
         }
 
-        Assert.All(json["resources"]!.AsArray(), r => Assert.StartsWith(server.BaseAddress + "nuget/public/v3/", (string?)r!["@id"]));
+        Assert.All(json["resources"]!.AsArray().Where(r => (string?)r!["@type"] != "LegacyGallery/2.0.0"), r => Assert.StartsWith(server.BaseAddress + "nuget/public/v3/", (string?)r!["@id"]));
+
+        // nuget.exe list finds the v2 root of a v3 source here (NuGet/Home #3179, cross-check of 2026-09-15).
+        Assert.Equal(server.BaseAddress + "nuget/public/", (string?)json["resources"]!.AsArray().Single(r => (string?)r!["@type"] == "LegacyGallery/2.0.0")!["@id"]);
     }
 
     [Fact]

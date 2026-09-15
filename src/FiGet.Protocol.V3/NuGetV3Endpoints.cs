@@ -85,6 +85,9 @@ public static class NuGetV3Endpoints
         Add("/publish", "Push and delete packages.", "PackagePublish/2.0.0");
         Add("/symbolpublish", "Push symbol packages.", "SymbolPackagePublish/4.9.0");
 
+        // The feed's v2 root, which is the only thing nuget.exe `list` looks for in a v3 source (NuGet/Home #3179).
+        resources.Add(new ServiceResource(PublicUrls.Feed(http, request.Feed.Name) + "/", "LegacyGallery/2.0.0", "The v2 feed of the same packages."));
+
         return Results.Json(
             new ServiceIndex("3.0.0", resources, new ServiceIndexContext("http://schema.nuget.org/services#", "http://www.w3.org/2000/01/rdf-schema#comment")),
             Json);
