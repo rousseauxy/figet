@@ -1313,6 +1313,27 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
     }
 
     /// <summary>
+    /// A dependency the upstream declares without an id is left out, over v2 and v3, instead of becoming a registration URL
+    /// ending in "//". Found cross-checking other package servers' issue trackers (2026-09-15).
+    /// </summary>
+    [Fact]
+    public async Task A_dependency_without_an_id_is_left_out()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.EmptyDependency");
+        AddUpstream(id, "1.0.0");
+        server.Upstream.AddDependency(id, "1.0.0", "", "");
+        server.Upstream.AddDependency(id, "1.0.0", "Real.Dependency", "[1.0.0, )");
+
+        var declared = Property((await FindAsync("proxy", id)).Single(), "Dependencies");
+        Assert.Equal("Real.Dependency:[1.0.0, ):", declared);
+
+        using var client = server.CreateClient();
+        var registration = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/registration/{id.ToLowerInvariant()}/index.json"));
+        Assert.Contains("real.dependency", registration, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("registration//", registration, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The same over v3, because the same client fails the same way there: `Install-PSResource` reads
     /// `dependencyGroups` out of the registration, and an uncached version declared none of them.
     ///

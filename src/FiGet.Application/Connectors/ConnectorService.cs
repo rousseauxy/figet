@@ -594,8 +594,17 @@ public sealed class ConnectorService(
             return [];
         }
 
+        // An upstream that declares a dependency with an empty id would otherwise put a registration URL ending in "//" into
+        // the answer. Such an entry is dropped; a framework group left with no ids keeps one empty row, as for a pushed package.
+        var kept = new List<UpstreamDependency>();
+        foreach (var group in dependencies.GroupBy(d => d.TargetFramework))
+        {
+            var named = group.Where(d => !string.IsNullOrWhiteSpace(d.Id)).ToList();
+            kept.AddRange(named.Count > 0 ? named : [new UpstreamDependency(group.Key, null, "")]);
+        }
+
         var ordinal = 0;
-        return [.. dependencies.Select(d => new PackageDependency
+        return [.. kept.Select(d => new PackageDependency
         {
             Ordinal = ordinal++,
             TargetFramework = d.TargetFramework,

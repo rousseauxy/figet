@@ -172,7 +172,8 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
                 ? ""
                 : group.TargetFramework.GetShortFolderName();
 
-            var packages = group.Packages?.ToList() ?? [];
+            // A dependency without an id is dropped here; the connector drops one read back from a stored catalogue as well.
+            var packages = group.Packages?.Where(p => !string.IsNullOrWhiteSpace(p.Id)).ToList() ?? [];
             if (packages.Count == 0)
             {
                 dependencies.Add(new UpstreamDependency(framework, null, ""));
