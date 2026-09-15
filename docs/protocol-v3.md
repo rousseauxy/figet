@@ -36,7 +36,11 @@ All under `/nuget/{feed}/v3`, plus the symbol server.
 - **`dotnet add package` reads the registration index, then the flat container** version list, then the
   nupkg. Restore uses the flat container only.
 - **PSResourceGet** detects v3 from the `/v3/index.json` suffix, finds by name through the registration
-  index, and refuses wildcard names and tag searches for every v3 repository before any request.
+  index, and refuses wildcard names and tag searches for every v3 repository before any request. Over v3 it
+  also picks a download by substring (`-Version 2.2.4` can install 2.2.4.1, PSResourceGet #1657, #2030) and
+  names the install folder after the normalised version. The feed page therefore registers PowerShell 7 at
+  `{feed}/api/v2`, where exact versions go through `NormalizedVersion eq`, wildcards and tags work, and the
+  reported version is the module manifest's (2026-09-15). v3 stays the address for `dotnet`.
 - **nuget.exe `list`** refuses v3 sources; `search` works.
 - **The NuGet 7 client refuses plain-HTTP sources** for push unless the source entry in `nuget.config`
   sets `allowInsecureConnections="true"`. The library applies this even when called programmatically and

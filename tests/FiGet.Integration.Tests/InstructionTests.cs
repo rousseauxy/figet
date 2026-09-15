@@ -42,7 +42,7 @@ public abstract partial class InstructionTests
         using var anyone = server.CreateClient();
         var packagePage = await HttpAssert.SuccessBodyAsync(await anyone.GetAsync($"/feeds/{feed}/packages/{id}"));
         Assert.Contains($"Install-Module -Name {id} -RequiredVersion 1.2.3 -Repository {feed}", packagePage, StringComparison.Ordinal);
-        Assert.Contains($"Register-PSResourceRepository -Name {feed} -Uri {server.BaseAddress.ToString().TrimEnd('/')}/nuget/{feed}/v3/index.json", await HttpAssert.SuccessBodyAsync(await anyone.GetAsync($"/feeds/{feed}")), StringComparison.Ordinal);
+        Assert.Contains($"Register-PSResourceRepository -Name {feed} -Uri {server.BaseAddress.ToString().TrimEnd('/')}/nuget/{feed}/api/v2 -Trusted", await HttpAssert.SuccessBodyAsync(await anyone.GetAsync($"/feeds/{feed}")), StringComparison.Ordinal);
 
         // A manager saves a client address and an own install command through the settings page.
         using var admin = CreateBrowser();

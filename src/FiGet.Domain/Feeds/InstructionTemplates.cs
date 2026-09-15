@@ -25,8 +25,8 @@ public static partial class InstructionTemplates
         """
         # Windows PowerShell 5.1 (PowerShellGet)
         Register-PSRepository -Name {feed} -SourceLocation {feedUrl}/ -PublishLocation {feedUrl}/ -InstallationPolicy Trusted
-        # PowerShell 7 (PSResourceGet)
-        Register-PSResourceRepository -Name {feed} -Uri {v3Url} -Trusted
+        # PowerShell 7 (PSResourceGet): the v2 address, where exact versions, wildcards and tags work
+        Register-PSResourceRepository -Name {feed} -Uri {feedUrl}/api/v2 -Trusted
         # .NET
         dotnet nuget add source {v3Url} --name {feed}
         """;
