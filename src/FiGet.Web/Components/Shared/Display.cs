@@ -28,6 +28,15 @@ public static class Display
         _ => kind.ToString(),
     };
 
+    /// <summary>What a package feed is used for, as the create form and the settings page offer it.</summary>
+    public static string Purpose(FiGet.Domain.Entities.FeedPurpose purpose) => purpose switch
+    {
+        FiGet.Domain.Entities.FeedPurpose.PowerShell => "PowerShell modules",
+        FiGet.Domain.Entities.FeedPurpose.NuGet => "NuGet packages",
+        FiGet.Domain.Entities.FeedPurpose.Chocolatey => "Chocolatey packages",
+        _ => "Any client",
+    };
+
     public static string Count(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
 
     /// <summary>

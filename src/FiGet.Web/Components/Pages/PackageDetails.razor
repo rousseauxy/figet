@@ -163,7 +163,7 @@
         </div>
 
         <h2>Install the latest</h2>
-        <Instructions Lines="@InstructionTemplates.Render(feed.PackageInstructions, InstructionTemplates.DefaultPackage, new Dictionary<string, string> { ["id"] = displayId, ["version"] = shown.NormalizedVersion, ["feed"] = feed.Name, ["feedUrl"] = feedUrl, ["v3Url"] = feedUrl + "/v3/index.json" })" />
+        <Instructions Lines="@InstructionTemplates.Render(feed.PackageInstructions, InstructionTemplates.DefaultPackageFor(feed.Purpose), new Dictionary<string, string> { ["id"] = displayId, ["version"] = shown.NormalizedVersion, ["feed"] = feed.Name, ["feedUrl"] = feedUrl, ["v3Url"] = feedUrl + "/v3/index.json" })" />
 
         <h2>Recent versions</h2>
         @VersionTable(visible.Reverse().Take(RecentCount))

@@ -72,7 +72,7 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
             .ExecuteUpdateAsync(s => s.SetProperty(f => f.AllowedNetworks, networks), cancellationToken) > 0;
     }
 
-    public async Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool anonymousList, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, bool mergePushedIdsWithUpstreams, int? chartColor, CancellationToken cancellationToken)
+    public async Task<bool> UpdateSettingsAsync(int key, bool anonymousRead, bool anonymousList, bool allowOverwrite, PackageDeletionBehavior deletionBehavior, bool mergePushedIdsWithUpstreams, int? chartColor, FeedPurpose purpose, CancellationToken cancellationToken)
     {
         var feed = await db.Feeds.FirstOrDefaultAsync(f => f.Key == key, cancellationToken);
         if (feed is null)
@@ -86,6 +86,7 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         feed.DeletionBehavior = deletionBehavior;
         feed.MergePushedIdsWithUpstreams = mergePushedIdsWithUpstreams;
         feed.ChartColor = chartColor is >= 1 and <= FeedColors.Count ? chartColor : null;
+        feed.Purpose = feed.Kind == FeedKind.Assets || !Enum.IsDefined(purpose) ? FeedPurpose.Any : purpose;
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }

@@ -90,8 +90,8 @@
             return;
         }
 
-        var package = IsAssets ? null : InstructionTemplates.Normalize(input.Package, InstructionTemplates.DefaultPackage);
-        var feedTemplate = IsAssets ? null : InstructionTemplates.Normalize(input.Feed, InstructionTemplates.DefaultFeed);
+        var package = IsAssets ? null : InstructionTemplates.Normalize(input.Package, InstructionTemplates.DefaultPackageFor(feed.Purpose));
+        var feedTemplate = IsAssets ? null : InstructionTemplates.Normalize(input.Feed, InstructionTemplates.DefaultFeedFor(feed.Purpose));
         var files = IsAssets ? InstructionTemplates.Normalize(input.Files, InstructionTemplates.DefaultFiles) : null;
         if (await Feeds.UpdateInstructionsAsync(feed.Key, clientBase, package, feedTemplate, files, HttpContext.RequestAborted))
         {
@@ -124,8 +124,8 @@
         public static InstructionsForm From(Feed feed) => new()
         {
             ClientBaseUrl = feed.ClientBaseUrl ?? "",
-            Package = feed.PackageInstructions ?? InstructionTemplates.DefaultPackage,
-            Feed = feed.FeedInstructions ?? InstructionTemplates.DefaultFeed,
+            Package = feed.PackageInstructions ?? InstructionTemplates.DefaultPackageFor(feed.Purpose),
+            Feed = feed.FeedInstructions ?? InstructionTemplates.DefaultFeedFor(feed.Purpose),
             Files = feed.FileInstructions ?? InstructionTemplates.DefaultFiles,
         };
     }

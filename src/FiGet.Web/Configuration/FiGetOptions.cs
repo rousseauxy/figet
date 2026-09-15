@@ -130,6 +130,9 @@ public sealed class FeedSeedOptions
 
     public PackageDeletionBehavior DeletionBehavior { get; set; } = PackageDeletionBehavior.Unlist;
 
+    /// <summary>Package feeds: which clients the pages show commands for (Any, PowerShell, NuGet, Chocolatey). Only used when the feed is created.</summary>
+    public FeedPurpose Purpose { get; set; } = FeedPurpose.Any;
+
     /// <summary>
     /// When true, an id pushed to this feed is still merged with the same id on its upstreams. Off by default: a
     /// pushed id is served only from this feed, so a same-named package elsewhere cannot become its latest version.

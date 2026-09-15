@@ -63,6 +63,7 @@ else
                 <tr>
                     <th>Name</th>
                     <th>Kind</th>
+                    <th>Used for</th>
                     <th>Read</th>
                     <th>On existing version</th>
                     <th>Delete</th>
@@ -76,6 +77,7 @@ else
                     <tr>
                         <td><a href="/admin/feeds/@feed.Name">@feed.Name</a></td>
                         <td><span class="fg-badge">@Display.Kind(feed.Kind)</span></td>
+                        <td>@Display.Purpose(feed.Purpose)</td>
                         <td>@(feed.AnonymousRead ? "Anonymous" : "Token")@(feed.AllowedNetworks is null ? "" : ", listed networks")</td>
                         <td>@(feed.AllowOverwrite ? "Overwrite" : "Reject (409)")</td>
                         <td>@feed.DeletionBehavior.ToString()</td>
@@ -149,6 +151,18 @@ else
 
         @if (!IsAssets)
         {
+            <div class="fg-field">
+                <label for="feed-purpose">Used for</label>
+                <InputSelect id="feed-purpose" @bind-Value="NewFeed!.Purpose">
+                    @foreach (var purpose in Enum.GetValues<FeedPurpose>())
+                    {
+                        <option value="@purpose">@Display.Purpose(purpose)@(FeedUpstream.KnownFor(purpose) is { } gallery ? $" (gallery: {gallery.Name})" : "")</option>
+                    }
+                </InputSelect>
+                <span class="fg-small fg-muted">Sets the connect and install commands the pages show, and which pushes the feed takes: a PowerShell feed only modules and scripts, a NuGet feed no modules or Chocolatey packages, a Chocolatey feed no modules or .NET packages. Any client takes everything. Reading is never limited.</span>
+            </div>
+            <label class="fg-check"><InputCheckbox id="feed-gallery" @bind-Value="NewFeed!.AddGallery" /> Proxy the matching public gallery (nuget.org, the PowerShell Gallery or the Chocolatey community repository); ignored for any client</label>
+
             <label class="fg-check"><InputCheckbox @bind-Value="NewFeed!.AllowOverwrite" /> Pushing an existing version replaces it</label>
 
             <div class="fg-field">
@@ -223,15 +237,22 @@ else
         }
 
         var folderWrites = folderRoot is not null && NewFeed!.FolderWrites;
+        var purpose = IsAssets || !Enum.IsDefined(NewFeed!.Purpose) ? FeedPurpose.Any : NewFeed!.Purpose;
+
+        // The gallery is added with the feed rather than on the upstreams page afterwards, so a feed meant to proxy
+        // one is never, even for a moment, an empty curated feed its clients were already pointed at.
+        var gallery = !IsAssets && NewFeed!.AddGallery ? FeedUpstream.KnownFor(purpose) : null;
 
         // Only the two a person chooses between, one per tab: a proxy feed is what a package feed becomes when it
-        // gains an upstream, not something created as such. The package-only settings mean nothing to a directory.
+        // gains an upstream - here the gallery - not something created as such. The package-only settings mean nothing
+        // to a directory.
         var created = await FeedStore.CreateAsync(
             new Feed
             {
                 Name = NewFeed!.Name,
                 NameLower = NewFeed!.Name.ToLowerInvariant(),
-                Kind = Kind,
+                Kind = gallery is null ? Kind : FeedKind.Proxy,
+                Purpose = purpose,
                 AnonymousRead = NewFeed!.AnonymousRead,
                 AnonymousList = IsAssets && NewFeed!.AnonymousList,
                 FolderRoot = folderRoot,
@@ -239,6 +260,7 @@ else
                 AllowOverwrite = !IsAssets && NewFeed!.AllowOverwrite,
                 DeletionBehavior = IsAssets ? PackageDeletionBehavior.Unlist : NewFeed!.DeletionBehavior,
                 CreatedUtc = Time.GetUtcNow().UtcDateTime,
+                Upstreams = gallery is null ? [] : [new FeedUpstream { Name = gallery.Name, Url = gallery.Url, Kind = gallery.Kind }],
             },
             HttpContext.RequestAborted);
 
@@ -248,7 +270,7 @@ else
                 HttpContext,
                 "feed.create",
                 NewFeed!.Name,
-                $"kind={Kind} anonymousRead={NewFeed!.AnonymousRead} anonymousList={IsAssets && NewFeed!.AnonymousList} allowOverwrite={NewFeed!.AllowOverwrite} onDelete={NewFeed!.DeletionBehavior}"
+                $"kind={(gallery is null ? Kind : FeedKind.Proxy)} purpose={purpose} upstream={gallery?.Name ?? "none"} anonymousRead={NewFeed!.AnonymousRead} anonymousList={IsAssets && NewFeed!.AnonymousList} allowOverwrite={NewFeed!.AllowOverwrite} onDelete={NewFeed!.DeletionBehavior}"
                 + (IsAssets ? $" folder={(folderRoot is null ? "none" : chosen)} folderWrites={folderWrites}" : ""));
         }
 
@@ -284,5 +306,10 @@ else
         public bool AllowOverwrite { get; set; }
 
         public PackageDeletionBehavior DeletionBehavior { get; set; } = PackageDeletionBehavior.Unlist;
+
+        public FeedPurpose Purpose { get; set; }
+
+        /// <summary>Whether the purpose's public gallery becomes the feed's upstream.</summary>
+        public bool AddGallery { get; set; }
     }
 }

@@ -11,6 +11,13 @@ public sealed class Feed
 
     public FeedKind Kind { get; set; } = FeedKind.Curated;
 
+    /// <summary>
+    /// Which clients the feed is meant for: the connect and install commands its pages show, the gallery offered as upstream
+    /// when it is created, and which pushed packages it takes (<see cref="Packages.PackageContent"/>). Never what it serves:
+    /// every NuGet client can read every package feed, and copies from an upstream are not checked.
+    /// </summary>
+    public FeedPurpose Purpose { get; set; } = FeedPurpose.Any;
+
     /// <summary>When true, every read endpoint of the feed works without credentials. On an asset directory: downloads.</summary>
     public bool AnonymousRead { get; set; }
 
@@ -120,6 +127,16 @@ public enum FeedKind
     /// never a package feed: the NuGet endpoints refuse it, and the asset endpoints refuse every other kind.
     /// </summary>
     Assets,
+}
+
+/// <summary>What a package feed is used for; see <see cref="Feed.Purpose"/>.</summary>
+public enum FeedPurpose
+{
+    /// <summary>No one client: the pages show the commands for PowerShell and .NET together.</summary>
+    Any,
+    PowerShell,
+    NuGet,
+    Chocolatey,
 }
 
 public enum PackageDeletionBehavior

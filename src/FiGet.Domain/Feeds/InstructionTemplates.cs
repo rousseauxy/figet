@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using FiGet.Domain.Entities;
 
 namespace FiGet.Domain.Feeds;
 
@@ -30,6 +31,72 @@ public static partial class InstructionTemplates
         # .NET
         dotnet nuget add source {v3Url} --name {feed}
         """;
+
+    /// <summary><see cref="DefaultPackage"/> for a feed of PowerShell modules.</summary>
+    public const string PowerShellPackage =
+        """
+        Install-Module -Name {id} -RequiredVersion {version} -Repository {feed}
+        Install-PSResource -Name {id} -Version {version} -Repository {feed}
+        """;
+
+    /// <summary><see cref="DefaultFeed"/> for a feed of PowerShell modules.</summary>
+    public const string PowerShellFeed =
+        """
+        # Windows PowerShell 5.1 (PowerShellGet)
+        Register-PSRepository -Name {feed} -SourceLocation {feedUrl}/ -PublishLocation {feedUrl}/ -InstallationPolicy Trusted
+        # PowerShell 7 (PSResourceGet): the v2 address, where exact versions, wildcards and tags work
+        Register-PSResourceRepository -Name {feed} -Uri {feedUrl}/api/v2 -Trusted
+        """;
+
+    /// <summary><see cref="DefaultPackage"/> for a feed of .NET packages.</summary>
+    public const string NuGetPackage =
+        """
+        dotnet add package {id} --version {version} --source {v3Url}
+        nuget install {id} -Version {version} -Source {v3Url}
+        """;
+
+    /// <summary><see cref="DefaultFeed"/> for a feed of .NET packages.</summary>
+    public const string NuGetFeed =
+        """
+        # dotnet
+        dotnet nuget add source {v3Url} --name {feed}
+        # nuget.exe and Visual Studio
+        nuget sources add -Name {feed} -Source {v3Url}
+        """;
+
+    /// <summary><see cref="DefaultPackage"/> for a feed of Chocolatey packages.</summary>
+    public const string ChocolateyPackage =
+        """
+        choco install {id} --version {version} --source {feed}
+        """;
+
+    /// <summary>
+    /// <see cref="DefaultFeed"/> for a feed of Chocolatey packages. Chocolatey speaks v2 only, at the feed's own address;
+    /// the trailing slash is what its source validation was recorded with.
+    /// </summary>
+    public const string ChocolateyFeed =
+        """
+        # Chocolatey
+        choco source add --name {feed} --source {feedUrl}/
+        """;
+
+    /// <summary>The package page's default for a feed used for <paramref name="purpose"/>.</summary>
+    public static string DefaultPackageFor(FeedPurpose purpose) => purpose switch
+    {
+        FeedPurpose.PowerShell => PowerShellPackage,
+        FeedPurpose.NuGet => NuGetPackage,
+        FeedPurpose.Chocolatey => ChocolateyPackage,
+        _ => DefaultPackage,
+    };
+
+    /// <summary>The feed page's default for a feed used for <paramref name="purpose"/>.</summary>
+    public static string DefaultFeedFor(FeedPurpose purpose) => purpose switch
+    {
+        FeedPurpose.PowerShell => PowerShellFeed,
+        FeedPurpose.NuGet => NuGetFeed,
+        FeedPurpose.Chocolatey => ChocolateyFeed,
+        _ => DefaultFeed,
+    };
 
     /// <summary>On an asset directory's page, for the folder shown. Placeholders: <c>{directory} {folderUrl}</c>; <c>&lt;file&gt;</c> is left for the reader.</summary>
     public const string DefaultFiles =

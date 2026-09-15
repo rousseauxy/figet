@@ -1655,6 +1655,7 @@ public static class FiGetApp
             FolderWritable = seed.Kind == FeedKind.Assets && !string.IsNullOrWhiteSpace(seed.Folder) && seed.FolderWrites,
             AllowOverwrite = seed.AllowOverwrite,
             DeletionBehavior = seed.DeletionBehavior,
+            Purpose = seed.Kind == FeedKind.Assets ? FeedPurpose.Any : seed.Purpose,
             MergePushedIdsWithUpstreams = seed.MergePushedIdsWithUpstreams,
             CreatedUtc = time.GetUtcNow().UtcDateTime,
             Upstreams = upstreams,

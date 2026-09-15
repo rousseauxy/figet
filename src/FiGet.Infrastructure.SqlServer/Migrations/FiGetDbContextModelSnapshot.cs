@@ -523,6 +523,11 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.Property<int?>("PruneCachedAfterDays")
                         .HasColumnType("int");
 
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
                     b.Property<int?>("RetainIfUsedWithinDays")
                         .HasColumnType("int");
 

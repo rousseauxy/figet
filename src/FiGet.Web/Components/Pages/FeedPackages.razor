@@ -41,7 +41,7 @@
 </p>
 
 <Accordion Id="connect" Title="Connect a client">
-    <Instructions Lines="@InstructionTemplates.Render(feed.FeedInstructions, InstructionTemplates.DefaultFeed, new Dictionary<string, string> { ["feed"] = feed.Name, ["feedUrl"] = FeedUrl, ["v3Url"] = SourceUrl })" />
+    <Instructions Lines="@InstructionTemplates.Render(feed.FeedInstructions, InstructionTemplates.DefaultFeedFor(feed.Purpose), new Dictionary<string, string> { ["feed"] = feed.Name, ["feedUrl"] = FeedUrl, ["v3Url"] = SourceUrl })" />
 </Accordion>
 
 @* A pull posts back here with what it did. *@

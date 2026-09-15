@@ -119,7 +119,7 @@
         </div>
 
         <h2>Install this version</h2>
-        <Instructions Lines="@InstructionTemplates.Render(feed.PackageInstructions, InstructionTemplates.DefaultPackage, new Dictionary<string, string> { ["id"] = displayId, ["version"] = row.NormalizedVersion, ["feed"] = feed.Name, ["feedUrl"] = feedUrl, ["v3Url"] = feedUrl + "/v3/index.json" })" />
+        <Instructions Lines="@InstructionTemplates.Render(feed.PackageInstructions, InstructionTemplates.DefaultPackageFor(feed.Purpose), new Dictionary<string, string> { ["id"] = displayId, ["version"] = row.NormalizedVersion, ["feed"] = feed.Name, ["feedUrl"] = feedUrl, ["v3Url"] = feedUrl + "/v3/index.json" })" />
         break;
 }
 

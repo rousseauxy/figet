@@ -38,4 +38,20 @@ public sealed class InstructionTemplatesTests
         Assert.Null(InstructionTemplates.Normalize("", InstructionTemplates.DefaultFeed));
         Assert.Equal("curl {folderUrl}x", InstructionTemplates.Normalize(" curl {folderUrl}x ", InstructionTemplates.DefaultFiles));
     }
+
+    /// <summary>Each purpose has its own commands and gallery; any client keeps the combined defaults and no gallery.</summary>
+    [Fact]
+    public void Each_purpose_has_its_own_commands_and_gallery()
+    {
+        Assert.Equal(InstructionTemplates.DefaultFeed, InstructionTemplates.DefaultFeedFor(FiGet.Domain.Entities.FeedPurpose.Any));
+        Assert.Equal(InstructionTemplates.DefaultPackage, InstructionTemplates.DefaultPackageFor(FiGet.Domain.Entities.FeedPurpose.Any));
+        Assert.Null(FiGet.Domain.Entities.FeedUpstream.KnownFor(FiGet.Domain.Entities.FeedPurpose.Any));
+
+        var purposes = new[] { FiGet.Domain.Entities.FeedPurpose.PowerShell, FiGet.Domain.Entities.FeedPurpose.NuGet, FiGet.Domain.Entities.FeedPurpose.Chocolatey };
+        Assert.Equal(4, purposes.Select(InstructionTemplates.DefaultFeedFor).Append(InstructionTemplates.DefaultFeed).Distinct().Count());
+        Assert.Equal(4, purposes.Select(InstructionTemplates.DefaultPackageFor).Append(InstructionTemplates.DefaultPackage).Distinct().Count());
+        Assert.Equal(
+            ["PowerShell Gallery", "nuget.org", "Chocolatey community"],
+            purposes.Select(p => FiGet.Domain.Entities.FeedUpstream.KnownFor(p)!.Name));
+    }
 }

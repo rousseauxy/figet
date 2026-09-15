@@ -83,6 +83,7 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.HasIndex(x => x.NameLower).IsUnique();
             e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(16);
             e.Property(x => x.DeletionBehavior).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Purpose).HasConversion<string>().HasMaxLength(16);
             e.Property(x => x.ClientBaseUrl).HasMaxLength(512);
             e.Property(x => x.FolderRoot).HasMaxLength(1024);
             e.Ignore(x => x.IsFolderBacked);

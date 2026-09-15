@@ -34,6 +34,17 @@
             }
             else
             {
+                <div class="fg-field">
+                    <label for="purpose">Used for</label>
+                    <InputSelect id="purpose" @bind-Value="Settings!.Purpose">
+                        @foreach (var purpose in Enum.GetValues<FeedPurpose>())
+                        {
+                            <option value="@purpose">@Display.Purpose(purpose)</option>
+                        }
+                    </InputSelect>
+                    <span class="fg-small fg-muted">Sets the connect and install commands the pages show, and which pushes the feed takes: a PowerShell feed only modules and scripts, a NuGet feed no modules or Chocolatey packages, a Chocolatey feed no modules or .NET packages. Any client takes everything. Reading is never limited. Packages already here stay.</span>
+                </div>
+
                 <label class="fg-check"><InputCheckbox id="allow-overwrite" @bind-Value="Settings!.AllowOverwrite" /> Pushing an existing version replaces it</label>
 
                 <div class="fg-field">
@@ -301,7 +312,7 @@
         // Only seeded on a GET; on a post it already carries what was submitted.
         Settings ??= Target is not { } feed
             ? new SettingsForm()
-            : new SettingsForm { AnonymousRead = feed.AnonymousRead, AnonymousList = feed.AnonymousList, AllowOverwrite = feed.AllowOverwrite, DeletionBehavior = feed.DeletionBehavior, MergePushedIdsWithUpstreams = feed.MergePushedIdsWithUpstreams, ChartColor = feed.ChartColor ?? 0 };
+            : new SettingsForm { AnonymousRead = feed.AnonymousRead, AnonymousList = feed.AnonymousList, AllowOverwrite = feed.AllowOverwrite, DeletionBehavior = feed.DeletionBehavior, MergePushedIdsWithUpstreams = feed.MergePushedIdsWithUpstreams, ChartColor = feed.ChartColor ?? 0, Purpose = feed.Purpose };
         Networks ??= new NetworksForm { Text = Target?.AllowedNetworks ?? "" };
         shares = IsAssets && Shares.IsConfigured ? Shares.List() : [];
         Folder ??= new FolderForm { Share = CurrentShare, Inside = Current?.Inside ?? "", Writes = Target?.FolderWritable ?? false };
@@ -396,7 +407,7 @@
         }
 
         var saved = await Feeds.UpdateSettingsAsync(
-            feed.Key, Settings!.AnonymousRead, Settings!.AnonymousList, Settings!.AllowOverwrite, Settings!.DeletionBehavior, Settings!.MergePushedIdsWithUpstreams, Settings!.ChartColor is 0 ? null : Settings!.ChartColor, HttpContext.RequestAborted);
+            feed.Key, Settings!.AnonymousRead, Settings!.AnonymousList, Settings!.AllowOverwrite, Settings!.DeletionBehavior, Settings!.MergePushedIdsWithUpstreams, Settings!.ChartColor is 0 ? null : Settings!.ChartColor, Settings!.Purpose, HttpContext.RequestAborted);
 
         if (saved)
         {
@@ -406,7 +417,7 @@
                 HttpContext,
                 "feed.settings",
                 feed.Name,
-                $"anonymousRead={Settings!.AnonymousRead} anonymousList={Settings!.AnonymousList} allowOverwrite={Settings!.AllowOverwrite} onDelete={Settings!.DeletionBehavior} mergePushedIds={Settings!.MergePushedIdsWithUpstreams} chartColor={(Settings!.ChartColor is 0 ? "automatic" : Settings!.ChartColor.ToString(CultureInfo.InvariantCulture))}");
+                $"anonymousRead={Settings!.AnonymousRead} anonymousList={Settings!.AnonymousList} allowOverwrite={Settings!.AllowOverwrite} onDelete={Settings!.DeletionBehavior} mergePushedIds={Settings!.MergePushedIdsWithUpstreams} purpose={(IsAssets ? FeedPurpose.Any : Settings!.Purpose)} chartColor={(Settings!.ChartColor is 0 ? "automatic" : Settings!.ChartColor.ToString(CultureInfo.InvariantCulture))}");
         }
 
         (message, messageIsError) = saved ? ("Settings saved.", false) : ("This feed no longer exists.", true);
@@ -440,6 +451,8 @@
         public PackageDeletionBehavior DeletionBehavior { get; set; } = PackageDeletionBehavior.Unlist;
 
         public bool MergePushedIdsWithUpstreams { get; set; }
+
+        public FeedPurpose Purpose { get; set; }
 
         /// <summary>0 for automatic: a radio group needs a value for every choice, and null is not one it can post.</summary>
         public int ChartColor { get; set; }

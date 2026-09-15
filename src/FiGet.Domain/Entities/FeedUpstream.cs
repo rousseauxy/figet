@@ -79,7 +79,17 @@ public sealed class FeedUpstream
     [
         new("nuget.org", "https://api.nuget.org/v3/index.json", UpstreamKind.V3),
         new("PowerShell Gallery", "https://www.powershellgallery.com/api/v2", UpstreamKind.V2),
+        new("Chocolatey community", "https://community.chocolatey.org/api/v2", UpstreamKind.V2),
     ];
+
+    /// <summary>The public gallery for a feed used for <paramref name="purpose"/>; null when there is no one gallery.</summary>
+    public static KnownUpstream? KnownFor(FeedPurpose purpose) => purpose switch
+    {
+        FeedPurpose.PowerShell => Known[1],
+        FeedPurpose.NuGet => Known[0],
+        FeedPurpose.Chocolatey => Known[2],
+        _ => null,
+    };
 
     /// <summary>Whether the upstream's source - where it points and with what - differs from another's.</summary>
     public bool SourceDiffersFrom(FeedUpstream other)
