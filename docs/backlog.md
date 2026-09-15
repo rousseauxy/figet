@@ -230,7 +230,7 @@ Shape to decide on: keep `build-and-test` on push to main; keep the container sm
 it has already caught a real defect (a project added without its `COPY` line in the Dockerfile's restore
 layer); and add a *separate* tag-triggered job that pushes to GHCR once the repository is public.
 
-### Pin the SDK and runtime base image tags
+### ~~Pin the SDK and runtime base image tags~~ (done 2026-09-15: `sdk:10.0.401`, `aspnet:10.0.12`)
 
 Both stages of `deploy/Dockerfile` float: `sdk:10.0` and `aspnet:10.0`. The sibling application pins both
 (`sdk:10.0.302`, `aspnet:10.0.10`) with a comment giving two reasons — avoiding float drift, and keeping

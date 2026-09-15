@@ -5,7 +5,12 @@
 # The runtime image follows OpenShift's restricted security constraints, so it runs unchanged everywhere else:
 # non-root, works under an arbitrary UID in group 0, listens on 8080, writes only to /data and /tmp.
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+# Both stages pinned to exact patches, and to the same runtime: the SDK composes the static web assets the runtime serves, and
+# two floating tags that agree today need not agree tomorrow - a mismatch fails silently, with a healthy container and a 404
+# for a file a page asks for. Bump both together: the SDK patch whose bundled runtime is the aspnet tag below
+# (`docker run --rm --entrypoint dotnet mcr.microsoft.com/dotnet/sdk:<tag> --list-runtimes`). A runtime patch release can
+# carry security fixes FiGet needs without a code change, so check for one monthly.
+FROM mcr.microsoft.com/dotnet/sdk:10.0.401 AS build
 WORKDIR /src
 
 COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
@@ -37,7 +42,7 @@ RUN test -f /app/FiGet.Web.staticwebassets.endpoints.json && test -f /app/wwwroo
         && echo "--- /app/wwwroot ---" && ls -laR /app/wwwroot \
         && exit 1)
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.12 AS runtime
 WORKDIR /app
 
 ENV ASPNETCORE_HTTP_PORTS=8080 \
