@@ -263,6 +263,33 @@ public abstract class NuGetV2Tests
         HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync(redirect.Headers.Location));
     }
 
+    /// <summary>
+    /// The v2 autocomplete the Package Manager Console uses: ids by prefix and a package's versions, as JSON arrays, on both
+    /// v2 roots, with a GET route in the table so a Release build does not answer 405. Found cross-checking NuGet/Home's
+    /// issues (#2896, #4279, #5377; 2026-09-15).
+    /// </summary>
+    [Fact]
+    public async Task The_v2_autocomplete_lists_ids_by_prefix_and_versions_of_one()
+    {
+        var id = FiGetServerFixture.UniqueId("V2.Complete");
+        await SeedAsync("public", id);
+        using var client = server.CreateClient();
+        foreach (var root in new[] { "nuget/public", "nuget/public/api/v2" })
+        {
+            var ids = System.Text.Json.JsonSerializer.Deserialize<string[]>(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"{root}/package-ids?partialId={id[..^3].ToLowerInvariant()}&includePrerelease=true")))!;
+            Assert.Contains(id, ids);
+            Assert.All(ids, i => Assert.StartsWith(id[..^3], i, StringComparison.OrdinalIgnoreCase));
+
+            var stable = System.Text.Json.JsonSerializer.Deserialize<string[]>(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"{root}/package-versions/{id.ToLowerInvariant()}?includePrerelease=false")))!;
+            Assert.Equal(["1.0.0", "1.1.0"], stable);
+            var all = System.Text.Json.JsonSerializer.Deserialize<string[]>(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"{root}/package-versions/{id}?includePrerelease=true&semVerLevel=2.0.0")))!;
+            Assert.Equal(["1.0.0", "1.1.0", "2.0.0-beta1"], all);
+        }
+
+        var endpoints = server.Services.GetRequiredService<Microsoft.AspNetCore.Routing.EndpointDataSource>().Endpoints.OfType<Microsoft.AspNetCore.Routing.RouteEndpoint>();
+        Assert.Contains(endpoints, e => e.RoutePattern.RawText == "/nuget/{feed}/package-versions/{id}" && e.Metadata.GetMetadata<Microsoft.AspNetCore.Routing.HttpMethodMetadata>()?.HttpMethods.Contains("GET") == true);
+    }
+
     [Fact]
     public async Task Search_finds_by_tag_the_way_Find_Module_asks()
     {

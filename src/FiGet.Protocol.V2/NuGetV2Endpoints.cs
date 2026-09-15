@@ -107,6 +107,11 @@ public static class NuGetV2Endpoints
         group.MapGet("/package/{id}/{version}", DownloadAsync);
         group.MapGet("/package/{id}", LatestDownloadAsync);
 
+        // The v2 autocomplete the NuGet client uses for tab completion in the Package Manager Console. Mapped explicitly, as
+        // the api/v2 root is: package-versions/{id} also matches DELETE /{id}/{version}, and a Release build would answer 405.
+        group.MapGet("/package-ids", PackageIdsAsync);
+        group.MapGet("/package-versions/{id}", PackageVersionsAsync);
+
         // NuGet.Server's download address, which PSResourceGet uses for a feed it takes for NuGet.Server (an address ending
         // in /nuget): sent on to the package download.
         group.MapGet("/Packages(Id='{id}',Version='{version}')/Download", (HttpContext http, string feed, string id, string version) =>
@@ -260,6 +265,40 @@ public static class NuGetV2Endpoints
 
         var rows = await SearchRowsAsync(store, connector, request!.Feed, "", filter?.StoreTerms ?? [], includePrerelease: true, semVer2, loggers, cancellationToken);
         return Page(http, request.Feed.Name, rows, filter, order, query);
+    }
+
+    /// <summary>At most 30 listed ids starting with <c>partialId</c>, as NuGet.Server answered: a JSON array of strings.</summary>
+    private static async Task<IResult> PackageIdsAsync(HttpContext http, string feed, IPackageStore store, CancellationToken cancellationToken)
+    {
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, TokenScopes.Read, cancellationToken);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        var query = http.Request.Query;
+        var partial = query["partialId"].ToString().Trim();
+        var ids = await store.AutocompleteIdsAsync(request!.Feed.Key, partial, Bool(query["includePrerelease"]), SemVer2(query), 0, 60, cancellationToken);
+        return Results.Json(ids.Where(i => i.StartsWith(partial, StringComparison.OrdinalIgnoreCase)).Take(30).ToList());
+    }
+
+    /// <summary>The listed versions of one package, oldest first, from the merged list on a proxy feed: a JSON array of strings.</summary>
+    private static async Task<IResult> PackageVersionsAsync(HttpContext http, string feed, string id, IPackageStore store, ConnectorService connector, CancellationToken cancellationToken)
+    {
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, TokenScopes.Read, cancellationToken);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        var query = http.Request.Query;
+        var prerelease = Bool(query["includePrerelease"]);
+        var rows = await RowsForIdAsync(store, connector, request!.Feed, id, SemVer2(query), cancellationToken);
+        return Results.Json(rows
+            .Where(r => r.Entry.Listed && (prerelease || !r.Version.IsPrerelease))
+            .OrderBy(r => r.Version, VersionComparer.Default)
+            .Select(r => r.Version.ToFullString())
+            .ToList());
     }
 
     /// <summary>
