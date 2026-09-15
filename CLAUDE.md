@@ -11,6 +11,8 @@ ASP.NET Core. MIT, public on GitHub; the forge mirror is read-only.
 ## Rules
 
 - **English everywhere**: identifiers, comments, commit messages, docs.
+- **`docs/guide/` is the user guide and is published as a documentation site.** A change to one belongs in both, in
+  the same breath; the repository copy is the source.
 - **Nothing organisation-specific in this repo.** No customer hostnames, feed names, API keys,
   recorded traffic with real package names, or paths from a work machine. Fixtures are
   synthetic or scrubbed. The repo is public; treat every commit as already public.
