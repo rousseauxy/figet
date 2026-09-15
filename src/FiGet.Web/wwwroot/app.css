@@ -686,7 +686,9 @@ input::placeholder, textarea::placeholder { color: var(--text-3); }
    are the native control's either way; this is paint only. */
 @supports (appearance: base-select) {
   select, select::picker(select) { appearance: base-select; }
-  select { cursor: pointer; }
+  /* base-select makes the control a flex box whose items sit at the top: a select stretched taller than its text - the
+     search bar's filter - showed its value and caret at the top edge. */
+  select { cursor: pointer; align-items: center; }
   select::picker-icon { color: var(--text-2); font-size: 0.7rem; margin-left: auto; padding-left: 0.5rem; }
   select:open { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
   select::picker(select) {
