@@ -2,8 +2,12 @@
 
 Scope: the whole repository at commit `09013cf`, read file by file, with the design documents
 (`docs/build-plan.md`, `docs/auth-plan.md`, `docs/configuration.md`, `docs/status.md`, `docs/backlog.md`) as
-the statement of intent. The deployment assessed is the target one: two or more replicas on OpenShift behind
+the statement of intent. The deployment assessed is the demanding one: two or more replicas on Kubernetes behind
 a reverse proxy, SQL Server, shared or S3 storage. Nothing in production code was changed.
+
+**This review is closed.** Everything in section 5 was acted on or answered the same day, in section 6 below; what it
+left for a cluster deployment is in `docs/backlog.md`. It is kept as a record of what was looked at and decided, so a
+later reader can see which risks were weighed and which were accepted.
 
 **Evidence.** Every item is marked **Confirmed** or **Plausible**. Confirmed means a test written for this
 review demonstrated it locally; those tests are in `tests/FiGet.Integration.Tests/ReviewProbeTests.cs` and
@@ -351,7 +355,7 @@ Runs are capped at 1,000 removals and delayed five minutes after start. Tested i
 
 **S8.1 Data Protection keys unencrypted in the database. Medium. Plausible (owner-known).**
 `FiGetApp.cs:152-154` persists the key ring to `DataProtectionKeys` with no `ProtectKeysWith*`, and the start-up
-log says so. Known to the owner for the provider secrets. The larger consequence: the sign-in cookie and the
+log says so, which was known and accepted for the provider secrets. The larger consequence: the sign-in cookie and the
 antiforgery cookie are protected with the same ring, and the security stamps are in the same database, so read
 access to the database (a backup, a reporting login, a leaked connection string, S5.3) forges a super-admin
 cookie without any password. Fix: `ProtectKeysWithCertificate` from a mounted secret, or a small `IXmlEncryptor`
@@ -603,7 +607,7 @@ exist yet).
 
 ## 5. Proposed order
 
-**Before publishing the repository** (the fleet already reaches the instance, and readers will find these first):
+**Before publishing the repository** (an instance is already being used, and readers will find these first):
 
 1. S5.3 credential reference prefix and admin-only URL and credential (High).
 2. S6.2 parser depth limit (High; one line of state, ten lines of code).
@@ -639,10 +643,10 @@ exist yet).
 
 ## 6. Follow-up (same day)
 
-The owner's answers: Manage does not include an upstream's URL or credential (now admin-only; managers add known public
+What was decided: Manage does not include an upstream's URL or credential (now admin-only; managers add known public
 galleries); the email allow list was dropped by accident (restored, with an account-creation switch); the probes
 became regression tests next to the code they cover; items 1 to 14 of section 5 were done, except the parts the
-OpenShift admins' answers made unnecessary (S3 byte ranges, a secret-source port) and `KnownNetworks`, which belongs
+cluster operators' answers made unnecessary (S3 byte ranges, a secret-source port) and `KnownNetworks`, which belongs
 in the Helm chart. What was built, and what was deliberately left, is in `docs/status.md` under this date and in
 `docs/backlog.md` under phase 6 and the smaller review items. Two deviations from the proposals above:
 
