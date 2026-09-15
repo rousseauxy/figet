@@ -243,8 +243,18 @@ public sealed class EfPackageStore(FiGetDbContext db) : IPackageStore
             }
             catch (DbUpdateException)
             {
+                // "Already exists" only when the version is there now - a concurrent push of the same version won the unique
+                // index. Anything else (a value the column refuses, a broken constraint) is a failure to store, and
+                // reporting it as a duplicate told a client its new version existed when nothing had been written.
                 db.ChangeTracker.Clear();
-                return false;
+                if (await db.PackageVersions.AnyAsync(
+                        v => v.NormalizedVersionLower == version.NormalizedVersionLower && v.Package!.FeedKey == feedKey && v.Package.IdLower == idLower,
+                        cancellationToken))
+                {
+                    return false;
+                }
+
+                throw;
             }
             finally
             {

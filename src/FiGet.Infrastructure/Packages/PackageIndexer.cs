@@ -56,7 +56,7 @@ public sealed class PackageIndexer : IPackageIndexer
             var repository = nuspec.GetRepositoryMetadata();
             var packageTypes = nuspec.GetPackageTypes().Select(t => t.Name).ToList();
 
-            return new IndexedPackage
+            var indexed = new IndexedPackage
             {
                 Id = id,
                 Version = version,
@@ -88,6 +88,8 @@ public sealed class PackageIndexer : IPackageIndexer
                 Sha512 = sha512,
                 Nuspec = nuspecBytes,
             };
+            CheckColumnLengths(indexed);
+            return indexed;
         }
         catch (InvalidPackageException)
         {
@@ -132,6 +134,38 @@ public sealed class PackageIndexer : IPackageIndexer
         }
 
         return buffer.ToArray();
+    }
+
+    /// <summary>Refuses a value that would not fit its column, naming the nuspec element so the author knows what to shorten.</summary>
+    private static void CheckColumnLengths(IndexedPackage package)
+    {
+        Check("title", package.Title, PackageColumnLimits.Title);
+        Check("iconUrl", package.IconUrl, PackageColumnLimits.Url);
+        Check("licenseUrl", package.LicenseUrl, PackageColumnLimits.Url);
+        Check("license", package.LicenseExpression, PackageColumnLimits.LicenseExpression);
+        Check("projectUrl", package.ProjectUrl, PackageColumnLimits.Url);
+        Check("repository url", package.RepositoryUrl, PackageColumnLimits.Url);
+        Check("repository type", package.RepositoryType, PackageColumnLimits.RepositoryType);
+        Check("language", package.Language, PackageColumnLimits.Language);
+        Check("minClientVersion", package.MinClientVersion, PackageColumnLimits.MinClientVersion);
+        Check("packageTypes", "|" + string.Join('|', package.PackageTypes) + "|", PackageColumnLimits.PackageTypes);
+        foreach (var group in package.DependencyGroups)
+        {
+            Check("dependency group targetFramework", group.TargetFramework, PackageColumnLimits.TargetFramework);
+            foreach (var dependency in group.Dependencies)
+            {
+                Check("dependency id", dependency.Id, PackageColumnLimits.DependencyId);
+                Check("dependency version", dependency.VersionRange, PackageColumnLimits.DependencyVersionRange);
+            }
+        }
+
+        static void Check(string element, string value, int max)
+        {
+            if (value.Length > max)
+            {
+                throw new InvalidPackageException($"The nuspec's {element} is {value.Length} characters; at most {max} are accepted.");
+            }
+        }
     }
 
     private static string FrameworkFolder(NuGetFramework framework) =>

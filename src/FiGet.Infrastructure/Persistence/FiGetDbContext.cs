@@ -1,5 +1,6 @@
 using FiGet.Domain.Entities;
 using FiGet.Domain.Feeds;
+using FiGet.Infrastructure.Packages;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -319,22 +320,20 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.Property(x => x.NormalizedVersionLower).HasMaxLength(64);
             e.HasIndex(x => new { x.PackageKey, x.NormalizedVersionLower }).IsUnique();
             e.Property(x => x.Origin).HasConversion<string>().HasMaxLength(16);
-            e.Property(x => x.Authors).HasMaxLength(4000);
-            e.Property(x => x.Summary).HasMaxLength(4000);
-            e.Property(x => x.Title).HasMaxLength(512);
-            e.Property(x => x.Tags).HasMaxLength(4000);
-            e.Property(x => x.TagsLower).HasMaxLength(4000);
-            e.Property(x => x.IconUrl).HasMaxLength(2048);
-            e.Property(x => x.LicenseUrl).HasMaxLength(2048);
-            e.Property(x => x.LicenseExpression).HasMaxLength(512);
-            e.Property(x => x.ProjectUrl).HasMaxLength(2048);
-            e.Property(x => x.RepositoryUrl).HasMaxLength(2048);
-            e.Property(x => x.RepositoryType).HasMaxLength(64);
-            e.Property(x => x.Copyright).HasMaxLength(4000);
-            e.Property(x => x.Language).HasMaxLength(64);
-            e.Property(x => x.MinClientVersion).HasMaxLength(64);
-            e.Property(x => x.PackageTypes).HasMaxLength(512);
-            e.Property(x => x.PackageTypesLower).HasMaxLength(512);
+            // Tags, TagsLower, Authors, Summary and Copyright are unbounded, like Description: a PowerShell Gallery module lists
+            // every exported command as a tag, and real modules carry 15,000 to 20,000 characters of them. The columns that
+            // stay bounded share their lengths with the indexer, which refuses a longer value with a message.
+            e.Property(x => x.Title).HasMaxLength(PackageColumnLimits.Title);
+            e.Property(x => x.IconUrl).HasMaxLength(PackageColumnLimits.Url);
+            e.Property(x => x.LicenseUrl).HasMaxLength(PackageColumnLimits.Url);
+            e.Property(x => x.LicenseExpression).HasMaxLength(PackageColumnLimits.LicenseExpression);
+            e.Property(x => x.ProjectUrl).HasMaxLength(PackageColumnLimits.Url);
+            e.Property(x => x.RepositoryUrl).HasMaxLength(PackageColumnLimits.Url);
+            e.Property(x => x.RepositoryType).HasMaxLength(PackageColumnLimits.RepositoryType);
+            e.Property(x => x.Language).HasMaxLength(PackageColumnLimits.Language);
+            e.Property(x => x.MinClientVersion).HasMaxLength(PackageColumnLimits.MinClientVersion);
+            e.Property(x => x.PackageTypes).HasMaxLength(PackageColumnLimits.PackageTypes);
+            e.Property(x => x.PackageTypesLower).HasMaxLength(PackageColumnLimits.PackageTypes);
             e.Property(x => x.Hash).HasMaxLength(128);
             e.Property(x => x.HashAlgorithm).HasMaxLength(16);
             e.HasMany(x => x.Dependencies).WithOne().HasForeignKey(x => x.PackageVersionKey).OnDelete(DeleteBehavior.Cascade);
@@ -344,9 +343,9 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
         {
             e.ToTable("PackageDependencies");
             e.HasKey(x => x.Key);
-            e.Property(x => x.TargetFramework).HasMaxLength(64);
-            e.Property(x => x.Id).HasMaxLength(128);
-            e.Property(x => x.VersionRange).HasMaxLength(256);
+            e.Property(x => x.TargetFramework).HasMaxLength(PackageColumnLimits.TargetFramework);
+            e.Property(x => x.Id).HasMaxLength(PackageColumnLimits.DependencyId);
+            e.Property(x => x.VersionRange).HasMaxLength(PackageColumnLimits.DependencyVersionRange);
             e.HasIndex(x => x.PackageVersionKey);
         });
 
