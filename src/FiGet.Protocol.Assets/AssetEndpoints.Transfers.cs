@@ -157,6 +157,7 @@ public static partial class AssetEndpoints
         var (request, error) = await FeedAccess.ResolveAssetsAsync(http, directory, TokenScopes.Push, cancellationToken);
         if (error is not null)
         {
+            await PackageUpload.DiscardRefusedBodyAsync(http.Request, error, upload.Value.MaxImportSizeBytes, cancellationToken);
             return error;
         }
 

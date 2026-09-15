@@ -43,10 +43,19 @@ public static class PackageUpload
     /// its connection reset - the client never sees the 401 and never retries with credentials. The anonymous rate limit
     /// already bounds how often a stranger can make the server read.
     /// </summary>
-    public static async Task DiscardRefusedBodyAsync(HttpRequest request, IResult refusal, UploadOptions options, CancellationToken cancellationToken)
+    public static Task DiscardRefusedBodyAsync(HttpRequest request, IResult refusal, UploadOptions options, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return DiscardRefusedBodyAsync(request, refusal, options.MaxPackageSizeBytes, cancellationToken);
+    }
+
+    /// <summary>
+    /// The same for any upload with its own limit: an asset directory's file or archive import, which curl, Invoke-WebRequest
+    /// and HttpClient with stored credentials answer by challenge just as NuGet clients do.
+    /// </summary>
+    public static async Task DiscardRefusedBodyAsync(HttpRequest request, IResult refusal, long limit, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
-        ArgumentNullException.ThrowIfNull(options);
         if (refusal is not IStatusCodeHttpResult { StatusCode: StatusCodes.Status401Unauthorized or StatusCodes.Status403Forbidden }
             || (request.ContentLength is null or 0 && !request.Headers.TransferEncoding.Any(v => v?.Contains("chunked", StringComparison.OrdinalIgnoreCase) == true)))
         {
@@ -55,7 +64,7 @@ public static class PackageUpload
 
         if (request.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } sizeFeature)
         {
-            sizeFeature.MaxRequestBodySize = options.MaxPackageSizeBytes + (1024 * 1024);
+            sizeFeature.MaxRequestBodySize = limit + (1024 * 1024);
         }
 
         try
@@ -66,7 +75,7 @@ public static class PackageUpload
             while ((read = await request.Body.ReadAsync(buffer, cancellationToken)) > 0)
             {
                 total += read;
-                if (total > options.MaxPackageSizeBytes + (1024 * 1024))
+                if (total > limit + (1024 * 1024))
                 {
                     return;
                 }
