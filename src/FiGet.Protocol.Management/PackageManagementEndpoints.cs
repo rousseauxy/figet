@@ -116,7 +116,7 @@ public static class PackageManagementEndpoints
         return Results.Json(rows, Json);
     }
 
-    private static async Task<IResult> DownloadAsync(HttpContext http, string feed, string? name, string? version, IPackageStore store, IPackageStorage storage, CancellationToken cancellationToken)
+    private static async Task<IResult> DownloadAsync(HttpContext http, string feed, string? name, string? version, IPackageStore store, IPackageStorage storage, ConnectorService connector, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -124,8 +124,19 @@ public static class PackageManagementEndpoints
             return error;
         }
 
-        if (await FindAsync(request!.Feed, name, version, store, cancellationToken) is not { } row
-            || await storage.OpenPackageAsync(new PackageStorageKey(request.Feed.Key, row.Package!.IdLower, row.NormalizedVersionLower), cancellationToken) is not { } stream)
+        if (await FindAsync(request!.Feed, name, version, store, cancellationToken) is not { } row)
+        {
+            return NotFound(name, version);
+        }
+
+        var key = new PackageStorageKey(request.Feed.Key, row.Package!.IdLower, row.NormalizedVersionLower);
+        var stream = await storage.OpenPackageAsync(key, cancellationToken);
+        if (stream is null && await connector.RepairMissingFileAsync(request.Feed, row.Package.Id, row, cancellationToken) is not null)
+        {
+            stream = await storage.OpenPackageAsync(key, cancellationToken);
+        }
+
+        if (stream is null)
         {
             return NotFound(name, version);
         }

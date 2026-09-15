@@ -19,6 +19,7 @@ public sealed class ConnectorService(
     IUpstreamIndexStore index,
     IUpstreamDescriptionStore descriptions,
     IPackageStore packages,
+    IPackageStorage storage,
     PackageIngestionService ingestion,
     UpstreamMetadataCache metadataCache,
     IUpstreamRefreshQueue refreshes,
@@ -438,6 +439,43 @@ public sealed class ConnectorService(
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// A version row whose package file is gone: a process stopped between writing the row and the file, or someone removed
+    /// the file. A copy cached from an upstream is dropped and fetched again, so the download that noticed still succeeds;
+    /// a version pushed here cannot be fetched from anywhere, so it is logged with the path to restore, and the caller
+    /// answers 404 as before. Returns the row to serve, or null.
+    /// </summary>
+    public async Task<PackageVersion?> RepairMissingFileAsync(Feed feed, string id, PackageVersion row, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(feed);
+        ArgumentNullException.ThrowIfNull(row);
+        var idLower = id.ToLowerInvariant();
+        var key = new PackageStorageKey(feed.Key, idLower, row.NormalizedVersionLower);
+        if (await storage.OpenPackageAsync(key, cancellationToken) is { } present)
+        {
+            // Another request repaired it meanwhile.
+            await present.DisposeAsync();
+            return row;
+        }
+
+        if (row.Origin != PackageOrigin.Cached || feed.Upstreams.Count == 0)
+        {
+            logger.LogWarning(
+                "{Id} {Version} in feed {Feed} is listed but its package file is missing from storage (feed key {FeedKey}, {IdLower}/{VersionLower}); restore the file or delete the version.",
+                id,
+                row.NormalizedVersion,
+                feed.Name,
+                feed.Key,
+                idLower,
+                row.NormalizedVersionLower);
+            return null;
+        }
+
+        logger.LogWarning("The cached copy of {Id} {Version} in feed {Feed} had no package file; caching it again from its upstream.", id, row.NormalizedVersion, feed.Name);
+        await packages.DeleteVersionAsync(feed.Key, idLower, row.NormalizedVersionLower, cancellationToken);
+        return await EnsureCachedAsync(feed, id, NuGetVersion.Parse(row.NormalizedVersion), cancellationToken);
     }
 
     /// <summary>

@@ -307,6 +307,13 @@ public static class NuGetV2Endpoints
         }
 
         var stream = await storage.OpenPackageAsync(new PackageStorageKey(request.Feed.Key, idLower, versionLower), cancellationToken);
+        if (stream is null
+            && await connector.RepairMissingFileAsync(request.Feed, id, row, cancellationToken) is { } repaired)
+        {
+            row = repaired;
+            stream = await storage.OpenPackageAsync(new PackageStorageKey(request.Feed.Key, idLower, versionLower), cancellationToken);
+        }
+
         if (stream is null)
         {
             return Results.NotFound();

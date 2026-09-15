@@ -296,6 +296,15 @@ public static class NuGetV3Endpoints
         var stream = isNupkg
             ? await storage.OpenPackageAsync(key, cancellationToken)
             : await storage.OpenNuspecAsync(key, cancellationToken);
+        if (stream is null
+            && await connector.RepairMissingFileAsync(request.Feed, id, row, cancellationToken) is { } repaired)
+        {
+            row = repaired;
+            stream = isNupkg
+                ? await storage.OpenPackageAsync(key, cancellationToken)
+                : await storage.OpenNuspecAsync(key, cancellationToken);
+        }
+
         if (stream is null)
         {
             return Results.NotFound();

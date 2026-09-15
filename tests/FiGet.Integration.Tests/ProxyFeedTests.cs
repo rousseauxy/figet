@@ -921,6 +921,50 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         Assert.Equal(["1.0.0", "2.0.0"], autocomplete["data"]!.AsArray().Select(v => (string?)v).ToArray());
     }
 
+    /// <summary>
+    /// A version row whose package file is gone - a process stopped between writing the two, or a file removed by hand. A
+    /// cached copy is fetched again by the download that noticed, on v2, v3 and the management API alike; a version pushed
+    /// here has nowhere to come from and stays a 404. Found cross-checking other package servers' issue trackers (BaGet #298,
+    /// #552; BaGetter #211).
+    /// </summary>
+    [Fact]
+    public async Task A_cached_copy_whose_file_is_gone_is_cached_again_on_download()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.LostFile");
+        AddUpstream(id, "1.0.0");
+        using var client = server.CreateClient();
+        HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync($"nuget/proxy/package/{id}/1.0.0"));
+
+        var idLower = id.ToLowerInvariant();
+        foreach (var path in new[] { $"nuget/proxy/package/{id}/1.0.0", $"nuget/proxy/v3/flatcontainer/{idLower}/1.0.0/{idLower}.1.0.0.nupkg", $"api/packages/proxy/download?name={id}&version=1.0.0" })
+        {
+            await DeleteStoredFileAsync("proxy", idLower, "1.0.0");
+            var before = server.Upstream.DownloadCalls;
+            var download = await client.GetAsync(path);
+            Assert.True(download.StatusCode == HttpStatusCode.OK, $"{path}: {(int)download.StatusCode}");
+            Assert.True((await download.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken)).Length > 0, path);
+            Assert.Equal(before + 1, server.Upstream.DownloadCalls);
+            Assert.Equal(["1.0.0"], await CachedVersionsAsync(id));
+        }
+
+        var pushedId = FiGetServerFixture.UniqueId("Proxy.LostPushed");
+        using (var package = TestPackages.Create(pushedId, "1.0.0"))
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("proxy", package));
+        }
+
+        await DeleteStoredFileAsync("proxy", pushedId.ToLowerInvariant(), "1.0.0");
+        HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/proxy/package/{pushedId}/1.0.0"));
+        Assert.Equal(1, await CountAsync(pushedId, PackageOrigin.Pushed));
+    }
+
+    private async Task DeleteStoredFileAsync(string feedName, string idLower, string versionLower)
+    {
+        await using var scope = server.Services.CreateAsyncScope();
+        var feed = await scope.ServiceProvider.GetRequiredService<IFeedStore>().FindAsync(feedName, TestContext.Current.CancellationToken);
+        await scope.ServiceProvider.GetRequiredService<IPackageStorage>().DeletePackageAsync(new PackageStorageKey(feed!.Key, idLower, versionLower), TestContext.Current.CancellationToken);
+    }
+
     [Fact]
     public async Task A_denied_id_is_not_returned_by_search_either()
     {
