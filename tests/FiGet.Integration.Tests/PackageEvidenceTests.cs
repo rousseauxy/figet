@@ -61,6 +61,42 @@ public abstract class PackageEvidenceTests
         }
     }
 
+    /// <summary>
+    /// Pushing the same bytes again puts back the file of a version whose file is gone; other bytes for that version are still
+    /// a conflict. Found cross-checking Gitea's NuGet issues (#39215, 2026-09-15).
+    /// </summary>
+    [Fact]
+    public async Task Pushing_the_same_package_again_restores_a_missing_file()
+    {
+        var id = FiGetServerFixture.UniqueId("Evidence.Restore");
+        var bytes = TestPackages.Create(id, "1.0.0").ToArray();
+        using (var package = new MemoryStream(bytes))
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("public", package));
+        }
+
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            var feedKey = (await scope.ServiceProvider.GetRequiredService<FiGet.Application.Ports.IFeedStore>().FindAsync("public", CancellationToken.None))!.Key;
+            await scope.ServiceProvider.GetRequiredService<FiGet.Application.Ports.IPackageStorage>().DeletePackageAsync(new FiGet.Application.Ports.PackageStorageKey(feedKey, id.ToLowerInvariant(), "1.0.0"), CancellationToken.None);
+        }
+
+        using var client = server.CreateClient();
+        HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/public/package/{id}/1.0.0"));
+
+        using (var other = TestPackages.Create(id, "1.0.0", b => b.Description = "Something else"))
+        {
+            HttpAssert.Status(HttpStatusCode.Conflict, await PushAsync("public", other));
+        }
+
+        using (var same = new MemoryStream(bytes))
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("public", same));
+        }
+
+        Assert.Equal(bytes, await client.GetByteArrayAsync($"nuget/public/package/{id}/1.0.0"));
+    }
+
     /// <summary>nuget.exe over v2 may send the package as the raw request body instead of multipart.</summary>
     [Fact]
     public async Task A_v2_push_with_the_package_as_the_raw_body_is_stored()

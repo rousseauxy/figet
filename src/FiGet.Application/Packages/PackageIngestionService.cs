@@ -66,9 +66,26 @@ public sealed class PackageIngestionService(
 
         var idLower = indexed.Id.ToLowerInvariant();
         var versionLower = normalized.ToLowerInvariant();
-        var existed = await store.GetVersionAsync(feed.Key, idLower, versionLower, cancellationToken) is not null;
+        var existing = await store.GetVersionAsync(feed.Key, idLower, versionLower, cancellationToken);
+        var existed = existing is not null;
         if (existed && !feed.AllowOverwrite)
         {
+            // The same bytes pushed again for a version whose file is gone - storage restored from an older backup, a stop
+            // between the row and the file - put the file back. Downloads answered 404 while pushes answered "already
+            // exists", and on a feed that only unlists there was no way out short of an admin's hard delete. Different bytes
+            // are still a conflict.
+            var storageKey = new PackageStorageKey(feed.Key, idLower, versionLower);
+            if (string.Equals(existing!.Hash, indexed.Sha512, StringComparison.Ordinal))
+            {
+                await using var present = await storage.OpenPackageAsync(storageKey, cancellationToken);
+                if (present is null)
+                {
+                    nupkg.Position = 0;
+                    await storage.SavePackageAsync(storageKey, nupkg, indexed.Nuspec, overwrite: true, cancellationToken);
+                    return new PushResult(PushOutcome.Created, $"{indexed.Id} {normalized} was missing its file; the file is stored again.", indexed.Id, normalized);
+                }
+            }
+
             return new PushResult(PushOutcome.Conflict, $"{indexed.Id} {normalized} already exists in feed '{feed.Name}'.", indexed.Id, normalized);
         }
 
