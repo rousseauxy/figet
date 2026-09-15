@@ -78,7 +78,7 @@ lives in the database, so every replica shares it.
 
 ## The image
 
-`ghcr.io/rousseauxy/figet:latest`, or a version tag such as `0.1.0`. One tag carries `linux/amd64` and `linux/arm64`,
+`ghcr.io/rousseauxy/figet:latest`, or a version tag such as `1.0.0`. One tag carries `linux/amd64` and `linux/arm64`,
 built on a runner of each architecture. It runs as a non-root, arbitrary UID in group 0, listens on 8080, and writes
 only to `/data` and `/tmp`.
 
