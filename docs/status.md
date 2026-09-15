@@ -2997,3 +2997,44 @@ Evidence, against `FakeOidcProvider` signing real tokens with its published key:
 
 Suites: unit 213, integration 493, on SQLite and SQL Server. Not yet tried against a real Entra ID, Authentik or GitLab
 token.
+
+## Two findings from the issue cross-check - 2026-09-15
+
+Other package servers' issue trackers were read against FiGet's code (the reference server's public tracker, BaGet,
+BaGetter); the findings are in `docs/backlog.md`, "Findings from other package servers' issue trackers". The two High
+ones are fixed here.
+
+**Gallery-length tags on SQL Server.** `PackageVersions.Tags`, `TagsLower`, `Authors`, `Summary` and `Copyright` were
+4,000 characters. A PowerShell Gallery module lists every exported command as a tag (Microsoft.Graph.Users 2.39.0:
+18,149 characters), so on SQL Server the insert failed - and `EfPackageStore.AddVersionAsync` answered every
+`DbUpdateException` as "already exists": a push got 409 for a version that did not exist, and a proxy download of such a
+module failed on every retry. SQLite enforces no lengths, which is why nothing had shown it.
+- The five columns are unbounded (migration `UnboundedPackageMetadata`; SQLite needs no change). The columns that stay
+  bounded share their lengths with the indexer (`PackageColumnLimits`), which refuses a longer value with a 400 naming the
+  nuspec element, on both providers alike.
+- The store reports a duplicate only when the version is there after the failure; anything else is rethrown.
+- `PackageMetadataLimitTests` (both databases): a push with 20,000 characters of tags and 400 authors is stored and its last
+  tag is in the v2 and v3 answers; a 600-character title is a 400 naming it and stores nothing. Falsified: with the SQL
+  Server migration emptied, the push fails there (now a 500, no longer a false 409).
+
+**Search on a proxy feed flagged a cached older version as latest.** The merged version list applied to
+`FindPackagesById()`, the registration and the flat container, but `Search()`, `/v3/query` and `autocomplete?id=` built the
+list from local versions only. With 1.0.0 cached and 2.0.0 upstream, a wildcard `Find-Module`, `Find-PSResource`,
+`nuget list` and a v3 search offered 1.0.0 as the one latest version.
+- All three now merge the stored upstream catalogue (`ConnectorService.StoredUpstreamCandidatesAsync` for a page of
+  packages, one query per upstream through `IUpstreamIndexStore.FindManyAsync`). A stored catalogue has version numbers
+  only, so an upstream version shown or filtered in a search takes its title, description, tags and authors from the newest
+  cached copy until it is cached itself; a tag filter still finds the package. No upstream request is added.
+- `ProxyFeedTests.Search_flags_the_upstream_newer_version_as_latest_after_an_older_one_was_cached`: after downloading
+  1.0.0, `Search()` with `IsLatestVersion`, `IsAbsoluteLatestVersion` and a tag filter each return one row at 2.0.0; an
+  unfiltered search lists both with 2.0.0 latest; `/v3/query` answers 2.0.0 with both versions; autocomplete lists both.
+  Falsified: with the two protocol files at their previous state it fails with `IsLatestVersion: 1.0.0`.
+
+**The search bar's source filter** showed its value at the top of the bar in Chromium browsers since the select's popup is
+painted by the stylesheet (`appearance: base-select` lays the control out as a flex box). `align-items: center` in that
+block; checked in a headless Chrome screenshot of a proxy feed page.
+
+Also committed: the API token probe tests from the pre-publication review (13 cases on both databases and a rate-limit
+fixture), all passing.
+
+Suites: unit 213, integration 525, on SQLite and SQL Server.

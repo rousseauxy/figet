@@ -155,7 +155,45 @@ file-name check is a suffix match, so requesting 2.5.1 selects 3.2.5.1. Checked 
 matcher, along with the suggested full-name comparison. Nothing left to do here but watch the PR; when a
 PSResourceGet release carries the fix, re-run the 2.2.4 / 2.2.5 saves over v3 and close this entry.
 
+### Findings from other package servers' issue trackers (cross-check of 2026-09-15)
+
+The reference server's public tracker (2,316 issues, 542 read against the code), BaGet (446) and BaGetter (106) were
+checked against FiGet: every issue that could concern a v2/v3 server, PowerShell clients, proxy feeds, assets or
+authentication was judged against a file and line. 256 are already handled, with evidence; about 1,190 concern things
+FiGet does not have. What applies is below, in this section and under *Soon* and *Later*.
+
+- ~~**Tags longer than 4,000 characters on SQL Server.**~~ Done 2026-09-15 (docs/status.md, "Two findings from the issue
+  cross-check"). A PowerShell Gallery module lists each exported command as a tag, and real modules carry 15,000 to 20,000
+  characters; SQL Server refused the insert and the store answered it as "already exists" (BaGet #273, #590, #609).
+- ~~**Search flagged a cached older version as latest on a proxy feed.**~~ Done 2026-09-15, same entry. The merged version
+  list now covers `Search()`, `/v3/query` and autocomplete.
+- **The v2 search reads a fixed window of 2,000 packages in memory.** `SearchRowsAsync` loads the first 2,000 matching
+  packages with every version, then filters, sorts and pages in memory. On a larger feed, `Find-PSResource Zz*` sends
+  `Search()?$filter=IsLatestVersion and startswith(Id,'Zz')` with no search term, the window holds the first 2,000 ids,
+  and the answer is an empty 200 with a count of 2,000, which is the failure CLAUDE.md forbids. Below the cap the cost is the
+  problem: `Find-Module *` loads every version of every package for each page. Fix: turn `startswith(Id,…)`,
+  `substringof(…,Id)` and `tolower(Id) eq` into store terms (as `Id eq` already is), page in the database when the filter
+  keeps only the latest, and where a cap stays, send a next link and log it. Test: 2,001 packages, `startswith` finds the
+  last one, `$count` says 2,001. The reference server's tracker shows seven releases of slow or timed-out latest-version
+  queries.
+- **A copy cached by a pinned download is stored as listed even when the upstream hides that version.**
+  `PackageIngestionService.ToEntity` lists every row; `EnsureCachedAsync` passes the upstream publish date but not whether
+  it is listed, so until a listing of the id reconciles it, `/api/packages/{feed}/latest`, the feed page and retention's
+  "newest is kept" treat the hidden version as current. Fix: pass the upstream's listed flag to `PushAsync` as the date is
+  passed. Test: extend `An_unlisted_upstream_version_is_not_latest_and_still_downloads` with `/latest` right after the
+  download.
+- **A storage failure while caching answers 500 and throws the download away.** Only the upstream fetch is guarded in
+  `EnsureCachedAsync`; a full disk or a permission error in `SavePackageAsync` reaches the exception handler, and the next
+  request downloads the package again. Fix: catch `IOException`/`UnauthorizedAccessException` around the store step, log
+  once per id, and serve the downloaded bytes uncached or answer 503 with `Retry-After`. Test: a storage decorator that
+  throws for one id.
+- **A version row whose file is missing is never repaired or explained.** `PushAsync` writes the row, then the file, and
+  compensates only when storage throws; a process killed between the two leaves a listed version without a `.nupkg`,
+  which the downloads answer with a bare 404 and a re-push with 409 (BaGet #298, #552; BaGetter #211). Fix: when a cached
+  row has no file, drop the row and cache it again; for a pushed row, log a warning naming the path.
+
 ## Soon
+
 
 - **Record the asset write side from the reference server.** Its uploads, deletes and metadata were taken
   from the client library and the documentation, because writing to the reference instance was not possible
@@ -167,6 +205,26 @@ PSResourceGet release carries the fix, re-run the 2.2.4 / 2.2.5 saves over v3 an
   "The drop zone, clicked through"): single and multiple drops, a 400 MB file, the replace question, an archive import
   with and without replacing. Two things it found are fixed in the same entry.
 
+
+### Protocol and connector gaps from the cross-check
+
+- **Symbol pushes ignore `AllowOverwrite` and leave replaced PDBs behind** (BaGet #688). A second build's snupkg answers
+  201 on a feed that refuses its nupkg with 409, so the symbols stop matching the package. Refuse when symbol files exist
+  and overwrite is off; delete files no row references when replacing.
+- **`Packages(Id=,Version=)` compares the version as text.** `Packages(Id='X',Version='1.0')` is 404 for a stored 1.0.0
+  while `package/X/1.0` downloads; PackageManagement's v2 provider and `nuget install -Version` send the version as typed.
+  Normalise the URL version, keep the original spelling as a fallback.
+- **`GET /nuget/{feed}/package/{id}` without a version is not served.** nuget.org's v2 and the reference server answer it
+  with the latest stable; a script that fetched "the latest" that way gets 405. Map it on both v2 roots: latest stable,
+  else absolute latest, as a 302 to the versioned URL; on a proxy feed the upstream's latest.
+- **`version=latest` and `latest-unstable` on the management download.** Documented by the reference API; FiGet answers
+  404 "not found". Map them for `/download` from the rule `/latest` uses, and document it in `docs/protocol-management.md`.
+- **An upstream credential cannot carry a user name.** The client sends the fixed user name `figet`, which galleries that
+  read only the key accept and a Basic-protected feed (Artifactory, Nexus, another instance of the reference server)
+  refuses. Accept `user:password` in the secret, a bare key unchanged.
+- **API access tokens, from the pre-publication review:** measure the 24-hour cap from `iat` (or `nbf`) to `exp` when the
+  token carries it, not only from now, so a token minted for 30 hours is refused for all of its life; validate a refused
+  token once per request instead of again for the audit reason; forget the issuer metadata of a deleted provider.
 
 ### When the repository goes public: split validation from publishing
 
@@ -252,6 +310,31 @@ Each is Low, and none is reachable without an account that already has rights; i
 - **Usage per version.** Usage per feed is counted since 2026-09-14 (`FeedUsage`, the graph under the feed lists). What is
   not: which versions are used, and whether a download came from the cache or the upstream. That needs per-version
   records, heaviest by volume, and belongs apart from both the per-feed counts and the audit log.
+- **Prepare the repository for publication**: the history rewrite, wording that assumes a private repository, contributor
+  and security files, and a README section that runs the image. The owner keeps the detailed checklist.
+- **Smaller items from the issue cross-check (2026-09-15):**
+  - Extra API-key header names as a setting (`FiGet:Auth:ExtraApiKeyHeaders`, empty by default), for scripts that send a
+    header name only the replaced server read.
+  - Count management-API downloads: `/api/packages/{feed}/download` does not move `LastUsedUtc`, so retention's
+    `KeepIfUsedWithinDays` can prune a copy a nightly job fetches daily.
+  - Skip an upstream dependency with an empty id instead of passing it through to a registration URL ending in `//`.
+- **Test evidence the cross-check found missing** (the code is judged right; nothing proves it): build metadata
+  (`1.0.0+build.5`) end to end; an oversized package answering 413; a raw-body (non-multipart) v2 push; non-ASCII metadata on
+  SQL Server; upper-case prerelease in delete and snupkg URLs; protocol URLs with `PublicBaseUrl` set; `/symbols/index2.txt`
+  answering 404; a garbage key beside valid Basic credentials; a key refused after its expiry date; a snupkg with two
+  identical PDBs; the `Content-Range` value of an asset range request; `If-Modified-Since` on assets and a chunked upload
+  body; the flat container index of an unknown id answering 404; concurrent pushes of the same version.
+- **Open questions a fixture would settle:** an upstream v2 feed with one unparsable version among valid ones (is the entry
+  dropped, or the whole id lost?); an uncached download through a redirect to another host or with a chunked body; whether a
+  client disconnecting mid-download logs an error each time; Chocolatey over v2 (`tolower(Id) eq 'x'` is not recognised as
+  an id lookup today); a UNC storage root on Windows.
+- **Plan and code disagree:** build plan section 5 says free-text search reaches upstreams only when a feed opts in, the code
+  always does; section 5 also promises a total-size cache policy that retention does not have. Either the plan or the code
+  changes. Related: an id nobody holds, on an upstream that is down, costs a 30-second wait per request, because only an
+  authoritative "not found" is remembered. And a local unit test calling `HasPendingModelChanges()` on both contexts would
+  catch a missing migration before CI does.
+- **Cross-check three more trackers** the same way: PSResourceGet's server and protocol issues (~150 of 936), Gitea's 50
+  `nuget` issues, and the ~40 v2-server compatibility issues in NuGet/Home.
 
 ## Decided against
 
