@@ -1,4 +1,5 @@
 using System.Globalization;
+using FiGet.Domain.Search;
 using NuGet.Versioning;
 
 namespace FiGet.Protocol.V2;
@@ -38,12 +39,14 @@ public sealed class ODataFilter
 {
     private readonly ODataExpression expression;
 
-    private ODataFilter(ODataExpression expression, string text, string? requiredId, bool latestOnly)
+    private ODataFilter(ODataExpression expression, string text, string? requiredId, bool latestOnly, IReadOnlyList<SearchTerm> storeTerms, bool storeCoversAll)
     {
         this.expression = expression;
         Text = text;
         RequiredId = requiredId;
         LatestOnly = latestOnly;
+        StoreTerms = storeTerms;
+        StoreCoversAll = storeCoversAll;
     }
 
     public string Text { get; }
@@ -53,6 +56,19 @@ public sealed class ODataFilter
 
     /// <summary>True when a top-level term keeps only the latest version of each package.</summary>
     public bool LatestOnly { get; }
+
+    /// <summary>
+    /// Package search terms implied by top-level terms of the filter - <c>startswith(Id,…)</c>, <c>substringof(…,Id)</c>,
+    /// <c>tolower(Id) eq …</c>, <c>substringof(…,Tags)</c> - so the database narrows the packages before the filter is
+    /// evaluated on rows. Each matches at least every package the filter can match, never fewer: the filter still runs.
+    /// </summary>
+    public IReadOnlyList<SearchTerm> StoreTerms { get; }
+
+    /// <summary>
+    /// True when every top-level term is a latest flag or an id term the store applies exactly, so evaluating the filter on
+    /// a package's rows only picks its latest one, and the database can page packages directly.
+    /// </summary>
+    public bool StoreCoversAll { get; }
 
     public bool Matches(V2Row row) => ODataValues.ToBool(expression.Evaluate(row));
 
@@ -66,13 +82,17 @@ public sealed class ODataFilter
 
         string? requiredId = null;
         var latestOnly = false;
+        var storeTerms = new List<SearchTerm>();
+        var covered = true;
         foreach (var conjunct in conjuncts)
         {
             switch (conjunct)
             {
-                case ODataComparison { Operator: "eq", Left: ODataProperty { Name: var name }, Right: ODataLiteral literal }
-                    when name.Equals("Id", StringComparison.OrdinalIgnoreCase) && literal.Value is string id:
+                case ODataComparison { Operator: "eq", Left: var idSide, Right: ODataLiteral { Value: string id } }
+                    when IsId(idSide):
                     requiredId = id;
+                    storeTerms.Add(new SearchTerm(SearchField.PackageId, id.ToLowerInvariant()));
+                    covered &= NoWildcard(id);
                     break;
                 case ODataComparison { Operator: "eq", Left: ODataProperty { Name: var flag }, Right: ODataLiteral { Value: true } }
                     when IsLatestFlag(flag):
@@ -82,12 +102,63 @@ public sealed class ODataFilter
                     latestOnly = true;
                     break;
                 default:
+                    if (StoreTerm(Unwrapped(conjunct)) is { } term)
+                    {
+                        storeTerms.Add(term);
+                        covered &= term.Field != SearchField.Any;
+                    }
+                    else
+                    {
+                        covered = false;
+                    }
+
                     break;
             }
         }
 
-        return new ODataFilter(parsed, text, requiredId, latestOnly);
+        // A value with the store's wildcard in it would widen or change a LIKE: such a term is left to the filter alone.
+        storeTerms.RemoveAll(t => !NoWildcard(t.Value.TrimEnd('*')));
+        return new ODataFilter(parsed, text, requiredId, latestOnly, storeTerms, covered && storeTerms.All(t => NoWildcard(t.Value.TrimEnd('*'))));
     }
+
+    /// <summary><c>f(…) eq true</c> is <c>f(…)</c>.</summary>
+    private static ODataExpression Unwrapped(ODataExpression expression) =>
+        expression is ODataComparison { Operator: "eq", Left: ODataFunction function, Right: ODataLiteral { Value: true } } ? function : expression;
+
+    /// <summary>The store term for one id or tag predicate, or null when the term is not one the store can narrow by.</summary>
+    private static SearchTerm? StoreTerm(ODataExpression expression)
+    {
+        if (expression is not ODataFunction function || function.Arguments.Count != 2)
+        {
+            return null;
+        }
+
+        // Id comparisons are case-insensitive in FiGet's evaluator, and the store compares the lower-cased id: the same set.
+        switch (function.Name.ToUpperInvariant())
+        {
+            case "STARTSWITH" when IsId(function.Arguments[0]) && function.Arguments[1] is ODataLiteral { Value: string prefix } && prefix.Length > 0:
+                return new SearchTerm(SearchField.PackageId, prefix.ToLowerInvariant() + "*");
+            case "SUBSTRINGOF" when IsId(function.Arguments[1]) && function.Arguments[0] is ODataLiteral { Value: string part } && part.Length > 0:
+                return new SearchTerm(SearchField.Id, part.ToLowerInvariant());
+
+            // Tags are matched as a substring; the store's search text holds the tags, so "contains" there finds a superset.
+            case "SUBSTRINGOF" when function.Arguments[1] is ODataProperty { Name: var tags } && tags.Equals("Tags", StringComparison.OrdinalIgnoreCase)
+                && function.Arguments[0] is ODataLiteral { Value: string tag } && tag.Length > 0:
+                return new SearchTerm(SearchField.Any, tag.ToLowerInvariant());
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>The id, bare or through a case or trim function.</summary>
+    private static bool IsId(ODataExpression expression) => expression switch
+    {
+        ODataProperty { Name: var name } => name.Equals("Id", StringComparison.OrdinalIgnoreCase),
+        ODataFunction { Arguments.Count: 1 } function when function.Name.ToUpperInvariant() is "TOLOWER" or "TOUPPER" or "TRIM" => IsId(function.Arguments[0]),
+        _ => false,
+    };
+
+    private static bool NoWildcard(string value) => !value.Contains('*', StringComparison.Ordinal);
 
     private static bool IsLatestFlag(string name) =>
         name.Equals("IsLatestVersion", StringComparison.OrdinalIgnoreCase)
@@ -147,6 +218,12 @@ public sealed class ODataOrderBy
 
         return new ODataOrderBy(keys);
     }
+
+    /// <summary>
+    /// Whether the order starts with the id ascending, as every recorded client search does: packages then come in the
+    /// database's id order and only each package's own rows need sorting, so a listing can be read a chunk at a time.
+    /// </summary>
+    public bool LeadsWithIdAscending => keys.Count > 0 && keys[0].Property.Equals("Id", StringComparison.OrdinalIgnoreCase) && !keys[0].Descending;
 
     public IReadOnlyList<V2Row> Sort(IEnumerable<V2Row> rows)
     {
@@ -318,6 +395,10 @@ internal sealed class ODataComparison(string op, ODataExpression left, ODataExpr
 
 internal sealed class ODataFunction(string name, IReadOnlyList<ODataExpression> arguments) : ODataExpression
 {
+    public string Name { get; } = name;
+
+    public IReadOnlyList<ODataExpression> Arguments { get; } = arguments;
+
     private static readonly Dictionary<string, int> Arities = new(StringComparer.OrdinalIgnoreCase)
     {
         ["substringof"] = 2,
@@ -345,43 +426,43 @@ internal sealed class ODataFunction(string name, IReadOnlyList<ODataExpression> 
 
     public override object? Evaluate(V2Row row)
     {
-        switch (name.ToUpperInvariant())
+        switch (Name.ToUpperInvariant())
         {
             case "SUBSTRINGOF":
                 Expect(2);
-                return ODataValues.ToText(arguments[1].Evaluate(row))
-                    .Contains(ODataValues.ToText(arguments[0].Evaluate(row)), StringComparison.OrdinalIgnoreCase);
+                return ODataValues.ToText(Arguments[1].Evaluate(row))
+                    .Contains(ODataValues.ToText(Arguments[0].Evaluate(row)), StringComparison.OrdinalIgnoreCase);
             case "STARTSWITH":
                 Expect(2);
-                return ODataValues.ToText(arguments[0].Evaluate(row))
-                    .StartsWith(ODataValues.ToText(arguments[1].Evaluate(row)), StringComparison.OrdinalIgnoreCase);
+                return ODataValues.ToText(Arguments[0].Evaluate(row))
+                    .StartsWith(ODataValues.ToText(Arguments[1].Evaluate(row)), StringComparison.OrdinalIgnoreCase);
             case "ENDSWITH":
                 Expect(2);
-                return ODataValues.ToText(arguments[0].Evaluate(row))
-                    .EndsWith(ODataValues.ToText(arguments[1].Evaluate(row)), StringComparison.OrdinalIgnoreCase);
+                return ODataValues.ToText(Arguments[0].Evaluate(row))
+                    .EndsWith(ODataValues.ToText(Arguments[1].Evaluate(row)), StringComparison.OrdinalIgnoreCase);
             case "TOLOWER":
                 Expect(1);
-                return ODataValues.ToText(arguments[0].Evaluate(row)).ToUpperInvariant().ToLowerInvariant();
+                return ODataValues.ToText(Arguments[0].Evaluate(row)).ToUpperInvariant().ToLowerInvariant();
             case "TOUPPER":
                 Expect(1);
-                return ODataValues.ToText(arguments[0].Evaluate(row)).ToUpperInvariant();
+                return ODataValues.ToText(Arguments[0].Evaluate(row)).ToUpperInvariant();
             case "INDEXOF":
                 Expect(2);
-                return (long)ODataValues.ToText(arguments[0].Evaluate(row))
-                    .IndexOf(ODataValues.ToText(arguments[1].Evaluate(row)), StringComparison.OrdinalIgnoreCase);
+                return (long)ODataValues.ToText(Arguments[0].Evaluate(row))
+                    .IndexOf(ODataValues.ToText(Arguments[1].Evaluate(row)), StringComparison.OrdinalIgnoreCase);
             case "TRIM":
                 Expect(1);
-                return ODataValues.ToText(arguments[0].Evaluate(row)).Trim();
+                return ODataValues.ToText(Arguments[0].Evaluate(row)).Trim();
             default:
-                throw new ODataFilterException($"Unknown function '{name}'.", name);
+                throw new ODataFilterException($"Unknown function '{Name}'.", Name);
         }
     }
 
     private void Expect(int count)
     {
-        if (arguments.Count != count)
+        if (Arguments.Count != count)
         {
-            throw new ODataFilterException($"Function '{name}' takes {count} argument(s).", name);
+            throw new ODataFilterException($"Function '{Name}' takes {count} argument(s).", Name);
         }
     }
 }

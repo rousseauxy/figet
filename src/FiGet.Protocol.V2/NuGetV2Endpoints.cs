@@ -36,8 +36,11 @@ public static class NuGetV2Endpoints
     /// <summary>PSResourceGet asks for 6000 at a time; it pages with $skip when it gets fewer.</summary>
     public const int MaxTop = 1000;
 
-    /// <summary>How many packages a listing may scan when the filter does not name one id.</summary>
+    /// <summary>How many packages a listing ordered other than by id may read; an id-first order is read in chunks, uncapped.</summary>
     private const int MaxPackagesScanned = 2000;
+
+    /// <summary>Packages read at a time by a listing ordered by id.</summary>
+    private const int ScanChunk = 500;
 
     public static IEndpointRouteBuilder MapNuGetV2(this IEndpointRouteBuilder app)
     {
@@ -177,12 +180,17 @@ public static class NuGetV2Endpoints
         // in which case that filter decides. With no filter at all it applies too: `nuget list -AllVersions`
         // sends none, and got prerelease versions it had not asked for until a recorded answer showed otherwise.
         var prerelease = Bool(query["includePrerelease"]) || (filter is not null && !filter.LatestOnly);
-        var rows = await SearchRowsAsync(store, connector, request!.Feed, term, prerelease, SemVer2(query), cancellationToken);
 
         // A search lists what a client may choose from: never an unlisted version, and a prerelease one only when
-        // asked. The package search above picks packages; these pick among each package's versions.
-        rows = rows.Where(r => r.Entry.Listed && (prerelease || !r.Version.IsPrerelease)).ToList();
-        return Page(http, request.Feed.Name, rows, filter, order, query);
+        // asked. The package search picks packages; this picks among each package's versions.
+        bool Choosable(V2Row r) => r.Entry.Listed && (prerelease || !r.Version.IsPrerelease);
+        if (order.LeadsWithIdAscending)
+        {
+            return await ScanAsync(http, store, connector, request!.Feed, term, prerelease, SemVer2(query), Choosable, filter, order, query, cancellationToken);
+        }
+
+        var rows = await SearchRowsAsync(store, connector, request!.Feed, term, filter?.StoreTerms ?? [], prerelease, SemVer2(query), loggers, cancellationToken);
+        return Page(http, request.Feed.Name, rows.Where(Choosable).ToList(), filter, order, query);
     }
 
     private static async Task<IResult> PackagesAsync(HttpContext http, string feed, IPackageStore store, ConnectorService connector, ILoggerFactory loggers, CancellationToken cancellationToken)
@@ -207,10 +215,17 @@ public static class NuGetV2Endpoints
         }
 
         var semVer2 = SemVer2(query);
-        var rows = filter?.RequiredId is { Length: > 0 } id
-            ? await RowsForIdAsync(store, connector, request!.Feed, id, semVer2, cancellationToken)
-            : await SearchRowsAsync(store, connector, request!.Feed, "", includePrerelease: true, semVer2, cancellationToken);
+        if (filter?.RequiredId is { Length: > 0 } id)
+        {
+            return Page(http, request!.Feed.Name, await RowsForIdAsync(store, connector, request.Feed, id, semVer2, cancellationToken), filter, order, query);
+        }
 
+        if (order.LeadsWithIdAscending)
+        {
+            return await ScanAsync(http, store, connector, request!.Feed, "", includePrerelease: true, semVer2, _ => true, filter, order, query, cancellationToken);
+        }
+
+        var rows = await SearchRowsAsync(store, connector, request!.Feed, "", filter?.StoreTerms ?? [], includePrerelease: true, semVer2, loggers, cancellationToken);
         return Page(http, request.Feed.Name, rows, filter, order, query);
     }
 
@@ -432,63 +447,213 @@ public static class NuGetV2Endpoints
         ConnectorService connector,
         Feed feed,
         string term,
+        IReadOnlyList<SearchTerm> filterTerms,
         bool includePrerelease,
         bool includeSemVer2,
+        ILoggerFactory loggers,
         CancellationToken cancellationToken)
     {
-        var search = new PackageSearchFilter(SearchQueryParser.Parse(term), includePrerelease, includeSemVer2, null);
+        var search = new PackageSearchFilter([.. SearchQueryParser.Parse(term), .. filterTerms], includePrerelease, includeSemVer2, null);
         var page = await store.SearchAsync(feed.Key, search, 0, MaxPackagesScanned, cancellationToken);
+        if (page.TotalHits > MaxPackagesScanned)
+        {
+            // Only orders that do not start with the id get here; the answer covers the first packages alone, so say so.
+            loggers.CreateLogger("FiGet.Protocol.V2").LogWarning(
+                "A v2 listing of feed {Feed} ordered other than by id matched {Packages} packages and read the first {Scanned}; results beyond them are missing.",
+                feed.Name,
+                page.TotalHits,
+                MaxPackagesScanned);
+        }
+
         var packages = await store.GetPackagesAsync(page.PackageKeys, cancellationToken);
         var byKey = packages.ToDictionary(p => p.Key);
-
-        // On a proxy feed each package's rows are its merged version list, from what is stored about the upstreams: without
-        // it a search flagged the newest cached copy as the latest while the gallery had a newer one, which a wildcard
-        // Find-Module then offered as current - the failure the merged version list exists to prevent.
-        var upstream = feed.Upstreams.Count > 0
-            ? await connector.StoredUpstreamCandidatesAsync(feed, packages, cancellationToken)
-            : new Dictionary<string, UpstreamCandidates>();
+        var upstream = await StoredUpstreamAsync(connector, feed, packages, cancellationToken);
 
         var rows = new List<V2Row>();
         foreach (var key in page.PackageKeys)
         {
-            if (!byKey.TryGetValue(key, out var package))
+            if (byKey.TryGetValue(key, out var package))
             {
-                continue;
-            }
-
-            if (!upstream.TryGetValue(package.IdLower, out var candidates))
-            {
-                rows.AddRange(V2Row.ForPackage(package, includeSemVer2));
-                continue;
-            }
-
-            var merged = VersionListBuilder.Build(package.Versions.Select(VersionListBuilder.ToCandidate).Concat(candidates.Versions), includeSemVer2);
-            rows.AddRange(merged.Where(e => e.Payload is not null).Select(e => new V2Row(package.Id, e)));
-        }
-
-        // On a proxy feed a search also reaches the upstreams, so Find-Module finds a module that nobody
-        // has cached here yet. Ids already listed locally keep their local rows.
-        if (feed.Upstreams.Count > 0 && !string.IsNullOrWhiteSpace(term))
-        {
-            var known = rows.Select(r => r.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            foreach (var (id, placeholder) in await connector.SearchPlaceholdersAsync(feed, term, includePrerelease, DefaultTop, cancellationToken))
-            {
-                if (known.Contains(id))
-                {
-                    continue;
-                }
-
-                var merged = VersionListBuilder.Build(
-                    [VersionListBuilder.ToCandidate(placeholder) with { Source = VersionSource.Upstream }],
-                    includeSemVer2);
-                if (merged.Count > 0)
-                {
-                    rows.Add(new V2Row(id, merged[0]));
-                }
+                rows.AddRange(PackageRows(package, upstream, includeSemVer2));
             }
         }
 
+        var known = rows.Select(r => r.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        rows.AddRange((await UpstreamHitRowsAsync(connector, feed, term, includePrerelease, includeSemVer2, cancellationToken)).Where(r => !known.Contains(r.Id)));
         return rows;
+    }
+
+    /// <summary>
+    /// A listing ordered by id first, read a chunk of packages at a time in the database's id order, keeping only the rows of
+    /// the page asked for. No cap on how many packages match: the 2,000-package window this replaces answered an empty 200
+    /// for a startswith filter on a larger feed when the first 2,000 ids held no match. Memory stays one chunk. The scan
+    /// stops once a row past the page is found, unless a count is asked for.
+    /// </summary>
+    private static async Task<IResult> ScanAsync(
+        HttpContext http,
+        IPackageStore store,
+        ConnectorService connector,
+        Feed feed,
+        string term,
+        bool includePrerelease,
+        bool includeSemVer2,
+        Func<V2Row, bool> keep,
+        ODataFilter? filter,
+        ODataOrderBy order,
+        IQueryCollection query,
+        CancellationToken cancellationToken)
+    {
+        var skip = Math.Max(0, Int(query["$skip"], 0));
+        var top = Math.Clamp(Int(query["$top"], DefaultTop), 0, MaxTop);
+        var countOnly = http.Request.Path.Value?.EndsWith("/$count", StringComparison.Ordinal) == true;
+        var counting = countOnly || query["$inlinecount"].ToString().Equals("allpages", StringComparison.OrdinalIgnoreCase);
+
+        var search = new PackageSearchFilter(
+            [.. SearchQueryParser.Parse(term), .. filter?.StoreTerms ?? []],
+            includePrerelease,
+            includeSemVer2,
+            null,
+            new PackageSort(PackageSortField.Id, Descending: false));
+
+        // A proxy feed's hits from its upstreams for ids this feed does not hold, merged into the id order as the scan goes.
+        var hits = new Queue<V2Row>();
+        var upstreamHits = await UpstreamHitRowsAsync(connector, feed, term, includePrerelease, includeSemVer2, cancellationToken);
+        if (upstreamHits.Count > 0)
+        {
+            var held = await store.HeldIdsAsync(feed.Key, [.. upstreamHits.Select(r => r.Id.ToLowerInvariant())], cancellationToken);
+            foreach (var row in upstreamHits.Where(r => !held.Contains(r.Id.ToLowerInvariant())).OrderBy(r => r.Id.ToLowerInvariant(), StringComparer.Ordinal))
+            {
+                hits.Enqueue(row);
+            }
+        }
+
+        var window = new List<V2Row>();
+        var matched = 0;
+        var more = false;
+
+        // True when the scan may stop: a row past the page was found and nobody asked for the total.
+        bool Take(V2Row row)
+        {
+            if (!keep(row) || (filter is not null && !filter.Matches(row)))
+            {
+                return false;
+            }
+
+            if (matched >= skip && window.Count < top)
+            {
+                window.Add(row);
+            }
+            else if (matched >= skip + top)
+            {
+                more = true;
+            }
+
+            matched++;
+            return more && !counting;
+        }
+
+        try
+        {
+            var done = false;
+            for (var offset = 0; !done; offset += ScanChunk)
+            {
+                var page = await store.SearchAsync(feed.Key, search, offset, ScanChunk, cancellationToken);
+                var packages = await store.GetPackagesAsync(page.PackageKeys, cancellationToken);
+                var byKey = packages.ToDictionary(p => p.Key);
+                var upstream = await StoredUpstreamAsync(connector, feed, packages, cancellationToken);
+                foreach (var key in page.PackageKeys)
+                {
+                    if (done || !byKey.TryGetValue(key, out var package))
+                    {
+                        continue;
+                    }
+
+                    while (!done && hits.Count > 0 && string.CompareOrdinal(hits.Peek().Id.ToLowerInvariant(), package.IdLower) < 0)
+                    {
+                        done = Take(hits.Dequeue());
+                    }
+
+                    foreach (var row in order.Sort(PackageRows(package, upstream, includeSemVer2)))
+                    {
+                        if (done)
+                        {
+                            break;
+                        }
+
+                        done = Take(row);
+                    }
+                }
+
+                if (page.PackageKeys.Count < ScanChunk)
+                {
+                    break;
+                }
+            }
+
+            while (!(more && !counting) && hits.Count > 0)
+            {
+                Take(hits.Dequeue());
+            }
+        }
+        catch (ODataFilterException ex)
+        {
+            return Status(http, StatusCodes.Status400BadRequest, $"{ex.Message} Expression: {ex.Expression}");
+        }
+
+        if (countOnly)
+        {
+            return Results.Text(matched.ToString(CultureInfo.InvariantCulture), "text/plain");
+        }
+
+        return Xml(
+            AtomWriter.Feed(window, Root(http, feed.Name), SelfUrl(http), counting ? matched : null, more && window.Count > 0 ? NextUrl(http, skip + window.Count) : null),
+            "application/atom+xml;type=feed;charset=utf-8");
+    }
+
+    /// <summary>
+    /// A package's rows: on a proxy feed its merged version list from what is stored about the upstreams. Without that a
+    /// search flagged the newest cached copy as the latest while the gallery had a newer one, which a wildcard Find-Module
+    /// then offered as current - the failure the merged version list exists to prevent.
+    /// </summary>
+    private static IEnumerable<V2Row> PackageRows(Package package, IReadOnlyDictionary<string, UpstreamCandidates> upstream, bool includeSemVer2)
+    {
+        if (!upstream.TryGetValue(package.IdLower, out var candidates))
+        {
+            return V2Row.ForPackage(package, includeSemVer2);
+        }
+
+        return VersionListBuilder.Build(package.Versions.Select(VersionListBuilder.ToCandidate).Concat(candidates.Versions), includeSemVer2)
+            .Where(e => e.Payload is not null)
+            .Select(e => new V2Row(package.Id, e));
+    }
+
+    private static async Task<IReadOnlyDictionary<string, UpstreamCandidates>> StoredUpstreamAsync(ConnectorService connector, Feed feed, IReadOnlyList<Package> packages, CancellationToken cancellationToken) =>
+        feed.Upstreams.Count > 0 && packages.Count > 0
+            ? await connector.StoredUpstreamCandidatesAsync(feed, packages, cancellationToken)
+            : new Dictionary<string, UpstreamCandidates>();
+
+    /// <summary>
+    /// On a proxy feed a search also reaches the upstreams, so Find-Module finds a module that nobody has cached here yet:
+    /// one row per hit. The caller leaves out ids the feed lists itself.
+    /// </summary>
+    private static async Task<IReadOnlyList<V2Row>> UpstreamHitRowsAsync(ConnectorService connector, Feed feed, string term, bool includePrerelease, bool includeSemVer2, CancellationToken cancellationToken)
+    {
+        if (feed.Upstreams.Count == 0 || string.IsNullOrWhiteSpace(term))
+        {
+            return [];
+        }
+
+        var rows = new List<V2Row>();
+        foreach (var (id, placeholder) in await connector.SearchPlaceholdersAsync(feed, term, includePrerelease, DefaultTop, cancellationToken))
+        {
+            var merged = VersionListBuilder.Build([VersionListBuilder.ToCandidate(placeholder) with { Source = VersionSource.Upstream }], includeSemVer2);
+            if (merged.Count > 0)
+            {
+                rows.Add(new V2Row(id, merged[0]));
+            }
+        }
+
+        return rows.DistinctBy(r => r.Id, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     /// <summary>Applies the filter, the ordering and the paging, then writes the feed or the count.</summary>
