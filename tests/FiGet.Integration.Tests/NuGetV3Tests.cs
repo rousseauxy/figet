@@ -527,6 +527,26 @@ public abstract class NuGetV3Tests
         }
     }
 
+    /// <summary>
+    /// The registration's download address keeps a prerelease label's capitals, and it downloads. PSResourceGet matches the
+    /// version inside that address case-sensitively. Found cross-checking PSResourceGet's issues (#1787, 2026-09-15).
+    /// </summary>
+    [Fact]
+    public async Task A_download_address_keeps_the_prerelease_labels_case()
+    {
+        var id = FiGetServerFixture.UniqueId("V3.PrereleaseCase");
+        using (var package = TestPackages.Create(id, "1.0.1-PREv007"))
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushRawAsync("public", package, FiGetServerFixture.AdminToken));
+        }
+
+        using var client = server.CreateClient();
+        var registration = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/public/v3/registration/{id.ToLowerInvariant()}/index.json")))!;
+        var content = (string)registration["items"]![0]!["items"]![0]!["packageContent"]!;
+        Assert.Contains("/1.0.1-PREv007/", content, StringComparison.Ordinal);
+        HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync(content));
+    }
+
     [Fact]
     public async Task Garbage_and_empty_uploads_are_400()
     {

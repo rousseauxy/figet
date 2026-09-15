@@ -195,7 +195,7 @@ public static class NuGetV3Endpoints
                 ["Package", "http://schema.nuget.org/catalog#Permalink"],
                 urls.Catalog(row.NormalizedVersionLower),
                 row.Listed,
-                urls.Content(row.NormalizedVersionLower),
+                urls.Content(row.NormalizedVersion),
                 row.Listed ? Timestamp(row.PublishedUtc) : UnlistedPublished,
                 urls.RegistrationIndex,
                 RegistrationJsonContext),
@@ -686,7 +686,7 @@ public static class NuGetV3Endpoints
     {
         var leaf = urls.Leaf(v.NormalizedVersionLower);
         var catalog = urls.Catalog(v.NormalizedVersionLower);
-        var content = urls.Content(v.NormalizedVersionLower);
+        var content = urls.Content(v.NormalizedVersion);
         var groups = v.Dependencies
             .GroupBy(d => d.TargetFramework, StringComparer.OrdinalIgnoreCase)
             .Select(g => new DependencyGroup(
@@ -773,7 +773,12 @@ public static class NuGetV3Endpoints
 
         public string Catalog(string versionLower) => $"{FeedUrl}/v3/catalog/{IdLower}/{versionLower}.json";
 
-        public string Content(string versionLower) => $"{FeedUrl}/v3/flatcontainer/{IdLower}/{versionLower}/{IdLower}.{versionLower}.nupkg";
+        /// <summary>
+        /// The download address, with the version's prerelease label in its own case. The flat container answers any case,
+        /// but PSResourceGet looks for the version inside this address with a case-sensitive match, so a lower-cased
+        /// <c>1.0.1-prev007</c> could not be installed as <c>1.0.1-PREv007</c> (PSResourceGet #1787).
+        /// </summary>
+        public string Content(string version) => $"{FeedUrl}/v3/flatcontainer/{IdLower}/{version}/{IdLower}.{version}.nupkg";
 
         public string Page(IReadOnlyList<VersionListEntry<PackageVersion>> chunk) =>
             $"{FeedUrl}/v3/registration/{IdLower}/page/{chunk[0].Version.ToNormalizedString().ToLowerInvariant()}/{chunk[^1].Version.ToNormalizedString().ToLowerInvariant()}.json";
