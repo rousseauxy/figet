@@ -476,9 +476,11 @@ container, search, autocomplete; the management API):
    look through for exact versions, not only the latest. On first download the nupkg is
    stored locally, indexed, and from then on served locally.
 5. A locally cached copy is never dropped because upstream moved on. Retention rules apply to
-   curated content; cached content is pruned only by explicit cache policy: total size, or not
-   downloaded for N days. Every download records a last-download time per version for this, so a
-   version in use is never pruned. The cache policy never touches pushed versions.
+   curated content; cached content is pruned only by explicit cache policy: not downloaded for N
+   days, or older than a cache age. Every download records a last-download time per version for
+   this, so a version in use is never pruned. The cache policy never touches pushed versions. (A
+   total-size cap was planned and dropped by the owner on 2026-09-15: age and use already bound the
+   cache, and the volume's size is watched where the volume is.)
 6. **A cached copy of a version the upstream has withdrawn stops being offered.** When an upstream
    answers and no longer lists a version that exists here as a cached copy, that copy is unlisted:
    it disappears from listings, can never be "latest", and is never what an install of the newest
@@ -488,7 +490,9 @@ container, search, autocomplete; the management API):
    when an upstream actually answered: an outage serves the last known list and withdraws nothing.
 7. Search on a proxy feed queries local metadata first and, when the query is a name lookup
    (`Id eq`, `packageid:`, `FindPackagesById`), also asks upstream so uncached packages are
-   findable. Free-text search fans out to upstreams only if the feed opts in.
+   findable. Free-text search fans out to upstreams too, always, bounded per upstream: that is what
+   makes a wildcard `Find-Module` find a module nobody has cached. (Planned as opt-in per feed;
+   changed to always by the owner on 2026-09-15, matching what was built.)
 8. Allow and deny lists per upstream (regex on id) are applied before anything upstream is
    listed or fetched.
 9. ~~If a feed has several upstreams and both hold the same (id, version), the first upstream in

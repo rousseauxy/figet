@@ -3114,3 +3114,35 @@ that was run failing against the code without it, except where noted.
 
 Suites: unit 213, integration 535, on SQLite and SQL Server. The credential test now takes about 20 seconds: it asks three
 upstreams in turn, each answering 401.
+
+## The cross-check's Later items - 2026-09-15
+
+What the owner chose from *Later* (`docs/backlog.md`): the small fixes and the missing evidence built, the plan brought in
+line with the code, a total-size cache cap and extra API-key header names not built, three more trackers cross-checked
+separately.
+
+- **Management-API downloads are counted,** like v2 and v3 downloads, so a copy a script fetches daily is not pruned as
+  unused. `PackageManagementTests.A_management_download_is_counted`; falsified without the call.
+- **An upstream dependency without an id is left out** instead of becoming a registration URL ending in `//`; a framework
+  group left without ids keeps its one empty row. `ProxyFeedTests.A_dependency_without_an_id_is_left_out`; falsified.
+- **A failing upstream is paused for unknown ids.** After an upstream fails to answer a catalogue request, ids nothing is
+  known about are not asked of it for `ConnectorSettings.UnreachableBackoff` (30 seconds): during an outage every such
+  request used to wait out the 30-second timeout. Known ids still answer from their stored lists, and any success ends the
+  pause. The proxy test fixture sets the pause to zero, since its tests switch failures on and off;
+  `ProxyFeedTests.A_failing_upstream_is_not_asked_about_unknown_ids_again_for_a_pause` turns it on and counts upstream
+  calls; falsified.
+- **Migration drift is checked locally:** `MigrationDriftTests` asks both providers' contexts for pending model changes
+  without opening a database, as the CI step does. Falsified by changing a column length: the SQL Server check fails; the
+  SQLite one does not, because a length is not a change of SQLite column type.
+- **The fourteen behaviours judged right without evidence** now have tests, and all passed without a code change:
+  `PackageEvidenceTests` (both databases: build metadata, raw-body v2 push, non-ASCII metadata, upper-case prerelease in
+  delete and symbol push, a snupkg with the same PDB twice, `/symbols/index2.txt`, a garbage key beside valid Basic, an
+  expired key, the flat container index of an unknown id, six concurrent pushes of one version storing it once),
+  `PackageSizeLimitTests` (413 with a one-megabyte limit), `PublicBaseUrlProtocolTests` (every service index URL and the
+  v2 service document on the public address), and `AssetDirectoryTests.Evidence` (`Content-Range: bytes 4-6/10`, 304 for
+  `If-Modified-Since`, a chunked upload stored whole). The 413 test waits up to a minute for the server's go-ahead before
+  sending the body: with HttpClient's one-second default a loaded run sent it anyway and read a reset connection.
+- **Build plan section 5** now says free-text search reaches upstreams always, as built, and no longer promises a
+  total-size cache cap (moved to *Decided against*).
+
+Suites: unit 213, integration 569, on SQLite and SQL Server; the full run twice after the last change.

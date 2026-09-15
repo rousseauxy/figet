@@ -290,31 +290,24 @@ Each is Low, and none is reachable without an account that already has rights; i
   records, heaviest by volume, and belongs apart from both the per-feed counts and the audit log.
 - **Prepare the repository for publication**: the history rewrite, wording that assumes a private repository, contributor
   and security files, and a README section that runs the image. The owner keeps the detailed checklist.
-- **Smaller items from the issue cross-check (2026-09-15):**
-  - Extra API-key header names as a setting (`FiGet:Auth:ExtraApiKeyHeaders`, empty by default), for scripts that send a
-    header name only the replaced server read.
-  - Count management-API downloads: `/api/packages/{feed}/download` does not move `LastUsedUtc`, so retention's
-    `KeepIfUsedWithinDays` can prune a copy a nightly job fetches daily.
-  - Skip an upstream dependency with an empty id instead of passing it through to a registration URL ending in `//`.
-- **Test evidence the cross-check found missing** (the code is judged right; nothing proves it): build metadata
-  (`1.0.0+build.5`) end to end; an oversized package answering 413; a raw-body (non-multipart) v2 push; non-ASCII metadata on
-  SQL Server; upper-case prerelease in delete and snupkg URLs; protocol URLs with `PublicBaseUrl` set; `/symbols/index2.txt`
-  answering 404; a garbage key beside valid Basic credentials; a key refused after its expiry date; a snupkg with two
-  identical PDBs; the `Content-Range` value of an asset range request; `If-Modified-Since` on assets and a chunked upload
-  body; the flat container index of an unknown id answering 404; concurrent pushes of the same version.
+- **Smaller items from the issue cross-check (2026-09-15):** ~~counting management-API downloads~~ and ~~skipping an
+  upstream dependency without an id~~ done 2026-09-15 (docs/status.md, "The cross-check's Later items"). Extra API-key
+  header names as a setting: not built, since the scripts in use send `X-ApiKey`, which works; revisit if one sends
+  another name.
+- ~~**Test evidence the cross-check found missing**~~: all fourteen tested 2026-09-15, same entry; none found a defect.
 - **Open questions a fixture would settle:** an upstream v2 feed with one unparsable version among valid ones (is the entry
   dropped, or the whole id lost?); an uncached download through a redirect to another host or with a chunked body; whether a
-  client disconnecting mid-download logs an error each time; Chocolatey over v2 (`tolower(Id) eq 'x'` is not recognised as
-  an id lookup today); a UNC storage root on Windows.
-- **Plan and code disagree:** build plan section 5 says free-text search reaches upstreams only when a feed opts in, the code
-  always does; section 5 also promises a total-size cache policy that retention does not have. Either the plan or the code
-  changes. Related: an id nobody holds, on an upstream that is down, costs a 30-second wait per request, because only an
-  authoritative "not found" is remembered. And a local unit test calling `HasPendingModelChanges()` on both contexts would
-  catch a missing migration before CI does.
+  client disconnecting mid-download logs an error each time; Chocolatey over v2; a UNC storage root on Windows.
+- ~~**Plan and code disagree**~~: resolved 2026-09-15. Search reaching upstreams always is now what the build plan says; the
+  total-size cache cap is dropped (see *Decided against*). An upstream that fails to answer is now not asked about unknown
+  ids for 30 seconds, and a local test checks both providers' migrations against the model.
 - **Cross-check three more trackers** the same way: PSResourceGet's server and protocol issues (~150 of 936), Gitea's 50
   `nuget` issues, and the ~40 v2-server compatibility issues in NuGet/Home.
 
 ## Decided against
+
+- **A total-size cap on cached packages** (planned in build plan section 5, dropped by the owner 2026-09-15). Pruning by
+  age and by last use already bounds the cache, and a volume's size is watched where the volume is.
 
 - **A picture on the account** (Gravatar, suggested and dropped 2026-09-14). The owner sees no place it would be used, and
   a Gravatar is an image the browser fetches from gravatar.com by a hash of the account's email: every page with the menu
