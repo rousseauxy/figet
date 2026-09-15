@@ -71,59 +71,6 @@ ids with a database row each, so a file placed on the share would not exist for 
 
 **Size.** Three to four days with tests on both databases, tried against a Samba share on the test host.
 
-### Scan uploads for malware (designed 2026-09-14)
-
-**Why.** Anyone with Publish on an asset directory or a feed can upload a file, and installers are exactly what
-malware pretends to be. Since the review nothing served from a directory can run as the site, and every write is
-audited by name; what is missing is a check on the bytes themselves. The files must never leave the network, which
-rules out any service that takes the file: what is sent is the file, so the scanner has to be ours.
-
-**Design.**
-1. **A port, `IContentScanner`**, with one call: scan a stream or a path, answer clean, infected with the signature
-   name, or unavailable. One adapter, for ClamAV's daemon over its own protocol (`INSTREAM` for a stream, `SCAN` for a
-   path the daemon can see); the protocol is small enough to write by hand, about forty lines, so no package.
-2. **The engine runs beside FiGet, never inside it.** ClamAV is a C library with a signature set of several hundred
-   megabytes that changes daily and one to two gigabytes of memory while loaded; in the process it would tie our
-   restarts, memory and updates to it, and there is no maintained .NET binding. On the cluster it is a **sidecar
-   container in the FiGet pod**: localhost or a Unix socket, so it is reachable from nowhere else, the same volume
-   mounted so large files are scanned by path, and one Deployment in the chart. Stand-alone it is a second, optional
-   service in `compose.example.yml`. FiGet only knows an address.
-3. **Every write path scans before its row exists**, which is where each already stages its bytes: an asset upload, a
-   multipart completion, each entry of an archive import, a fetch by URL, a package push after its upload buffer, and a
-   copy cached from an upstream. A hit refuses the write with a plain reason, stores nothing, and writes an audit entry
-   (`asset.refused`, `package.refused`) with the file, the signature and who sent it.
-4. **Off unless configured** (`FiGet:Scanning:ClamdAddress`). When configured and the daemon is down, writes are
-   refused and the reason logged, never let through; reads are never affected.
-5. **Large files.** The daemon's stream limit defaults to 25 MB and its scan size to 100 MB. Installers go by path on the
-   shared volume, with `MaxFileSize` and `MaxScanSize` raised in its configuration; a 400 MB scan takes seconds to a
-   minute inside the upload request, which the fetch path already allows for.
-6. **Signatures** need `freshclam` to reach a mirror, or an internal mirror: one egress rule on the cluster.
-
-**What the reference server does.** Nothing of this kind, checked 2026-09-14. It scans no file contents: known malicious
-*packages* are treated as vulnerabilities, matched by package identity against a database it downloads nightly, and
-its answer on a forum is that by the time a package is known to be malicious the public gallery has usually removed
-it. Asset directories get no scanning at all. Its installation guide goes further and tells operators that its storage
-and processes must not be scanned, filtered or quarantined by antivirus, EDR or file-integrity tools, because they
-slow its file-heavy work and mistake ordinary package contents - libraries, scripts, executables - for threats. Two
-consequences for the design above: scan at write time inside the request and never let an on-access scanner near the
-storage volume, and expect false positives on installers and scripts, so a scan hit must name its signature in the
-audit entry and a directory must be able to turn scanning off.
-
-**What it does not buy.** Known malware only. A vendor installer tampered with upstream, or a bespoke tool, passes. The
-next step in that direction is verifying Authenticode signatures on `.exe` and `.msi` uploads and showing the signer
-on the file's row; a hash lookup against a reputation service (the SHA-256 leaves, the file does not) is a possible
-second opinion, weak for internal files.
-
-**Open before building.**
-- Whether the organisation already runs a scanner with an ICAP interface, which most enterprise products expose for
-  proxies; if so, an ICAP adapter behind the same port is half a day and uses the engine the security team maintains.
-- Whether shared-folder directories (above) should scan at all: the file server's own antivirus already scans what
-  lands on the share.
-- Memory request for the sidecar on the cluster, and where `freshclam` may fetch from.
-
-**Size.** One to two days: the port and adapter, the six hooks, a stub scanner in the tests, and the EICAR string
-against the real daemon as a CI service container. The sidecar and compose service come with the phase 6 chart.
-
 ### Find-Module is slow for a package with thousands of versions
 
 `Find-Module PnP.PowerShell` took 44s over v2 where `Find-PSResource` took 3.1s over v3 (2026-09-12).
@@ -315,6 +262,10 @@ Each is Low, and none is reachable without an account that already has rights; i
     `registration/{id}/{version}.json` leaves and a credentialed restore's challenge pairs.
 
 ## Decided against
+
+- **Scanning uploads for malware** (designed 2026-09-14, dropped by the owner 2026-09-16). A ClamAV daemon beside FiGet,
+  checked on every write path. Known malware only, false positives on installers and scripts, and a second service to
+  run and keep fed with signatures; the design is kept outside this repository.
 
 - **A total-size cap on cached packages** (planned in build plan section 5, dropped by the owner 2026-09-15). Pruning by
   age and by last use already bounds the cache, and a volume's size is watched where the volume is.
