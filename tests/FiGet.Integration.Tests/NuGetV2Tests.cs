@@ -198,6 +198,40 @@ public abstract class NuGetV2Tests
         HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync(redirect.Headers.Location));
     }
 
+    /// <summary>
+    /// A PowerShell module whose manifest version is spelled differently from its packed version - '2.1' packed as 2.1.0,
+    /// '1.2.0.0' as 1.2.0 - is reported in v2 as its manifest writes it, as the PowerShell Gallery does: PSResourceGet names
+    /// the install folder after it, and PowerShell loads a module only from a folder named as its manifest's version. v3
+    /// keeps the normalised version, and both spellings download. A manifest version that is not the package's version is
+    /// ignored. Found cross-checking PSResourceGet's issues (#1908, 2026-09-15).
+    /// </summary>
+    [Theory]
+    [InlineData("2.1.0", "2.1", "2.1")]
+    [InlineData("1.2.0", "1.2.0.0", "1.2.0.0")]
+    [InlineData("3.0.0", "9.9", "3.0.0")]
+    public async Task A_module_is_reported_with_its_manifest_version_text(string packed, string manifest, string reported)
+    {
+        var id = FiGetServerFixture.UniqueId("V2.ModuleVersion");
+        var manifestText = $"@{{\n    RootModule = '{id}.psm1'\n    ModuleVersion = '{manifest}'\n    GUID = '00000000-0000-0000-0000-000000000001'\n}}\n";
+        using (var package = TestPackages.Create(id, packed, b => b.AddContent(id + ".psd1", System.Text.Encoding.UTF8.GetBytes(manifestText))))
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("public", package));
+        }
+
+        using var client = server.CreateClient();
+        var entry = XDocument.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/public/FindPackagesById()?id='{id}'"))).Root!.Elements(Atom + "entry").Single();
+        Assert.Equal(reported, Property(entry, "Version"));
+        Assert.Equal(packed, Property(entry, "NormalizedVersion"));
+
+        foreach (var spelling in new[] { packed, reported })
+        {
+            HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync($"nuget/public/package/{id}/{spelling}"));
+        }
+
+        var registration = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/public/v3/registration/{id.ToLowerInvariant()}/index.json"));
+        Assert.Contains($"\"version\":\"{packed}\"", registration, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Search_finds_by_tag_the_way_Find_Module_asks()
     {

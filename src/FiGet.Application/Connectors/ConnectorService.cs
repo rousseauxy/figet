@@ -618,7 +618,9 @@ public sealed class ConnectorService(
         var normalized = version.Version.ToNormalizedString();
         return new PackageVersion
         {
-            OriginalVersion = normalized,
+            // The upstream's own spelling where it came with one - a gallery reports a module's '2.1' as 2.1, not 2.1.0 - so
+            // a version reads the same before it is cached as after. A stored catalogue keeps only normalised versions.
+            OriginalVersion = string.IsNullOrEmpty(version.Version.OriginalVersion) || version.Version.OriginalVersion.Length > 128 ? normalized : version.Version.OriginalVersion,
             NormalizedVersion = normalized,
             NormalizedVersionLower = normalized.ToLowerInvariant(),
             IsPrerelease = version.Version.IsPrerelease,

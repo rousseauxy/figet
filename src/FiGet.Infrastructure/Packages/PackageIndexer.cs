@@ -9,7 +9,7 @@ using NuGet.Versioning;
 namespace FiGet.Infrastructure.Packages;
 
 
-public sealed class PackageIndexer : IPackageIndexer
+public sealed partial class PackageIndexer : IPackageIndexer
 {
     /// <summary>nuget.org's limit on package id length.</summary>
     public const int MaxIdLength = 100;
@@ -60,7 +60,7 @@ public sealed class PackageIndexer : IPackageIndexer
             {
                 Id = id,
                 Version = version,
-                OriginalVersion = version.OriginalVersion ?? normalized,
+                OriginalVersion = await ModuleVersionTextAsync(reader, id, version, cancellationToken) ?? version.OriginalVersion ?? normalized,
                 IsSemVer2 = version.IsSemVer2 || groups.Any(g => g.Packages.Any(p => IsSemVer2(p.VersionRange))),
                 Authors = nuspec.GetAuthors() ?? "",
                 Description = nuspec.GetDescription() ?? "",
@@ -104,6 +104,51 @@ public sealed class PackageIndexer : IPackageIndexer
             nupkg.Position = 0;
         }
     }
+
+    /// <summary>
+    /// A PowerShell module's version as its manifest writes it, when that is the package's version spelled differently: a
+    /// module with <c>ModuleVersion = '2.1'</c> is packed as 2.1.0, and a four-part <c>'1.2.0.0'</c> as 1.2.0. PSResourceGet
+    /// names the install folder after the reported version, and PowerShell loads a module only from a folder named exactly
+    /// as its manifest's version - so reporting the packed spelling installed modules that would not load. The PowerShell
+    /// Gallery reports the manifest's text; so does this. The manifest is read as text with a pattern, never executed, and
+    /// only a version that parses to the package's own version is used.
+    /// </summary>
+    private static async Task<string?> ModuleVersionTextAsync(PackageArchiveReader reader, string id, NuGetVersion version, CancellationToken cancellationToken)
+    {
+        var manifest = reader.GetFiles().FirstOrDefault(f => !f.Contains('/', StringComparison.Ordinal) && f.Equals(id + ".psd1", StringComparison.OrdinalIgnoreCase));
+        if (manifest is null)
+        {
+            return null;
+        }
+
+        string text;
+        await using (var stream = reader.GetStream(manifest))
+        using (var limited = new StreamReader(stream))
+        {
+            var buffer = new char[MaxManifestChars];
+            var read = await limited.ReadBlockAsync(buffer, cancellationToken);
+            text = new string(buffer, 0, read);
+        }
+
+        var moduleVersion = ModuleVersionPattern().Match(text);
+        if (!moduleVersion.Success)
+        {
+            return null;
+        }
+
+        var prerelease = PrereleasePattern().Match(text);
+        var candidate = moduleVersion.Groups["v"].Value.Trim() + (prerelease.Success && prerelease.Groups["p"].Value.Trim().Length > 0 ? "-" + prerelease.Groups["p"].Value.Trim() : "");
+        return NuGetVersion.TryParse(candidate, out var parsed) && VersionComparer.Default.Equals(parsed, version) && candidate.Length <= MaxVersionLength ? candidate : null;
+    }
+
+    /// <summary>A module manifest is kilobytes; reading further than this for a version is never needed.</summary>
+    private const int MaxManifestChars = 256 * 1024;
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^\s*ModuleVersion\s*=\s*['""](?<v>[0-9][0-9.]*)['""]", System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
+    private static partial System.Text.RegularExpressions.Regex ModuleVersionPattern();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^\s*Prerelease\s*=\s*['""](?<p>[0-9A-Za-z.-]*)['""]", System.Text.RegularExpressions.RegexOptions.Multiline | System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 1000)]
+    private static partial System.Text.RegularExpressions.Regex PrereleasePattern();
 
     private static async Task<byte[]> ReadNuspecAsync(PackageArchiveReader reader, CancellationToken cancellationToken)
     {
