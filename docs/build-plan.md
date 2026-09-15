@@ -762,8 +762,8 @@ never inline.
 - **Entra sends `groups` only when the app registration is configured for it**, and switches
   to an overage claim above 200 groups. Document the mapping; do not special-case it in code.
 - **Google sends no groups.** Email allow-list is the fallback and must exist for that reason.
-- **Do not publish container images while the repository is private**; private GHCR storage
-  is capped and the images are not needed until phase 2 is green.
+- **Images are published from a tag only**, by the `publish` job in `ci.yml`; a push to main builds the
+  image and smoke-tests it without pushing.
 
 ---
 

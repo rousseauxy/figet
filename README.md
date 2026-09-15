@@ -4,7 +4,7 @@
 5.1 and the newest tooling both work; proxy feeds that cache the PowerShell Gallery and nuget.org for servers without
 internet access; asset directories for installers and scripts; and sign-in with the identity provider you already have.
 
-> **Status:** feature-complete for a first release and running on a test instance; not released yet.
+> **Status:** feature-complete for a first release and running on a test instance.
 > What was verified, and how, is in [docs/status.md](docs/status.md).
 
 ## Why it exists
@@ -49,7 +49,8 @@ The open-source servers we looked at each covered part of that list. FiGet exist
   - Anonymous clients are rate-limited.
   - A feed can be limited to listed networks.
   - Every change is audited with who, what, when and from where.
-  - The key ring that protects sessions is encrypted with a master key from a secret.
+  - The key ring that protects sessions is encrypted with a master key from a secret; without one, FiGet says so at
+    every start.
 
 ## At a glance
 
@@ -69,20 +70,51 @@ The open-source servers we looked at each covered part of that list. FiGet exist
 | Windows PowerShell 5.1 with PowerShellGet 2.2.5 and PackageManagement 1.4.8.1 | v2 (and v3 through PackageManagement's NuGet provider) |
 | PowerShell 7 with PSResourceGet | v2 and v3 |
 | nuget.exe and the dotnet CLI | v3 |
-| Ansible `win_psrepository` and `win_get_url` | v2 and asset directories |
+| Ansible `win_psrepository` and `win_get_url` (built for; not yet run end to end) | v2 and asset directories |
 | curl and `Invoke-WebRequest`, including resumed downloads | asset directories |
 
-## Run it
+## Run the image
+
+```
+docker run -d --name figet -p 8080:8080 -v figet-data:/data \
+  -e FiGet__PublicBaseUrl=http://localhost:8080 \
+  -e FiGet__Feeds__0__Name=modules -e FiGet__Feeds__0__AnonymousRead=true \
+  ghcr.io/rousseauxy/figet:latest
+```
+
+Sign in at http://localhost:8080 as `admin` / `admin`: the first thing FiGet asks is a new password. The container runs
+as a non-root, arbitrary UID and keeps its database and files under `/data`. `deploy/compose.example.yml` is the same
+thing as a compose file, with SQL Server, shares and a master key as commented lines.
+
+Behind a reverse proxy, with more than one replica, or with secrets and shares to wire in, the settings that matter are
+in [docs/configuration.md](docs/configuration.md).
+
+## Run from source
 
 ```
 dotnet run --project src/FiGet.Web
 ```
 
-The first start creates a SQLite database under `src/FiGet.Web/data`. Sign in at http://localhost:5555 as `admin` /
-`admin`: the first thing FiGet asks is a new password. `deploy/compose.example.yml` runs the container.
+The first start creates a SQLite database under `src/FiGet.Web/data` and listens on http://localhost:5555 (the image
+listens on 8080).
 
-Behind a reverse proxy, with more than one replica, or with secrets and shares to wire in, the settings that matter are
-in [docs/configuration.md](docs/configuration.md).
+## Build and test
+
+Needs the .NET 10 SDK; the version is pinned in `global.json`.
+
+```
+dotnet build figet.slnx -c Debug
+dotnet test figet.slnx -c Debug
+```
+
+The unit tests need nothing. The integration tests run against SQLite by default, and against SQL Server as well when
+`FIGET_TEST_SQLSERVER` holds a connection string - both providers must pass before a change to persistence is done:
+
+```
+FIGET_TEST_SQLSERVER='Server=(localdb)\MSSQLLocalDB;Integrated Security=true;TrustServerCertificate=true' dotnet test figet.slnx -c Debug
+```
+
+`tests/FiGet.Compat` holds the scripts that record real clients; they are run by hand on a Windows machine, not in CI.
 
 ## Documentation
 
