@@ -71,22 +71,15 @@ ids with a database row each, so a file placed on the share would not exist for 
 
 **Size.** Three to four days with tests on both databases, tried against a Samba share on the test host.
 
-### Find-Module is slow for a package with thousands of versions
+### ~~Find-Module is slow for a package with thousands of versions~~ (profiled and fixed 2026-09-16)
 
-`Find-Module PnP.PowerShell` took 44s over v2 where `Find-PSResource` took 3.1s over v3 (2026-09-12).
+Option 1 was taken, and it was neither the Atom writer nor the row building: the tags of every described
+upstream version were lower-cased again on every request, 280 ms of a 290 ms page for PnP.PowerShell's 2,101
+versions, paid on each of the 53 pages a `Find-Module` walks. They are kept per description now
+(docs/status.md, "Find-Module profiled"). Nothing a client sees changed: same pages, same tags.
 
-Measured 2026-09-13 (docs/status.md, "Find-Module on a package with thousands of versions"): not the merge,
-not `$skip`. A page costs what its response size costs, and tags are 92-96% of every response - about 80 MB
-for one `Find-Module`. Gzip shrinks the wire size 88% but not the time, so the cost is building and writing
-the entries. Options, for a decision:
-
-1. **Profile the writer first** (no behaviour change). Find out whether the time is the Atom writer, the row
-   building or the string handling, and make that part cheaper. Safe; the size of the win is unknown.
-2. ~~**Enable response compression** for `/nuget` regardless.~~ Done 2026-09-13
-   (`FiGet:CompressProtocolResponses`, on by default). Does not fix the time measured on a fast link.
-3. **Trim tags on older versions only** (keep them on the latest few). Cuts the payload most, but
-   `Find-Module -AllVersions` would show no `Includes` for old versions. User-visible.
-4. **Accept it.** The client asks for every version by design; PSResourceGet over v3 is already fast.
+Left undone deliberately: options 3 (trimming tags on older versions) and 4. Neither is needed at the
+measured speed.
 
 ### Watch the PSResourceGet fix (comment posted 2026-09-13)
 
@@ -251,15 +244,9 @@ Each is Low, and none is reachable without an account that already has rights; i
   ids for 30 seconds, and a local test checks both providers' migrations against the model.
 - ~~**Cross-check three more trackers**~~: done 2026-09-15 (PSResourceGet 936 issues, 246 read; Gitea's 50 NuGet issues;
   NuGet/Home 1,588 screened, 110 read). All thirteen findings fixed the same day (docs/status.md, "Three more trackers").
-  Left from them:
-  - The asset upload routes raise their body limit inside the handler too, so a large asset upload that authenticates by
-    challenge may be reset like a package push was; not traced.
-  - Client behaviours to document for users, none a server can fix: a PSResourceGet registration URL ending in the feed
-    name or in `/api/v2/` with a slash leaves the repository type unknown (`Set-PSResourceRepository -ApiVersion V2`
-    fixes it); `-ApiKey` together with `-Credential` fails with 403; `Find-PSResource -Name *` lists every package twice
-    against any server but the gallery.
-  - Behaviours clients depend on that still have no test, listed in the Gitea and NuGet/Home reports, for example
-    `registration/{id}/{version}.json` leaves and a credentialed restore's challenge pairs.
+  What they left is done too (2026-09-16): a large asset upload or archive import that authenticates by challenge was
+  indeed reset, and now has its refused body read like a push; the PSResourceGet client behaviours are a public page
+  ("PowerShell clients"); and the behaviours with no test have one each, in `PackageEvidenceTests.Clients.cs`.
 
 ## Decided against
 
