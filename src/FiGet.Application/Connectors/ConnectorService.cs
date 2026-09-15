@@ -414,7 +414,13 @@ public sealed class ConnectorService(
 
             await using (nupkg)
             {
-                var result = await ingestion.PushAsync(feed, nupkg, PackageOrigin.Cached, cancellationToken, KnownPublished(upstream, idLower, version));
+                var result = await ingestion.PushAsync(
+                    feed,
+                    nupkg,
+                    PackageOrigin.Cached,
+                    cancellationToken,
+                    KnownPublished(upstream, idLower, version),
+                    listed: await KnownListedAsync(upstream, idLower, version, cancellationToken));
                 if (result.Outcome is PushOutcome.Created or PushOutcome.Replaced)
                 {
                     logger.LogInformation("Cached {Id} {Version} from upstream {Upstream}.", id, version.ToNormalizedString(), upstream.Name);
@@ -745,6 +751,22 @@ public sealed class ConnectorService(
     /// client lists versions before it downloads one, so the description is nearly always there, and a cache fill
     /// that misses it is corrected the next time the upstream describes the package.
     /// </summary>
+    /// <summary>
+    /// Whether the upstream advertises the version: from what it last described, else from the stored catalogue's hidden
+    /// versions, else listed - "not told" never reads as hidden.
+    /// </summary>
+    private async Task<bool> KnownListedAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken)
+    {
+        var described = metadataCache.Get(upstream.Key, idLower, time.GetUtcNow().UtcDateTime, TimeSpan.MaxValue);
+        if (described?.FirstOrDefault(m => m.Version == version) is { } metadata)
+        {
+            return metadata.Listed;
+        }
+
+        var cached = await index.FindAsync(upstream.Key, idLower, cancellationToken);
+        return cached?.Unlisted?.Contains(version.ToNormalizedString()) != true;
+    }
+
     private DateTime? KnownPublished(FeedUpstream upstream, string idLower, NuGetVersion version)
     {
         var described = metadataCache.Get(upstream.Key, idLower, time.GetUtcNow().UtcDateTime, TimeSpan.MaxValue);

@@ -46,7 +46,7 @@ public sealed class PackageIngestionService(
     /// publish date, when the upstream said when it published it. A nupkg does not carry one, so without it
     /// a cached copy would read as published the moment somebody first installed it.
     /// </summary>
-    public async Task<PushResult> PushAsync(Feed feed, Stream nupkg, PackageOrigin origin, CancellationToken cancellationToken, DateTime? publishedUtc = null)
+    public async Task<PushResult> PushAsync(Feed feed, Stream nupkg, PackageOrigin origin, CancellationToken cancellationToken, DateTime? publishedUtc = null, bool listed = true)
     {
         IndexedPackage indexed;
         try
@@ -74,6 +74,10 @@ public sealed class PackageIngestionService(
 
         var row = ToEntity(indexed, publishedUtc ?? time.GetUtcNow().UtcDateTime, origin);
         row.LastUsedUtc = time.GetUtcNow().UtcDateTime;
+
+        // A copy of a version its upstream hides is stored hidden too: listed, it read as the current version to /latest,
+        // the feed page and retention until a later listing of the id reconciled it.
+        row.Listed = listed;
         if (!await store.AddVersionAsync(feed.Key, indexed.Id, row, feed.AllowOverwrite, cancellationToken))
         {
             return new PushResult(PushOutcome.Conflict, $"{indexed.Id} {normalized} already exists in feed '{feed.Name}'.", indexed.Id, normalized);

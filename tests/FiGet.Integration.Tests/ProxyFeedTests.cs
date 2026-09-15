@@ -195,6 +195,22 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         using var client = server.CreateClient();
         var download = await client.GetAsync($"nuget/proxy/package/{id}/2.0.0");
         Assert.True(download.IsSuccessStatusCode, $"{(int)download.StatusCode} {download.ReasonPhrase}");
+
+        // The copy that download cached is stored hidden, as the upstream has it, so nothing that reads stored rows alone -
+        // the management API's latest, the feed page, retention - takes it for the current version before a listing
+        // reconciles it. Found cross-checking other package servers' issue trackers (2026-09-15).
+        Assert.Equal(["2.0.0"], await CachedVersionsAsync(id));
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            var idLower = id.ToLowerInvariant();
+            Assert.False(await scope.ServiceProvider.GetRequiredService<FiGetDbContext>().PackageVersions
+                .Where(v => v.Package!.IdLower == idLower && v.NormalizedVersionLower == "2.0.0")
+                .Select(v => v.Listed)
+                .SingleAsync(TestContext.Current.CancellationToken));
+        }
+
+        var latest = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"api/packages/proxy/latest?name={id}")))!;
+        Assert.DoesNotContain("2.0.0", latest.ToJsonString(), StringComparison.Ordinal);
     }
 
     /// <summary>
