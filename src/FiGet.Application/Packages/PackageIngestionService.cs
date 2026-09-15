@@ -64,6 +64,13 @@ public sealed class PackageIngestionService(
             return new PushResult(PushOutcome.Invalid, "Symbol packages must be pushed to the symbol publish resource.", indexed.Id, normalized);
         }
 
+        // Only what is pushed: a copy from an upstream is whatever the gallery an admin chose serves, and refusing it would
+        // turn an install into a failure the person installing cannot do anything about.
+        if (origin == PackageOrigin.Pushed && indexed.Content.RefusalFor(feed.Purpose, indexed.Id, feed.Name) is { } refusal)
+        {
+            return new PushResult(PushOutcome.Invalid, refusal, indexed.Id, normalized);
+        }
+
         var idLower = indexed.Id.ToLowerInvariant();
         var versionLower = normalized.ToLowerInvariant();
         var existing = await store.GetVersionAsync(feed.Key, idLower, versionLower, cancellationToken);

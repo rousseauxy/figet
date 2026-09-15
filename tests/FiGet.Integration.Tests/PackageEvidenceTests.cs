@@ -254,6 +254,69 @@ public abstract class PackageEvidenceTests
         Assert.Single(index["versions"]!.AsArray());
     }
 
+    /// <summary>
+    /// A feed used for one kind of package refuses a push of another kind, over v2 and v3 alike, with a message naming what
+    /// was found. Asked for by the owner when the "used for" choice was added (2026-09-16).
+    /// </summary>
+    [Fact]
+    public async Task A_feed_used_for_one_kind_refuses_pushes_of_another()
+    {
+        var modules = FiGetServerFixture.UniqueId("psfeed").ToLowerInvariant();
+        var choco = FiGetServerFixture.UniqueId("chocofeed").ToLowerInvariant();
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            var feeds = scope.ServiceProvider.GetRequiredService<FiGet.Application.Ports.IFeedStore>();
+            Assert.True(await feeds.CreateAsync(new Feed { Name = modules, NameLower = modules, Purpose = FeedPurpose.PowerShell, CreatedUtc = DateTime.UtcNow }, CancellationToken.None));
+            Assert.True(await feeds.CreateAsync(new Feed { Name = choco, NameLower = choco, Purpose = FeedPurpose.Chocolatey, CreatedUtc = DateTime.UtcNow }, CancellationToken.None));
+        }
+
+        var moduleId = FiGetServerFixture.UniqueId("Evidence.Module");
+        var chocoId = FiGetServerFixture.UniqueId("evidence.choco").ToLowerInvariant();
+        MemoryStream Module() => TestPackages.Create(moduleId, "1.0.0", b =>
+        {
+            b.Files.Clear();
+            b.AddContent(moduleId + ".psd1", "@{ ModuleVersion = '1.0.0' }"u8.ToArray());
+        });
+        MemoryStream Chocolatey() => TestPackages.Create(chocoId, "1.0.0", b =>
+        {
+            b.Files.Clear();
+            b.AddContent("tools/chocolateyInstall.ps1", "Write-Host installed"u8.ToArray());
+        });
+
+        using (var library = TestPackages.Create(FiGetServerFixture.UniqueId("Evidence.Library"), "1.0.0"))
+        {
+            var refused = await PushAsync(modules, library);
+            HttpAssert.Status(HttpStatusCode.BadRequest, refused);
+            Assert.Contains($"feed '{modules}' is for PowerShell modules", refused.ReasonPhrase + await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), StringComparison.Ordinal);
+        }
+
+        using (var package = Chocolatey())
+        {
+            HttpAssert.Status(HttpStatusCode.BadRequest, await PushAsync(modules, package, resource: "api/v2/package"));
+        }
+
+        using (var package = Module())
+        {
+            HttpAssert.Status(HttpStatusCode.BadRequest, await PushAsync(choco, package));
+        }
+
+        using (var package = Module())
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync(modules, package));
+        }
+
+        using (var package = Chocolatey())
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync(choco, package, resource: "api/v2/package"));
+        }
+
+        // A feed for any client still takes all of them.
+        using (var package = Chocolatey())
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushAsync("public", package));
+        }
+    }
+
     private async Task<HttpResponseMessage> PushAsync(string feed, Stream package, string resource = "v3/publish")
     {
         using var client = server.CreateClient();

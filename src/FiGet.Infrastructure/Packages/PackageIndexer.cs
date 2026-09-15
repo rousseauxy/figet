@@ -87,6 +87,7 @@ public sealed partial class PackageIndexer : IPackageIndexer
                 Size = size,
                 Sha512 = sha512,
                 Nuspec = nuspecBytes,
+                Content = PackageContent.Classify(id, reader.GetFiles(), packageTypes.Count == 0 ? ["Dependency"] : packageTypes),
             };
             CheckColumnLengths(indexed);
             return indexed;

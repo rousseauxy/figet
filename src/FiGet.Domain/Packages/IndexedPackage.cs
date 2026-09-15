@@ -55,6 +55,9 @@ public sealed record IndexedPackage
     public required string Sha512 { get; init; }
 
     public required byte[] Nuspec { get; init; }
+
+    /// <summary>What the files say the package is, for a feed that is used for one kind only. Not stored.</summary>
+    public PackageContent Content { get; init; } = new(PackageContentKind.Other, "");
 }
 
 /// <summary>A dependency group. <see cref="TargetFramework"/> is a short folder name, empty for "any".</summary>
