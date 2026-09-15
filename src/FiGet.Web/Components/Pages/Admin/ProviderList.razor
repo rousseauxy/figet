@@ -19,7 +19,9 @@
 <h1>Sign-in providers</h1>
 <p class="fg-lede">
     OpenID Connect providers people sign in with, side by side: Authentik, Entra ID, Google, Keycloak. A first sign-in
-    makes a new account with the user role; people connect a provider to an existing account from their profile page.
+    makes a new account with the user role; people connect a provider to an existing account from their profile page. A
+    provider can also be trusted for access tokens on the API, and a CI system such as GitLab or GitHub Actions can be
+    added for that alone.
 </p>
 
 @if (Done == "deleted")
@@ -45,10 +47,25 @@ else
             <tbody>
                 @foreach (var provider in providers)
                 {
-                    <tr class="@(provider.Enabled ? "" : "is-inactive")">
+                    <tr class="@(provider.Enabled || provider.AcceptApiTokens ? "" : "is-inactive")">
                         <td><a href="/admin/providers/@provider.Key"><strong>@provider.DisplayName</strong></a> <span class="fg-small fg-muted">@provider.Slug</span></td>
-                        <td><code class="fg-small">@RedirectUri(provider)</code></td>
-                        <td><span class="fg-badge @(provider.Enabled ? "fg-badge-plain" : "fg-badge-warn")">@(provider.Enabled ? "Enabled" : "Disabled")</span></td>
+                        <td>
+                            @if (provider.ClientId.Length > 0)
+                            {
+                                <code class="fg-small">@RedirectUri(provider)</code>
+                            }
+                            else
+                            {
+                                <span class="fg-small fg-muted">None: API tokens only</span>
+                            }
+                        </td>
+                        <td>
+                            <span class="fg-badge @(provider.Enabled ? "fg-badge-plain" : "fg-badge-warn")">@(provider.Enabled ? "Sign-in" : "Sign-in off")</span>
+                            @if (provider.AcceptApiTokens)
+                            {
+                                <span class="fg-badge fg-badge-plain">API tokens</span>
+                            }
+                        </td>
                         <td class="fg-cell-actions"><a class="fg-btn fg-btn-sm" href="/admin/providers/@provider.Key">Edit</a></td>
                     </tr>
                 }
@@ -116,9 +133,9 @@ else
             return;
         }
 
-        if (NewProvider.ClientSecret.Length == 0)
+        if (NewProvider.Enabled && NewProvider.ClientSecret.Length == 0)
         {
-            error = "Enter the client secret.";
+            error = "Enter the client secret, or turn sign-ins off for an issuer trusted only for API tokens.";
             return;
         }
 
@@ -131,7 +148,7 @@ else
             return;
         }
 
-        Audit.Record(HttpContext, "provider.create", provider.Slug, $"authority={provider.Authority} enabled={provider.Enabled}");
+        Audit.Record(HttpContext, "provider.create", provider.Slug, $"authority={provider.Authority} enabled={provider.Enabled} apiTokens={provider.AcceptApiTokens}");
         var added = await Providers.FindBySlugAsync(provider.Slug, HttpContext.RequestAborted);
         Navigation.NavigateTo($"/admin/providers/{added?.Key}?done=created");
     }

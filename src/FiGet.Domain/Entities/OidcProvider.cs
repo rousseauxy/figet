@@ -68,6 +68,66 @@ public sealed class OidcProvider
             && domains.Contains(email![(at + 1)..].Trim().ToLowerInvariant());
     }
 
+    /// <summary>
+    /// Whether the API accepts access tokens this issuer signs, next to FiGet's own keys: a pipeline or an application
+    /// fetches a short-lived token instead of storing a key. Independent of <see cref="Enabled"/>, which is about people
+    /// signing in, so an issuer nobody signs in with - a CI system's job tokens - is a provider with only this on.
+    /// </summary>
+    public bool AcceptApiTokens { get; set; }
+
+    /// <summary>
+    /// The audiences a token must be for, one per line; at least one when <see cref="AcceptApiTokens"/> is on. Without it
+    /// any token the issuer signs for any application would do, which with a shared issuer means anyone's.
+    /// </summary>
+    public string ApiAudiences { get; set; } = "";
+
+    /// <summary>
+    /// Claims a token must carry, one <c>name=value</c> per line: every name listed must be present with one of the
+    /// values listed for it. For a CI issuer that serves many projects, such as <c>ref_protected=true</c>.
+    /// </summary>
+    public string ApiRequiredClaims { get; set; } = "";
+
+    /// <summary>The audiences of an audiences text, trimmed and without duplicates.</summary>
+    public static IReadOnlyList<string> ParseAudiences(string? text) =>
+        [.. (text ?? "").Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.Ordinal)];
+
+    /// <summary>
+    /// The rules of a required-claims text: each claim name with the values that satisfy it. Null when a line is not
+    /// <c>name=value</c>, so a typo is refused on the page rather than silently requiring nothing.
+    /// </summary>
+    public static IReadOnlyDictionary<string, IReadOnlyList<string>>? ParseRequiredClaims(string? text)
+    {
+        var rules = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var line in (text ?? "").Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var equals = line.IndexOf('=', StringComparison.Ordinal);
+            if (equals <= 0 || equals == line.Length - 1)
+            {
+                return null;
+            }
+
+            var name = line[..equals].Trim();
+            var value = line[(equals + 1)..].Trim();
+            if (name.Length == 0 || value.Length == 0)
+            {
+                return null;
+            }
+
+            if (!rules.TryGetValue(name, out var values))
+            {
+                rules[name] = values = [];
+            }
+
+            if (!values.Contains(value, StringComparer.OrdinalIgnoreCase))
+            {
+                values.Add(value);
+            }
+        }
+
+        return rules.ToDictionary(r => r.Key, r => (IReadOnlyList<string>)r.Value, StringComparer.Ordinal);
+    }
+
     /// <summary>Order of the buttons on the sign-in page.</summary>
     public int Ordinal { get; set; }
 

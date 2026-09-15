@@ -817,7 +817,20 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Key"));
 
+                    b.Property<bool>("AcceptApiTokens")
+                        .HasColumnType("bit");
+
                     b.Property<string>("AllowedEmailDomains")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<string>("ApiAudiences")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
+                    b.Property<string>("ApiRequiredClaims")
                         .IsRequired()
                         .HasMaxLength(1024)
                         .HasColumnType("nvarchar(1024)");

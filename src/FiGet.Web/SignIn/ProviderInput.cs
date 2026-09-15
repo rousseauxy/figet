@@ -22,7 +22,7 @@ public sealed partial class ProviderInput
     [StringLength(512)]
     public string Authority { get; set => field = value ?? ""; } = "";
 
-    [Required(ErrorMessage = "Enter the client id.")]
+    /// <summary>Needed to sign people in; an issuer trusted only for API tokens has none.</summary>
     [StringLength(256)]
     public string ClientId { get; set => field = value ?? ""; } = "";
 
@@ -51,6 +51,15 @@ public sealed partial class ProviderInput
     [StringLength(1024)]
     public string AllowedEmailDomains { get; set => field = value ?? ""; } = "";
 
+    /// <summary>False by default for the same reason as <see cref="Enabled"/>; a new provider starts not accepting tokens.</summary>
+    public bool AcceptApiTokens { get; set; }
+
+    [StringLength(1024)]
+    public string ApiAudiences { get; set => field = value ?? ""; } = "";
+
+    [StringLength(1024)]
+    public string ApiRequiredClaims { get; set => field = value ?? ""; } = "";
+
     public static ProviderInput From(OidcProvider provider)
     {
         ArgumentNullException.ThrowIfNull(provider);
@@ -64,6 +73,9 @@ public sealed partial class ProviderInput
             UserNameClaim = provider.UserNameClaim,
             CreateAccounts = provider.CreateAccounts,
             AllowedEmailDomains = provider.AllowedEmailDomains,
+            AcceptApiTokens = provider.AcceptApiTokens,
+            ApiAudiences = provider.ApiAudiences,
+            ApiRequiredClaims = provider.ApiRequiredClaims,
             GroupsClaim = provider.GroupsClaim,
             Enabled = provider.Enabled,
             Ordinal = provider.Ordinal,
@@ -84,6 +96,21 @@ public sealed partial class ProviderInput
         if (OidcProvider.ParseEmailDomains(AllowedEmailDomains).Any(d => !DomainPattern().IsMatch(d)))
         {
             return "Allowed email domains are host names such as example.org, one per line.";
+        }
+
+        if (Enabled && ClientId.Trim().Length == 0)
+        {
+            return "Enter the client id: people cannot sign in without one.";
+        }
+
+        if (AcceptApiTokens && OidcProvider.ParseAudiences(ApiAudiences).Count == 0)
+        {
+            return "Enter the audience API tokens must be for. Without one, a token this issuer signs for any application would do.";
+        }
+
+        if (OidcProvider.ParseRequiredClaims(ApiRequiredClaims) is not { } required || required.Keys.Any(name => !ClaimPattern().IsMatch(name)))
+        {
+            return "Required claims are one name=value per line, such as ref_protected=true.";
         }
 
         return ClaimPattern().IsMatch(UserNameClaim.Trim()) && (GroupsClaim.Trim().Length == 0 || ClaimPattern().IsMatch(GroupsClaim.Trim()))
@@ -111,6 +138,9 @@ public sealed partial class ProviderInput
         provider.Enabled = Enabled;
         provider.CreateAccounts = CreateAccounts;
         provider.AllowedEmailDomains = string.Join('\n', OidcProvider.ParseEmailDomains(AllowedEmailDomains));
+        provider.AcceptApiTokens = AcceptApiTokens;
+        provider.ApiAudiences = string.Join('\n', OidcProvider.ParseAudiences(ApiAudiences));
+        provider.ApiRequiredClaims = string.Join('\n', ApiRequiredClaims.Split(['\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         provider.Ordinal = Ordinal;
         provider.UpdatedUtc = utcNow;
     }

@@ -56,6 +56,27 @@
 <label class="fg-check"><InputCheckbox @bind-Value="Model.CreateAccounts" /> Make an account at a first sign-in. Off: an admin makes the account, and its owner connects this provider from the profile page. With a provider anyone can register at, on means anyone gets an account.</label>
 <label class="fg-check"><InputCheckbox @bind-Value="Model.Enabled" /> Enabled: show it on the sign-in page and accept sign-ins</label>
 
+<fieldset>
+    <legend>API access tokens</legend>
+    <p class="fg-small fg-muted">
+        Next to FiGet's own API keys, the feeds, asset directories and packages API can accept short-lived access tokens this
+        issuer signs: an application's client-credentials token, or a CI job's token from GitLab or GitHub Actions. A token
+        may do what the FiGet groups linked to its groups claim may do, at most publish. For an issuer nobody signs in with,
+        leave the client id and secret empty and sign-ins off.
+    </p>
+    <label class="fg-check"><InputCheckbox @bind-Value="Model.AcceptApiTokens" /> Accept access tokens from this issuer on the API</label>
+    <div class="fg-field">
+        <label for="provider-audiences">Audiences</label>
+        <InputTextArea id="provider-audiences" @bind-Value="Model.ApiAudiences" rows="2" placeholder="for example: the application (client) id, or https://figet.example.org" />
+        <span class="fg-small fg-muted">One per line. A token must be issued for one of them.</span>
+    </div>
+    <div class="fg-field">
+        <label for="provider-required-claims">Required claims</label>
+        <InputTextArea id="provider-required-claims" @bind-Value="Model.ApiRequiredClaims" rows="2" placeholder="for example: ref_protected=true" />
+        <span class="fg-small fg-muted">One <code>name=value</code> per line. Every name listed must be in the token with one of its values. Use it for an issuer many projects share.</span>
+    </div>
+</fieldset>
+
 @code {
     [Parameter, EditorRequired]
     public ProviderInput Model { get; set; } = default!;

@@ -69,6 +69,9 @@ public interface IFeedPermissionStore
     /// <summary>The same for every feed the account has any grant on, keyed by feed.</summary>
     Task<IReadOnlyDictionary<int, FeedAccessLevel>> GrantedOnAllAsync(int userKey, CancellationToken cancellationToken);
 
+    /// <summary>The highest level granted on the feed to any of these groups, for a caller that is groups and no account.</summary>
+    Task<FeedAccessLevel> GrantedToGroupsAsync(int feedKey, IReadOnlyCollection<int> groupKeys, CancellationToken cancellationToken);
+
     /// <summary>Every feed and asset directory a group has a grant on, by name.</summary>
     Task<IReadOnlyList<GroupFeedGrant>> ListForGroupAsync(int groupKey, CancellationToken cancellationToken);
 

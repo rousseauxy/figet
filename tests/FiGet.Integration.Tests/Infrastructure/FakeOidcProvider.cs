@@ -28,7 +28,7 @@ public sealed class FakeOidcProvider : IAsyncDisposable
     public const string ClientSecret = "fake-client-secret-0123456789";
 
     private readonly WebApplication app;
-    private readonly RsaSecurityKey signingKey;
+    private RsaSecurityKey signingKey;
     private readonly ConcurrentDictionary<string, Grant> codes = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, FakeIdentity> accessTokens = new(StringComparer.Ordinal);
     private int tokenRequests;
@@ -46,6 +46,37 @@ public sealed class FakeOidcProvider : IAsyncDisposable
     public FakeIdentity? Next { get; set; }
 
     public int TokenRequests => tokenRequests;
+
+    /// <summary>
+    /// An access token as an issuer hands one to an application or a CI job: signed with the provider's current key, for
+    /// <paramref name="audience"/>, with the claims given. The parameters after it make the ways a token goes wrong.
+    /// </summary>
+    public string CreateAccessToken(
+        string audience,
+        IDictionary<string, object> claims,
+        TimeSpan? lifetime = null,
+        DateTime? expires = null,
+        SecurityKey? key = null,
+        string algorithm = SecurityAlgorithms.RsaSha256)
+    {
+        var now = DateTime.UtcNow;
+        return new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
+        {
+            Issuer = Authority,
+            Audience = audience,
+            IssuedAt = now.AddMinutes(-2),
+            NotBefore = now.AddMinutes(-2),
+            Expires = expires ?? now + (lifetime ?? TimeSpan.FromMinutes(10)),
+            Claims = new Dictionary<string, object>(claims),
+            SigningCredentials = new SigningCredentials(key ?? signingKey, algorithm),
+        });
+    }
+
+    /// <summary>A key of the same kind with the provider's key id, which the provider never published: a forged signature.</summary>
+    public static RsaSecurityKey ForgedKey(string keyId = "fake-key") => new(RSA.Create(2048)) { KeyId = keyId };
+
+    /// <summary>Replaces the signing key under a new key id, as a provider's key rollover does; the old one is no longer published.</summary>
+    public void RotateKey() => signingKey = new RsaSecurityKey(RSA.Create(2048)) { KeyId = "fake-key-" + Guid.NewGuid().ToString("N")[..8] };
 
     public static async Task<FakeOidcProvider> StartAsync()
     {

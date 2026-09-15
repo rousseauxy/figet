@@ -153,6 +153,19 @@ public static class FeedAccess
             if (best is not null)
             {
                 http.Items[TokenNameItem] = best.LogName;
+
+                // A key has its last use on the tokens page; an access token has no row, so the audit log is where an admin
+                // sees which pipelines and applications use one. Once an hour per caller, not per request.
+                if (best.External is { } external)
+                {
+                    http.RequestServices.GetRequiredService<AuditLog>().RecordThrottled(
+                        http,
+                        $"token.external.used|{external.ProviderKey}|{best.Name}",
+                        TimeSpan.FromHours(1),
+                        "token.external.used",
+                        best.LogName,
+                        $"feed={feed.Name}");
+                }
             }
 
             if (!string.Equals(feed.NameLower, feedName, StringComparison.OrdinalIgnoreCase))
@@ -171,7 +184,7 @@ public static class FeedAccess
         // Pushing with a key that does not validate is a 403 on nuget.org; everything else asks for credentials.
         if (required != TokenScopes.Read && RequestCredentials.HasApiKeyHeader(http.Request))
         {
-            return (null, Results.Json(new { error = "The API key is invalid, expired or revoked." }, statusCode: StatusCodes.Status403Forbidden));
+            return (null, Results.Json(new { error = "The API key or access token is invalid, expired or revoked." }, statusCode: StatusCodes.Status403Forbidden));
         }
 
         http.Response.Headers.WWWAuthenticate = $"Basic realm=\"{Realm}\"";
@@ -235,7 +248,8 @@ public static class RequestCredentials
 
     /// <summary>
     /// Candidate secrets in order: API key headers, the password of Basic auth (the user name is ignored,
-    /// as NuGet clients put anything there), then a Bearer token.
+    /// as NuGet clients put anything there), then a Bearer token. Each may be a FiGet key or an access token from a trusted
+    /// issuer, since a client that can only send an API key must be able to send a token the same way.
     /// </summary>
     public static IEnumerable<string> Candidates(HttpRequest request)
     {

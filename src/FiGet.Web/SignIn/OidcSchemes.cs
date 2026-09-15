@@ -52,6 +52,10 @@ public static class OidcSchemes
         services.AddSingleton<IAuthenticationSchemeProvider, OidcSchemeProvider>();
         services.AddSingleton<IOptionsMonitor<OpenIdConnectOptions>, OidcOptionsMonitor>();
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
+
+        // The same providers' issuers, trusted for access tokens on the API where a super admin turned that on.
+        services.AddSingleton<ApiTokenValidator>();
+        services.AddSingleton<IExternalTokenValidator>(sp => sp.GetRequiredService<ApiTokenValidator>());
     }
 
     /// <summary>

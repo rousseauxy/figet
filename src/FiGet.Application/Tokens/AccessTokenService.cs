@@ -12,13 +12,22 @@ public sealed record KeyOwner(int Key, string UserName, UserRole Role)
     public AccountActor Actor => new(Key, Role);
 }
 
+/// <summary>
+/// The caller behind an access token from a trusted issuer: no account, only the FiGet groups its groups claim is linked
+/// to, read when the token was checked.
+/// </summary>
+public sealed record ExternalCaller(int ProviderKey, string ProviderSlug, IReadOnlySet<int> GroupKeys);
+
 /// <summary>A token that passed validation, with what it may do.</summary>
-public sealed record ValidatedToken(int Key, string Name, TokenScopes Scopes, int? FeedKey, KeyOwner? Owner = null)
+public sealed record ValidatedToken(int Key, string Name, TokenScopes Scopes, int? FeedKey, KeyOwner? Owner = null, ExternalCaller? External = null)
 {
     public bool IsAdmin => Scopes.HasFlag(TokenScopes.Admin);
 
-    /// <summary>How the request log names it: a personal key with its owner, so two people's "ci" keys stay apart.</summary>
-    public string LogName => Owner is null ? Name : $"{Owner.UserName}/{Name}";
+    /// <summary>
+    /// How the request log names it: a personal key with its owner, so two people's "ci" keys stay apart; an access token
+    /// with the provider that issued it.
+    /// </summary>
+    public string LogName => External is not null ? $"{External.ProviderSlug}:{Name}" : Owner is null ? Name : $"{Owner.UserName}/{Name}";
 
     /// <summary>
     /// The token's own limits: admin covers everything; otherwise the scope must be granted and the feed must match. For a
@@ -66,8 +75,18 @@ public sealed record TokenCreation(TokenCreateStatus Status, CreatedToken? Creat
 /// Creates, validates and revokes tokens. The ceiling rule lives here rather than on a page: nobody creates a key with
 /// more rights than they hold, whichever page or endpoint asks.
 /// </summary>
-public sealed class AccessTokenService(IAccessTokenStore store, IUserStore users, FeedAccessService access, TimeProvider time)
+public sealed class AccessTokenService(
+    IAccessTokenStore store,
+    IUserStore users,
+    FeedAccessService access,
+    TimeProvider time,
+    IExternalTokenValidator externalTokens,
+    IGroupStore groups,
+    IFeedPermissionStore permissions)
 {
+    /// <summary>What an access token may carry at most: reading and publishing. Never a feed's settings, never admin.</summary>
+    private const TokenScopes ExternalScopes = TokenScopes.Read | TokenScopes.Push | TokenScopes.Delete;
+
     private const string SecretPrefix = "figet_";
 
     public const int BootstrapPrefixLength = 4;
@@ -150,6 +169,11 @@ public sealed class AccessTokenService(IAccessTokenStore store, IUserStore users
             return null;
         }
 
+        if (IExternalTokenValidator.LooksLikeJwt(secret.Trim()))
+        {
+            return await ValidateExternalAsync(secret.Trim(), cancellationToken);
+        }
+
         var token = await store.FindByHashAsync(HashSecret(secret.Trim()), cancellationToken);
         var now = time.GetUtcNow().UtcDateTime;
         if (token is null || token.RevokedUtc is not null || (token.ExpiresUtc is not null && token.ExpiresUtc <= now))
@@ -183,6 +207,15 @@ public sealed class AccessTokenService(IAccessTokenStore store, IUserStore users
     /// </summary>
     public async Task<(string Name, string Reason)?> DescribeRefusedAsync(string secret, CancellationToken cancellationToken)
     {
+        // A signed token is never someone's password, so its refusal is always worth recording.
+        if (IExternalTokenValidator.LooksLikeJwt(secret.Trim()))
+        {
+            var check = await externalTokens.ValidateAsync(secret.Trim(), cancellationToken);
+            return check.Identity is null
+                ? (check.ProviderSlug is null ? "access token" : $"access token from {check.ProviderSlug}", check.Reason)
+                : null;
+        }
+
         var token = await store.FindByHashAsync(HashSecret(secret.Trim()), cancellationToken);
         if (token is null)
         {
@@ -208,6 +241,19 @@ public sealed class AccessTokenService(IAccessTokenStore store, IUserStore users
             return false;
         }
 
+        // An access token does what the groups it is linked to may do on the feed now, and at most publish: Manage granted to
+        // such a group still gives a token nothing of a feed's settings, which no API endpoint offers anyway.
+        if (token.External is { } external)
+        {
+            if (external.GroupKeys.Count == 0)
+            {
+                return false;
+            }
+
+            var granted = await permissions.GrantedToGroupsAsync(feed.Key, [.. external.GroupKeys], cancellationToken);
+            return (granted > FeedAccessLevel.Publish ? FeedAccessLevel.Publish : granted) >= RequiredLevel(scope);
+        }
+
         return token.Owner is null
             || await access.LevelAsync(feed, token.Owner.Actor, cancellationToken) >= RequiredLevel(scope);
     }
@@ -228,6 +274,25 @@ public sealed class AccessTokenService(IAccessTokenStore store, IUserStore users
         (scopes & (TokenScopes.Push | TokenScopes.Delete | TokenScopes.Admin)) != 0 ? FeedAccessLevel.Publish
         : scopes.HasFlag(TokenScopes.Read) ? FeedAccessLevel.Read
         : FeedAccessLevel.None;
+
+    /// <summary>
+    /// An access token from a trusted issuer, as a token without an account: the FiGet groups linked to the values of its
+    /// groups claim, matched the way a sign-in matches them. A valid token linked to no group is still a token - it gets a
+    /// 403 that says it grants nothing, rather than a 401 that sends someone looking for a signature problem.
+    /// </summary>
+    private async Task<ValidatedToken?> ValidateExternalAsync(string token, CancellationToken cancellationToken)
+    {
+        var check = await externalTokens.ValidateAsync(token, cancellationToken);
+        if (check.Identity is not { } identity)
+        {
+            return null;
+        }
+
+        var claimed = identity.Groups.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var links = claimed.Count == 0 ? [] : await groups.ProviderLinksForProviderAsync(identity.ProviderKey, cancellationToken);
+        var groupKeys = links.Where(l => claimed.Contains(l.ProviderGroup)).Select(l => l.GroupKey).ToHashSet();
+        return new ValidatedToken(0, identity.Caller, ExternalScopes, FeedKey: null, External: new ExternalCaller(identity.ProviderKey, identity.ProviderSlug, groupKeys));
+    }
 
     public static string HashSecret(string secret) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(secret)));

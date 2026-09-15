@@ -29,15 +29,33 @@
 <section class="fg-panel">
     <h2>Register at the provider</h2>
     <dl class="fg-facts">
-        <dt>Redirect URI</dt>
+        @if (provider.Enabled || provider.ClientId.Length > 0)
+        {
+            <dt>Redirect URI</dt>
+            <dd>
+                <div class="fg-url">
+                    <pre><code>@RedirectUri</code></pre>
+                    <button type="button" class="fg-copy" data-copy="@RedirectUri" title="Copy the redirect URI" aria-label="Copy the redirect URI">Copy</button>
+                </div>
+            </dd>
+            <dt>Client type</dt><dd>Confidential, authorization code flow</dd>
+            <dt>Client secret</dt><dd>@(Secrets.Unprotect(provider.ProtectedClientSecret) is null ? "Missing or unreadable: enter it again" : "Stored")</dd>
+        }
+        <dt>API tokens</dt>
         <dd>
-            <div class="fg-url">
-                <pre><code>@RedirectUri</code></pre>
-                <button type="button" class="fg-copy" data-copy="@RedirectUri" title="Copy the redirect URI" aria-label="Copy the redirect URI">Copy</button>
-            </div>
+            @if (provider.AcceptApiTokens)
+            {
+                <span>Accepted when issued by <code>@provider.Authority</code> for @string.Join(" or ", OidcProvider.ParseAudiences(provider.ApiAudiences))</span>
+                @if (provider.GroupsClaim.Length == 0)
+                {
+                    <span class="fg-badge fg-badge-warn">No groups claim set: a token is linked to no group and may do nothing</span>
+                }
+            }
+            else
+            {
+                <span class="fg-muted">Not accepted</span>
+            }
         </dd>
-        <dt>Client type</dt><dd>Confidential, authorization code flow</dd>
-        <dt>Client secret</dt><dd>@(Secrets.Unprotect(provider.ProtectedClientSecret) is null ? "Missing or unreadable: enter it again" : "Stored")</dd>
     </dl>
 </section>
 
@@ -115,6 +133,12 @@
             return;
         }
 
+        if (Edit.Enabled && Edit.ClientSecret.Length == 0 && Secrets.Unprotect(provider.ProtectedClientSecret) is null)
+        {
+            error = "Enter the client secret to turn sign-ins on.";
+            return;
+        }
+
         var was = provider.Slug;
         Edit.ApplyTo(provider, Secrets, Time.GetUtcNow().UtcDateTime);
         if (!await Providers.UpdateAsync(provider, HttpContext.RequestAborted))
@@ -124,7 +148,7 @@
             return;
         }
 
-        Audit.Record(HttpContext, "provider.update", provider.Slug, $"was={was} authority={provider.Authority} enabled={provider.Enabled} secret={(Edit.ClientSecret.Length > 0 ? "replaced" : "kept")}");
+        Audit.Record(HttpContext, "provider.update", provider.Slug, $"was={was} authority={provider.Authority} enabled={provider.Enabled} apiTokens={provider.AcceptApiTokens} audiences={provider.ApiAudiences.Replace('\n', ',')} secret={(Edit.ClientSecret.Length > 0 ? "replaced" : "kept")}");
         saved = true;
         Edit.ClientSecret = "";
         provider = await Providers.FindAsync(Key, HttpContext.RequestAborted);
