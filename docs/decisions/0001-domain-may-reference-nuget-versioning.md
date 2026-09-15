@@ -3,9 +3,9 @@
 ## Context
 
 `FiGet.Domain` is the bottom layer: entities, and the rules that hold no matter how anything is stored
-or served. The reference implementation this layout is modelled on keeps its domain project at *zero*
-package references, and says so in a comment, because a domain that can see `HttpContext` or an EF
-attribute stops being a domain.
+or served. The layered application this layout is modelled on keeps its domain project at *zero* package
+references, and says so in a comment, because a domain that can see `HttpContext` or an EF attribute
+stops being a domain.
 
 FiGet cannot copy that literally. Its central rule — the merged version list of build plan §5 — is
 entirely about comparing versions: which of two versions is newer, which single version is latest,

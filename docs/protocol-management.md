@@ -58,8 +58,8 @@ follow the feed's anonymous-read setting.
 - **`latest` uses the one version-list rule** every NuGet listing uses, so it cannot name a different latest
   version than a client would install.
 - **`publishedBy`** is `SYSTEM` for a version cached from an upstream, which is how the reference server labels
-  one; left out for a pushed version, because FiGet does not record who pushed. (A production server was seen
-  to label cached versions `Anonymous` instead, so a script filtering on the exact word needs checking.)
+  one; left out for a pushed version, because FiGet does not record who pushed. (A second, larger instance was seen to
+  label cached versions `Anonymous` instead, so a script filtering on the exact word needs checking.)
 - **Hashes:** only `sha512`, the hash NuGet itself uses, converted to hexadecimal. MD5, SHA-1 and SHA-256 are
   not computed for packages and are left out.
 - **`delete` removes the version and its file**, whatever the feed's NuGet delete setting says: that setting may

@@ -96,7 +96,7 @@ What the server does, read from these pages:
 3. The shift is not compensated in `$skip`: page 0 of Graph used to end at 1.4.2 and now ends at 1.4.0 while
    page 40 still starts at 1.5.0, so **upstream versions silently drop out**.
 
-**Confirmed on a production server** running the same version, 2026-09-11, with two proxy feeds and six gallery
+**Confirmed on a second, larger instance** running the same version, 2026-09-11, with two proxy feeds and six gallery
 modules of more than 40 versions each. For every module the total number of entries equalled its version count on
 the PowerShell Gallery that day, however many versions were cached. Every cached version therefore appears twice
 and pushes one upstream version out: Microsoft.Graph with 10 cached versions returned 10 duplicates and only 106 of
