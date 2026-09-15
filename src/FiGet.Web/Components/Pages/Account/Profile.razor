@@ -140,7 +140,7 @@
                             <td class="fg-cell-actions">
                                 @if (login is not null)
                                 {
-                                    <form method="post" action="/account/external/logins/@login.Key/remove">
+                                    <form method="post" action="/account/external/logins/@login.Key/remove" data-confirm="@($"Disconnect {provider.DisplayName}? You can connect it again from this page.")" data-confirm-button="Disconnect">
                                         <AntiforgeryToken />
                                         <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Disconnect</button>
                                     </form>
@@ -218,7 +218,7 @@
                             <td class="fg-cell-actions">
                                 @if (key.RevokedUtc is null)
                                 {
-                                    <form method="post" @formname="@($"revoke-key-{key.Key}")" @onsubmit="() => RevokeKeyAsync(key.Key)">
+                                    <form method="post" @formname="@($"revoke-key-{key.Key}")" @onsubmit="() => RevokeKeyAsync(key.Key)" data-confirm="@($"Revoke the key {key.Name}? Every client using it is refused from then on.")" data-confirm-button="Revoke">
                                         <AntiforgeryToken />
                                         <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Revoke</button>
                                     </form>

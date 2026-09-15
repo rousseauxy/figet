@@ -48,7 +48,7 @@
                                 }
                             </td>
                             <td class="fg-cell-actions">
-                                <form method="post" action="/admin/groups/@group.Key/remove">
+                                <form method="post" action="/admin/groups/@group.Key/remove" data-confirm="@($"Remove {member.UserName} from {group.Name}?")" data-confirm-button="Remove">
                                     <AntiforgeryToken />
                                     <input type="hidden" name="user" value="@member.Key" />
                                     <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Remove</button>
@@ -140,7 +140,7 @@
                                     }
                                 </td>
                                 <td class="fg-cell-actions">
-                                    <form method="post" action="/admin/groups/@group.Key/unlink-provider">
+                                    <form method="post" action="/admin/groups/@group.Key/unlink-provider" data-confirm="@($"Unlink {link.ProviderGroup}? The members it gave this group are removed at their next sign-in.")" data-confirm-button="Unlink">
                                         <AntiforgeryToken />
                                         <input type="hidden" name="link" value="@link.Key" />
                                         <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Unlink</button>
@@ -196,7 +196,7 @@
 <section class="fg-panel fg-panel-danger">
     <h2>Delete this group</h2>
     <p class="fg-muted fg-small">Removes the group, its memberships, and every grant made to it. The accounts stay.</p>
-    <form method="post" action="/admin/groups/@group.Key/delete">
+    <form method="post" action="/admin/groups/@group.Key/delete" data-confirm="@($"Delete the group {group.Name}, its memberships and its grants?")" data-confirm-button="Delete group">
         <AntiforgeryToken />
         <button type="submit" class="fg-btn fg-btn-danger">Delete group</button>
     </form>

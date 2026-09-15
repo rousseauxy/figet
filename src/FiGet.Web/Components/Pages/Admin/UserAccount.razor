@@ -104,7 +104,7 @@
             <AntiforgeryToken />
             <button type="submit" class="fg-btn">@(user.IsDisabled ? "Enable account" : "Disable account")</button>
         </form>
-        <form method="post" action="/admin/users/@user.Key/delete">
+        <form method="post" action="/admin/users/@user.Key/delete" data-confirm="@($"Delete the account {user.UserName} for good? Its personal keys stop working.")" data-confirm-button="Delete account">
             <AntiforgeryToken />
             <button type="submit" class="fg-btn fg-btn-danger">Delete account</button>
         </form>

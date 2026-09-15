@@ -61,7 +61,7 @@
         but one that only signed in with this provider has no way left to sign in until an admin sets it a password. To
         stop sign-ins for a while, disable it instead.
     </p>
-    <EditForm Model="Delete!" FormName="delete-provider" OnSubmit="DeleteAsync" method="post">
+    <EditForm Model="Delete!" FormName="delete-provider" OnSubmit="DeleteAsync" method="post" data-confirm="@($"Delete the provider {provider.DisplayName}? Accounts that only sign in with it have no way left to sign in.")" data-confirm-button="Delete provider">
         <button type="submit" class="fg-btn fg-btn-danger">Delete provider</button>
     </EditForm>
 </section>

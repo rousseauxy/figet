@@ -42,7 +42,7 @@
                                 </td>
                                 <td><span class="fg-badge @(grant.Level == FeedAccessLevel.Manage ? "fg-badge-accent" : grant.Level == FeedAccessLevel.Publish ? "fg-badge-info" : "")">@grant.Level</span></td>
                                 <td class="fg-cell-actions">
-                                    <form method="post" action="/admin/feeds/@feed.Name/access/remove">
+                                    <form method="post" action="/admin/feeds/@feed.Name/access/remove" data-confirm="@($"Remove {grant.Name}'s access to {feed.Name}?")" data-confirm-button="Remove">
                                         <AntiforgeryToken />
                                         <input type="hidden" name="grant" value="@grant.Key" />
                                         <input type="hidden" name="returnUrl" value="@ReturnUrl" />

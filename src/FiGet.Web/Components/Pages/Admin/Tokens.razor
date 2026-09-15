@@ -78,7 +78,7 @@ else
                         <td class="fg-cell-actions">
                             @if (token.RevokedUtc is null)
                             {
-                                <form method="post" @formname="@($"revoke-{token.Key}")" @onsubmit="() => RevokeAsync(token.Key)">
+                                <form method="post" @formname="@($"revoke-{token.Key}")" @onsubmit="() => RevokeAsync(token.Key)" data-confirm="@($"Revoke the token {token.Name}? Every client using it is refused from then on.")" data-confirm-button="Revoke">
                                     <AntiforgeryToken />
                                     <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Revoke</button>
                                 </form>
@@ -134,7 +134,7 @@ else
                         <td class="fg-cell-actions">
                             @if (token.RevokedUtc is null)
                             {
-                                <form method="post" @formname="@($"revoke-{token.Key}")" @onsubmit="() => RevokeAsync(token.Key)">
+                                <form method="post" @formname="@($"revoke-{token.Key}")" @onsubmit="() => RevokeAsync(token.Key)" data-confirm="@($"Revoke the token {token.Name}? Every client using it is refused from then on.")" data-confirm-button="Revoke">
                                     <AntiforgeryToken />
                                     <button type="submit" class="fg-btn fg-btn-sm fg-btn-danger">Revoke</button>
                                 </form>

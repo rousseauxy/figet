@@ -65,7 +65,7 @@ else
                                     <input type="hidden" name="returnUrl" value="@ReturnUrl" />
                                     <button type="submit" class="fg-btn fg-btn-sm" title="Offer this version again">Relist</button>
                                 </form>
-                                <form method="post" action="/admin/feeds/@feed.Name/versions/delete">
+                                <form method="post" action="/admin/feeds/@feed.Name/versions/delete" data-confirm="@($"Delete {id} {row.NormalizedVersion} and its files for good?")" data-confirm-button="Delete">
                                     <AntiforgeryToken />
                                     <input type="hidden" name="id" value="@id" />
                                     <input type="hidden" name="version" value="@row.NormalizedVersion" />

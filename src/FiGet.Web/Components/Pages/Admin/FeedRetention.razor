@@ -94,7 +94,7 @@
                 {
                     <p class="fg-muted fg-small">And @((preview.Count - 25).ToString("N0", CultureInfo.InvariantCulture)) more.</p>
                 }
-                <form method="post" action="/admin/feeds/@feed.Name/retention/run" data-busy>
+                <form method="post" action="/admin/feeds/@feed.Name/retention/run" data-busy data-confirm="@($"Run retention on {feed.Name} now? What the preview lists is removed.")" data-confirm-button="Run now">
                     <AntiforgeryToken />
                     <button type="submit" class="fg-btn fg-btn-danger">Run now</button>
                 </form>

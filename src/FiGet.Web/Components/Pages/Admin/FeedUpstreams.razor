@@ -75,7 +75,7 @@
                                     {
                                         <a class="fg-btn fg-btn-sm" href="@EditUrl(upstream.Key)" aria-expanded="false">Edit</a>
                                     }
-                                    <form method="post" action="/admin/feeds/@feed.Name/upstreams/remove">
+                                    <form method="post" action="/admin/feeds/@feed.Name/upstreams/remove" data-confirm="@($"Remove the upstream {upstream.Name}? Packages already cached from it stay.")" data-confirm-button="Remove">
                                         <AntiforgeryToken />
                                         <input type="hidden" name="key" value="@upstream.Key" />
                                         <input type="hidden" name="returnUrl" value="@PagePath(FeedAdminPaths.Upstreams)" />

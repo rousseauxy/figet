@@ -127,7 +127,7 @@
                         <text>Versions pushed to this feed are left alone.</text>
                     }
                 </p>
-                <form method="post" action="/admin/feeds/@feed!.Name/packages/uncache">
+                <form method="post" action="/admin/feeds/@feed!.Name/packages/uncache" data-confirm="@($"Remove the cached copies of {displayId}? They are fetched from the upstream again when asked for.")" data-confirm-button="Un-cache">
                     <AntiforgeryToken />
                     <input type="hidden" name="id" value="@displayId" />
                     <input type="hidden" name="returnUrl" value="@ReturnUrl" />

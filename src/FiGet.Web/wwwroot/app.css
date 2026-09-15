@@ -1070,6 +1070,10 @@ h2 + .fg-panel { margin-top: 0.5rem; }
 .fg-modal::backdrop { background: rgb(12 11 9 / 0.6); }
 .fg-modal h2 { margin: 0 0 0.6rem; }
 .fg-modal .fg-form-actions { margin-top: 0.9rem; }
+/* The question a destructive button asks first: its text, then the button named for what it does, and Cancel. */
+.fg-confirm { width: min(26rem, calc(100vw - 2rem)); }
+.fg-confirm-text { margin: 0; line-height: 1.5; }
+
 
 /* The phone menu: hidden on a wide screen, where the column above does the job. */
 .fg-admin-menu { display: none; }

@@ -443,15 +443,94 @@
     }, true);
 
     // ── Buttons that ask first ───────────────────────────────────────────────────────────────────
-    // A form carrying data-confirm posts only after the reader agrees. Without script it posts at once,
-    // which is why only admins ever see such a form.
+    // A form carrying data-confirm posts only after the reader agrees, in a dialog of the page's own rather than the
+    // browser's box: the question, and a button named for what it does (data-confirm-button). With
+    // data-confirm-count="field" the question starts with how many of that field's checkboxes are ticked. Without script
+    // the form posts at once, which is why only signed-in people ever see such a form.
+    //
+    // In the capture phase, so it runs before the busy spinner's own submit handler: a question the reader cancels must
+    // not leave a spinning, disabled button behind.
+
+    var confirmDialog = null;
+
+    function confirmElement() {
+        if (!confirmDialog) {
+            confirmDialog = document.createElement("dialog");
+            confirmDialog.className = "fg-modal fg-confirm";
+            confirmDialog.setAttribute("aria-labelledby", "fg-confirm-text");
+            confirmDialog.innerHTML =
+                "<p id=\"fg-confirm-text\" class=\"fg-confirm-text\"></p>" +
+                "<div class=\"fg-form-actions\">" +
+                "<button type=\"button\" class=\"fg-btn fg-btn-danger\" data-confirm-ok></button>" +
+                "<button type=\"button\" class=\"fg-btn\" data-dialog-close>Cancel</button>" +
+                "</div>";
+            document.body.appendChild(confirmDialog);
+        }
+
+        return confirmDialog;
+    }
+
+    function selectedCount(form, field) {
+        var id = form.getAttribute("id");
+        var boxes = document.querySelectorAll("input[type=checkbox][name='" + field + "']");
+        var count = 0;
+        for (var i = 0; i < boxes.length; i++) {
+            if (boxes[i].checked && (boxes[i].form === form || (id && boxes[i].getAttribute("form") === id))) {
+                count++;
+            }
+        }
+
+        return count;
+    }
 
     document.addEventListener("submit", function (event) {
-        var form = event.target.closest ? event.target.closest("form[data-confirm]") : null;
-        if (form && !window.confirm(form.getAttribute("data-confirm"))) {
-            event.preventDefault();
+        var form = event.target;
+        if (!form.hasAttribute || !form.hasAttribute("data-confirm")) {
+            return;
         }
-    });
+
+        if (form.getAttribute("data-confirmed") === "true") {
+            form.removeAttribute("data-confirmed");
+            return;
+        }
+
+        var dialog = confirmElement();
+        if (typeof dialog.showModal !== "function") {
+            if (!window.confirm(form.getAttribute("data-confirm"))) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+            }
+
+            return;
+        }
+
+        event.preventDefault();
+        event.stopImmediatePropagation();
+
+        var text = form.getAttribute("data-confirm");
+        var countField = form.getAttribute("data-confirm-count");
+        if (countField) {
+            var count = selectedCount(form, countField);
+            text = count + " selected. " + text;
+        }
+
+        var submitter = event.submitter || null;
+        dialog.querySelector(".fg-confirm-text").textContent = text;
+        var ok = dialog.querySelector("[data-confirm-ok]");
+        ok.textContent = form.getAttribute("data-confirm-button") || (submitter && submitter.textContent.trim()) || "Confirm";
+        ok.onclick = function () {
+            dialog.close();
+            form.setAttribute("data-confirmed", "true");
+            if (typeof form.requestSubmit === "function") {
+                form.requestSubmit(submitter && submitter.form === form ? submitter : undefined);
+            } else {
+                form.submit();
+            }
+        };
+
+        dialog.showModal();
+        dialog.querySelector("[data-dialog-close]").focus();
+    }, true);
 
     // ── Uploading into an asset directory ────────────────────────────────────────────────────────
     // One request per file, one file at a time, the file itself as the body: that is what lets a gigabyte
