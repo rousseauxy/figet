@@ -20,7 +20,7 @@ public sealed class SqlServerPackageEvidenceTests(SqlServerServerFixture fixture
 /// Behaviour other package servers' issue trackers showed going wrong elsewhere, where FiGet's code was judged right but no
 /// test proved it (cross-check of 2026-09-15). Each test is the evidence for one of those judgements.
 /// </summary>
-public abstract class PackageEvidenceTests
+public abstract partial class PackageEvidenceTests
 {
     private readonly FiGetServerFixture server;
 
