@@ -75,6 +75,38 @@ public sealed partial class AccountTests(SqliteServerFixture server) : IClassFix
     }
 
     /// <summary>
+    /// A name no account has answers exactly as a real one does, attempt by attempt, lockout included, so six tries do not
+    /// tell an outsider which names exist. Found by the 2026-09-14 review (S1.3): the lockout message came only for real names.
+    /// </summary>
+    [Fact]
+    public async Task A_name_nobody_has_locks_out_after_the_same_attempts_as_a_real_one()
+    {
+        var real = await CreateUserAsync(UserRole.User);
+        var nobody = "n" + Guid.NewGuid().ToString("N")[..10];
+
+        async Task<string[]> AnswersAsync(string name)
+        {
+            using var client = CreateBrowser();
+            var answers = new List<string>();
+            for (var attempt = 0; attempt <= AccountService.MaxFailedSignIns; attempt++)
+            {
+                var response = await BrowserSignIn.SignInAsync(client, name, "wrong-password");
+                HttpAssert.Status(HttpStatusCode.OK, response);
+                var body = await response.Content.ReadAsStringAsync();
+                answers.Add(body.Contains("Too many failed attempts", StringComparison.Ordinal) ? "locked"
+                    : body.Contains("The user name or password is not right.", StringComparison.Ordinal) ? "wrong"
+                    : "other");
+            }
+
+            return [.. answers];
+        }
+
+        var forReal = await AnswersAsync(real);
+        Assert.Contains("locked", forReal);
+        Assert.Equal(forReal, await AnswersAsync(nobody));
+    }
+
+    /// <summary>
     /// Found by the 2026-09-14 review: the count was read, raised in memory and written back, so attempts that overlapped all
     /// wrote the same "one more". Thirty at once left it at one, and the account open.
     /// </summary>

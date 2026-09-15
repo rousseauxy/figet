@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using FiGet.Application.Ports;
@@ -60,6 +61,40 @@ public sealed partial class AccountService(IUserStore users, IPasswordHasher has
     /// </summary>
     private static string? decoyHash;
 
+    /// <summary>
+    /// Failed attempts at names no local account has, by lower-cased name, with when that name is locked until. Kept in
+    /// memory and bounded: losing it only lets a name be tried a few more times, exactly like a real account after a restart
+    /// of its lockout window.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, (int Failures, DateTime LockedUntilUtc, DateTime LastUtc)> unknownNames = new(StringComparer.Ordinal);
+
+    private const int MaxTrackedUnknownNames = 10_000;
+
+    /// <summary>Records a failed attempt at an unknown name; true when that name now counts as locked out.</summary>
+    private static bool UnknownNameFailed(string nameLower, DateTime now)
+    {
+        var entry = unknownNames.AddOrUpdate(
+            nameLower,
+            _ => (1, DateTime.MinValue, now),
+            (_, previous) => previous.LockedUntilUtc > now
+                ? previous with { LastUtc = now }
+                : now - previous.LastUtc > LockoutDuration
+                    ? (1, DateTime.MinValue, now)
+                    : previous.Failures + 1 >= MaxFailedSignIns
+                        ? (0, now + LockoutDuration, now)
+                        : (previous.Failures + 1, DateTime.MinValue, now));
+
+        if (unknownNames.Count > MaxTrackedUnknownNames)
+        {
+            foreach (var old in unknownNames.OrderBy(e => e.Value.LastUtc).Take(unknownNames.Count - (MaxTrackedUnknownNames / 2)).Select(e => e.Key).ToList())
+            {
+                unknownNames.TryRemove(old, out _);
+            }
+        }
+
+        return entry.LockedUntilUtc > now;
+    }
+
     /// <summary>The decoy, hashed by the first attempt that needs it; a race hashes it twice and either one serves.</summary>
     private string DecoyHash() => decoyHash ??= hasher.Hash(Convert.ToHexString(RandomNumberGenerator.GetBytes(16)));
 
@@ -69,12 +104,16 @@ public sealed partial class AccountService(IUserStore users, IPasswordHasher has
         var user = string.IsNullOrWhiteSpace(userName) ? null : await users.FindByUserNameAsync(userName.Trim(), cancellationToken);
         if (user?.PasswordHash is null)
         {
+            // A name with no password - none at all, or an account that signs in only with a provider - locks after the same
+            // number of attempts as a real one, so "Too many failed attempts" does not tell an outsider which names exist.
             hasher.Verify(DecoyHash(), password ?? "");
-            return new SignInResult(SignInStatus.Invalid);
+            return new SignInResult(UnknownNameFailed((userName ?? "").Trim().ToLowerInvariant(), now) ? SignInStatus.LockedOut : SignInStatus.Invalid);
         }
 
         if (user.LockedUntilUtc > now)
         {
+            // The same work as any other answer, so a locked account is not told apart by how fast it is refused.
+            hasher.Verify(DecoyHash(), password ?? "");
             return new SignInResult(SignInStatus.LockedOut);
         }
 
