@@ -329,6 +329,12 @@ public static class NuGetV3Endpoints
         var packages = (await store.GetPackagesAsync(page.PackageKeys, cancellationToken)).ToDictionary(p => p.Key);
         var feedUrl = PublicUrls.Feed(http, request.Feed.Name);
 
+        // The merged version list on a proxy feed, as the registration serves it: a cached older copy is not the latest
+        // while the upstream holds a newer version.
+        var upstream = request.Feed.Upstreams.Count > 0
+            ? await connector.StoredUpstreamCandidatesAsync(request.Feed, [.. packages.Values], cancellationToken)
+            : new Dictionary<string, UpstreamCandidates>();
+
         var data = new List<SearchResult>(page.PackageKeys.Count);
         foreach (var packageKey in page.PackageKeys)
         {
@@ -337,7 +343,9 @@ public static class NuGetV3Endpoints
                 continue;
             }
 
-            var list = VersionListBuilder.BuildLocal(package.Versions, semVer2);
+            var list = upstream.TryGetValue(package.IdLower, out var candidates)
+                ? VersionListBuilder.Build(package.Versions.Select(VersionListBuilder.ToCandidate).Concat(candidates.Versions), semVer2)
+                : VersionListBuilder.BuildLocal(package.Versions, semVer2);
             var latest = list.Latest(prerelease);
             if (latest is null)
             {
@@ -409,7 +417,7 @@ public static class NuGetV3Endpoints
             Json);
     }
 
-    private static async Task<IResult> AutocompleteAsync(HttpContext http, string feed, IPackageStore store, CancellationToken cancellationToken)
+    private static async Task<IResult> AutocompleteAsync(HttpContext http, string feed, IPackageStore store, ConnectorService connector, CancellationToken cancellationToken)
     {
         var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Read, cancellationToken);
         if (error is not null)
@@ -425,10 +433,14 @@ public static class NuGetV3Endpoints
         var id = query["id"].ToString();
         if (id.Length > 0)
         {
-            var package = await store.GetPackageAsync(request!.Feed.Key, id.ToLowerInvariant(), includeDependencies: false, cancellationToken);
-            var versions = package is null
-                ? []
-                : VersionListBuilder.BuildLocal(package.Versions, semVer2)
+            var idLower = id.ToLowerInvariant();
+            var package = await store.GetPackageAsync(request!.Feed.Key, idLower, includeDependencies: false, cancellationToken);
+
+            // Every version a client could install, so on a proxy feed also those the upstream holds, from the stored catalogue.
+            var upstream = request.Feed.Upstreams.Count > 0
+                ? await connector.StoredUpstreamCandidatesAsync(request.Feed, package, idLower, cancellationToken)
+                : new UpstreamCandidates([], "");
+            var versions = VersionListBuilder.Build((package?.Versions ?? []).Select(VersionListBuilder.ToCandidate).Concat(upstream.Versions), semVer2)
                     .Where(e => e.Listed && (prerelease || !e.Version.IsPrerelease))
                     .Select(e => FullVersion(e.Payload!))
                     .ToList();

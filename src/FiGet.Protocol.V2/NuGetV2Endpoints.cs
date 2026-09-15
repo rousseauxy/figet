@@ -434,13 +434,29 @@ public static class NuGetV2Endpoints
         var packages = await store.GetPackagesAsync(page.PackageKeys, cancellationToken);
         var byKey = packages.ToDictionary(p => p.Key);
 
+        // On a proxy feed each package's rows are its merged version list, from what is stored about the upstreams: without
+        // it a search flagged the newest cached copy as the latest while the gallery had a newer one, which a wildcard
+        // Find-Module then offered as current - the failure the merged version list exists to prevent.
+        var upstream = feed.Upstreams.Count > 0
+            ? await connector.StoredUpstreamCandidatesAsync(feed, packages, cancellationToken)
+            : new Dictionary<string, UpstreamCandidates>();
+
         var rows = new List<V2Row>();
         foreach (var key in page.PackageKeys)
         {
-            if (byKey.TryGetValue(key, out var package))
+            if (!byKey.TryGetValue(key, out var package))
+            {
+                continue;
+            }
+
+            if (!upstream.TryGetValue(package.IdLower, out var candidates))
             {
                 rows.AddRange(V2Row.ForPackage(package, includeSemVer2));
+                continue;
             }
+
+            var merged = VersionListBuilder.Build(package.Versions.Select(VersionListBuilder.ToCandidate).Concat(candidates.Versions), includeSemVer2);
+            rows.AddRange(merged.Where(e => e.Payload is not null).Select(e => new V2Row(package.Id, e)));
         }
 
         // On a proxy feed a search also reaches the upstreams, so Find-Module finds a module that nobody

@@ -243,53 +243,116 @@ public sealed class ConnectorService(
     public async Task<UpstreamCandidates> StoredUpstreamCandidatesAsync(Feed feed, Package? local, string idLower, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(feed);
-        if (feed.Upstreams.Count == 0 || (!feed.MergePushedIdsWithUpstreams && local?.Versions.Any(v => v.Origin == PackageOrigin.Pushed) == true))
+        var found = await StoredUpstreamCandidatesAsync(feed, [(idLower, local)], cancellationToken);
+        return found.TryGetValue(idLower, out var candidates) ? candidates : new UpstreamCandidates([], "");
+    }
+
+    /// <summary>
+    /// The same for a page of packages - a search, a listing - with one stored-catalogue query per upstream rather than one
+    /// per package, so a v2 search over thousands of packages stays a handful of reads. Ids with nothing upstream are absent.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, UpstreamCandidates>> StoredUpstreamCandidatesAsync(Feed feed, IReadOnlyList<Package> locals, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(feed);
+        ArgumentNullException.ThrowIfNull(locals);
+        return await StoredUpstreamCandidatesAsync(feed, [.. locals.Select(p => (p.IdLower, (Package?)p))], cancellationToken);
+    }
+
+    private async Task<IReadOnlyDictionary<string, UpstreamCandidates>> StoredUpstreamCandidatesAsync(Feed feed, IReadOnlyList<(string IdLower, Package? Local)> ids, CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, UpstreamCandidates>(StringComparer.Ordinal);
+        if (feed.Upstreams.Count == 0)
         {
-            return new UpstreamCandidates([], "");
+            return result;
         }
 
-        // The same ownership rule as a live listing, from stored catalogues: a stored catalogue holding only unlisted
-        // versions gives way to a lower one that lists something.
-        UpstreamCandidates? holdsOnlyUnlisted = null;
+        // An id pushed to the feed has no upstream, unless the feed merges pushed ids with its upstreams.
+        var open = ids
+            .Where(i => feed.MergePushedIdsWithUpstreams || i.Local?.Versions.Any(v => v.Origin == PackageOrigin.Pushed) != true)
+            .GroupBy(i => i.IdLower, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().Local, StringComparer.Ordinal);
 
+        // The same ownership rule as a live listing, from stored catalogues: the first upstream in priority order whose
+        // catalogue lists something owns the id; a catalogue holding only unlisted versions gives way to a lower one that
+        // lists something, and is used only when none does.
+        var holdsOnlyUnlisted = new Dictionary<string, UpstreamCandidates>(StringComparer.Ordinal);
         foreach (var upstream in feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal))
         {
-            if (!Allows(upstream, idLower))
+            var asked = open.Keys.Where(id => !result.ContainsKey(id) && Allows(upstream, id)).ToList();
+            if (asked.Count == 0)
             {
                 continue;
             }
 
-            var cached = await index.FindAsync(upstream.Key, idLower, cancellationToken);
-            if (cached is null || cached.Versions.Count == 0)
+            foreach (var (idLower, cached) in await index.FindManyAsync(upstream.Key, asked, cancellationToken))
             {
-                continue;
-            }
+                if (cached.Versions.Count == 0)
+                {
+                    continue;
+                }
 
-            if (cached.Stale)
-            {
-                refreshes.Enqueue(upstream, idLower);
-            }
+                if (cached.Stale)
+                {
+                    refreshes.Enqueue(upstream, idLower);
+                }
 
-            var candidates = new UpstreamCandidates(
-                cached.Versions
-                    .Select(v => new VersionCandidate<PackageVersion>(
-                        v.Version,
-                        cached.Unlisted?.Contains(v.Version.ToNormalizedString()) != true,
-                        v.IsSemVer2,
-                        VersionSource.Upstream,
-                        Placeholder(idLower, v)))
-                    .ToList(),
-                cached.Id,
-                upstream.Name);
-            if (candidates.Versions.Any(c => c.Listed))
-            {
-                return candidates;
+                var newestLocal = open[idLower]?.Versions.OrderByDescending(v => NuGetVersion.Parse(v.NormalizedVersion), VersionComparer.Default).FirstOrDefault();
+                var candidates = new UpstreamCandidates(
+                    cached.Versions
+                        .Select(v => new VersionCandidate<PackageVersion>(
+                            v.Version,
+                            cached.Unlisted?.Contains(v.Version.ToNormalizedString()) != true,
+                            v.IsSemVer2,
+                            VersionSource.Upstream,
+                            DescribedLike(Placeholder(idLower, v), newestLocal)))
+                        .ToList(),
+                    cached.Id,
+                    upstream.Name);
+                if (candidates.Versions.Any(c => c.Listed))
+                {
+                    result[idLower] = candidates;
+                }
+                else
+                {
+                    holdsOnlyUnlisted.TryAdd(idLower, candidates);
+                }
             }
-
-            holdsOnlyUnlisted ??= candidates;
         }
 
-        return holdsOnlyUnlisted ?? new UpstreamCandidates([], "");
+        foreach (var (idLower, candidates) in holdsOnlyUnlisted)
+        {
+            result.TryAdd(idLower, candidates);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// A stored catalogue has version numbers and nothing about them: the descriptions live in memory. A listing that shows
+    /// or filters on an upstream version - the latest one, in a search - takes what it says from the newest copy cached
+    /// here, so a search by tag or by words from the description still finds the package, flagged at the version the
+    /// upstream now has. The real text replaces it when that version is cached.
+    /// </summary>
+    private static PackageVersion DescribedLike(PackageVersion placeholder, PackageVersion? local)
+    {
+        if (local is null)
+        {
+            return placeholder;
+        }
+
+        placeholder.Description = local.Description;
+        placeholder.Summary = local.Summary;
+        placeholder.Title = local.Title;
+        placeholder.Authors = local.Authors;
+        placeholder.Tags = local.Tags;
+        placeholder.TagsLower = local.TagsLower;
+        placeholder.SearchTextLower = local.SearchTextLower;
+        placeholder.ProjectUrl = local.ProjectUrl;
+        placeholder.IconUrl = local.IconUrl;
+        placeholder.LicenseUrl = local.LicenseUrl;
+        placeholder.PackageTypes = local.PackageTypes;
+        placeholder.PackageTypesLower = local.PackageTypesLower;
+        return placeholder;
     }
 
     public async Task<PackageVersion?> EnsureCachedAsync(Feed feed, string id, NuGetVersion version, CancellationToken cancellationToken)

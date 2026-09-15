@@ -168,6 +168,9 @@ public interface IUpstreamIndexStore
     /// </summary>
     Task<CachedUpstreamCatalog?> FindAsync(int feedUpstreamKey, string idLower, CancellationToken cancellationToken);
 
+    /// <summary>The cached catalogues of several ids at once, keyed by lower-cased id; ids with nothing cached are absent.</summary>
+    Task<IReadOnlyDictionary<string, CachedUpstreamCatalog>> FindManyAsync(int feedUpstreamKey, IReadOnlyCollection<string> idsLower, CancellationToken cancellationToken);
+
     /// <summary>
     /// Writes or replaces the cached version list, and the two facts about those versions that must
     /// survive a restart: which of them the upstream does not advertise, and what each one depends on.

@@ -865,6 +865,46 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         Assert.Contains(id, v3, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The merged version list in search, not only in by-id lookups. Found cross-checking other package servers' issue
+    /// trackers: with 1.0.0 cached by a pinned install and 2.0.0 on the gallery, a wildcard Find-Module (Search()),
+    /// Find-PSResource, nuget list and the v3 query all offered the cached 1.0.0 as the one latest version, while
+    /// Find-Module -Name showed 2.0.0. A tag filter still finds the package, flagged at the newer version.
+    /// </summary>
+    [Fact]
+    public async Task Search_flags_the_upstream_newer_version_as_latest_after_an_older_one_was_cached()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.SearchLatest");
+        var tag = "tag" + Guid.NewGuid().ToString("N")[..10];
+        AddUpstreamPackage(id, "1.0.0", b => b.Tags.Add(tag));
+        AddUpstreamPackage(id, "2.0.0", b => b.Tags.Add(tag));
+
+        using var client = server.CreateClient();
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/package/{id}/1.0.0"));
+        Assert.Equal(["1.0.0"], await CachedVersionsAsync(id));
+
+        foreach (var filter in new[] { "IsLatestVersion", "IsAbsoluteLatestVersion", $"IsLatestVersion and substringof('{tag}',Tags)" })
+        {
+            var body = await HttpAssert.SuccessBodyAsync(await client.GetAsync(
+                $"nuget/proxy/Search()?$filter={Uri.EscapeDataString(filter)}&searchTerm='{(filter.Contains("Tags", StringComparison.Ordinal) ? tag : id)}'&includePrerelease=false&$skip=0&$top=40"));
+            var entries = XDocument.Parse(body).Root!.Elements(Atom + "entry").Where(e => Property(e, "Id") == id).ToList();
+            Assert.True(entries.Count == 1 && Property(entries[0], "Version") == "2.0.0", $"{filter}: {string.Join(", ", entries.Select(e => Property(e, "Version")))}");
+        }
+
+        var all = XDocument.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/Search()?searchTerm='{id}'&includePrerelease=false&$top=40")))
+            .Root!.Elements(Atom + "entry").Where(e => Property(e, "Id") == id).ToList();
+        Assert.Equal(["1.0.0", "2.0.0"], all.Select(e => Property(e, "Version")).Order(StringComparer.Ordinal).ToArray());
+        Assert.Equal("2.0.0", Property(all.Single(e => Property(e, "IsLatestVersion") == "true"), "Version"));
+
+        var query = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/query?q={id}")))!;
+        var hit = query["data"]!.AsArray().Single(d => (string?)d!["id"] == id)!;
+        Assert.Equal("2.0.0", (string?)hit["version"]);
+        Assert.Equal(["1.0.0", "2.0.0"], hit["versions"]!.AsArray().Select(v => (string?)v!["version"]).ToArray());
+
+        var autocomplete = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/autocomplete?id={id}")))!;
+        Assert.Equal(["1.0.0", "2.0.0"], autocomplete["data"]!.AsArray().Select(v => (string?)v).ToArray());
+    }
+
     [Fact]
     public async Task A_denied_id_is_not_returned_by_search_either()
     {

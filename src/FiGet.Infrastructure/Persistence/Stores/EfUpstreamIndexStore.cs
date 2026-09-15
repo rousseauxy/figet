@@ -19,10 +19,33 @@ public sealed class EfUpstreamIndexStore(FiGetDbContext db) : IUpstreamIndexStor
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.FeedUpstreamKey == feedUpstreamKey && c.IdLower == idLower, cancellationToken);
 
-        if (row is null)
+        return row is null ? null : ToCatalog(row);
+    }
+
+    public async Task<IReadOnlyDictionary<string, CachedUpstreamCatalog>> FindManyAsync(int feedUpstreamKey, IReadOnlyCollection<string> idsLower, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(idsLower);
+        var found = new Dictionary<string, CachedUpstreamCatalog>(StringComparer.Ordinal);
+
+        // In chunks, so a search over a large feed stays one bounded query per chunk on both providers.
+        foreach (var chunk in idsLower.Distinct(StringComparer.Ordinal).Chunk(500))
         {
-            return null;
+            var ids = chunk.ToList();
+            var rows = await db.CachedUpstreamIndexes
+                .AsNoTracking()
+                .Where(c => c.FeedUpstreamKey == feedUpstreamKey && ids.Contains(c.IdLower))
+                .ToListAsync(cancellationToken);
+            foreach (var row in rows)
+            {
+                found[row.IdLower] = ToCatalog(row);
+            }
         }
+
+        return found;
+    }
+
+    private static CachedUpstreamCatalog ToCatalog(CachedUpstreamIndex row)
+    {
 
         // Empty columns are ambiguous: a row written before these existed looks exactly like a row whose
         // upstream hides nothing and declares nothing. They must mean opposite things - the first is "no
