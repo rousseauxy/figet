@@ -238,9 +238,13 @@ public static class NuGetV2Endpoints
         }
 
         var rows = await RowsForIdAsync(store, connector, request!.Feed, id, includeSemVer2: true, cancellationToken);
-        var row = rows.FirstOrDefault(r =>
-            r.OriginalVersion.Equals(version, StringComparison.OrdinalIgnoreCase)
-            || r.NormalizedVersion.Equals(version, StringComparison.OrdinalIgnoreCase));
+
+        // The version as the client typed it: PackageManagement's v2 provider and nuget install -Version send "1.0" for a
+        // stored 1.0.0, which every download route already accepts. The spelling as published is tried first.
+        var normalized = PackageIngestionService.NormalizeLower(version);
+        var row = rows.FirstOrDefault(r => r.OriginalVersion.Equals(version, StringComparison.OrdinalIgnoreCase))
+            ?? rows.FirstOrDefault(r => r.NormalizedVersion.Equals(version, StringComparison.OrdinalIgnoreCase)
+                || (normalized is not null && r.NormalizedVersion.Equals(normalized, StringComparison.OrdinalIgnoreCase)));
 
         return row is null
             ? Results.NotFound()

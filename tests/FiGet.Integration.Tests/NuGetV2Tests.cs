@@ -153,6 +153,16 @@ public abstract class NuGetV2Tests
         Assert.Equal("1.1.0", Property(entry, "Version"));
 
         HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/public/Packages(Id='{id}',Version='9.9.9')"));
+
+        // The version as a client types it, not only as stored: "1.1" and "1.1.0.0" are 1.1.0, as on every download route.
+        // Found cross-checking other package servers' issue trackers (2026-09-15).
+        foreach (var typed in new[] { "1.1", "1.1.0.0", "1.1.0" })
+        {
+            var typedEntry = XDocument.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/public/Packages(Id='{id}',Version='{typed}')"))).Root!;
+            Assert.Equal("1.1.0", Property(typedEntry, "Version"));
+        }
+
+        HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/public/Packages(Id='{id}',Version='1.1.1')"));
     }
 
     [Fact]
