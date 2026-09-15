@@ -184,6 +184,41 @@ public sealed class RequestLogTests(RequestLogFixture server) : IClassFixture<Re
     }
 
     /// <summary>
+    /// A client that drops a download half way - a cancelled install, a closed laptop - is ordinary, and must not fill the log
+    /// with errors and stack traces, one per disconnect. Found cross-checking other package servers' issue trackers
+    /// (2026-09-15): an open question until this test.
+    /// </summary>
+    [Fact]
+    public async Task A_client_dropping_a_download_logs_no_error()
+    {
+        var id = FiGetServerFixture.UniqueId("Log.Dropped");
+        var noise = new byte[8 * 1024 * 1024];
+        Random.Shared.NextBytes(noise);
+        using (var package = TestPackages.Create(id, "1.0.0", b => b.AddContent("tools/noise.bin", noise)))
+        using (var pusher = server.CreateClient())
+        using (var content = new MultipartFormDataContent())
+        {
+            pusher.DefaultRequestHeaders.Add("X-NuGet-ApiKey", FiGetServerFixture.AdminToken);
+            content.Add(new StreamContent(package) { Headers = { ContentType = new MediaTypeHeaderValue("application/octet-stream") } }, "package", "package.nupkg");
+            Assert.Equal(HttpStatusCode.Created, (await pusher.PutAsync("nuget/public/v3/publish", content)).StatusCode);
+        }
+
+        var before = server.Logs.Lines.Count;
+        using (var client = server.CreateClient())
+        {
+            var response = await client.GetAsync($"nuget/public/package/{id}/1.0.0", HttpCompletionOption.ResponseHeadersRead);
+            var stream = await response.Content.ReadAsStreamAsync();
+            await stream.ReadExactlyAsync(new byte[64 * 1024]);
+            response.Dispose();
+        }
+
+        Assert.NotNull(await WaitForLineAsync($"/nuget/public/package/{id}/1.0.0"));
+        await Task.Delay(1000);
+        var after = server.Logs.Lines.Skip(before).ToList();
+        Assert.DoesNotContain(after, l => l.Contains("exception", StringComparison.OrdinalIgnoreCase) || l.Contains("failed while handling", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// Waits for a line to show up, bounded. The log is written after the response is handed back, so a
     /// client can be reading the body while the line is still being written - and under a full assembly
     /// run that gap widens enough to matter. Bounded, because a test that hangs on a broken log tells
