@@ -3038,3 +3038,47 @@ Also committed: the API token probe tests from the pre-publication review (13 ca
 fixture), all passing.
 
 Suites: unit 213, integration 525, on SQLite and SQL Server.
+
+## The rest of the cross-check's Next items - 2026-09-15
+
+The four remaining *Next* findings from the issue cross-check (`docs/backlog.md`). Each has a test that was run failing
+against the code without the change.
+
+**v2 listings past 2,000 packages.** `Search()` and `Packages()` read the first 2,000 matching packages with every
+version and filtered, sorted and paged them in memory, so on a larger feed `startswith(Id,'…')` for a later id answered an
+empty 200 and `$count` said 2,000.
+- A listing whose order starts with the id (the default, and every recorded client query) is read a chunk of 500 packages
+  at a time in the database's id order; each package's rows are built, filtered and sorted, and only the rows of the
+  requested page are kept. It stops once a row past the page is found, unless `$inlinecount` or `$count` asks for the
+  total. A proxy feed's upstream hits for ids the feed does not hold are merged into that order.
+- Top-level `Id eq`, `tolower(Id) eq`, `startswith(Id,…)` and `substringof(…,Id)` become package-id terms, and
+  `substringof(…,Tags)` a free-text term, so the database narrows before any row is built. The filter still runs on the
+  rows: the terms only ever match more.
+- Other orders keep the 2,000-package window and log a warning when a listing reaches it.
+- `LargeFeedSearchTests` (both databases, 2,501 packages inserted out of order): the last id is found by `startswith`,
+  `Packages()/$count` says 2,501, pages meet at 1,990-2,009 without gap or repeat, the last page is short with no next link,
+  `substringof` on the id finds one past the old window. Falsified: with the id-ordered scan switched off the count is
+  2,000.
+
+**A hidden upstream version cached as listed.** A download of a version the upstream holds but does not advertise stored
+the copy as listed, so the management API's `latest`, the feed page and retention took it for current until a listing
+of the id reconciled it. The copy is now stored with the upstream's flag, from its description or the stored catalogue.
+`ProxyFeedTests.An_unlisted_upstream_version_is_not_latest_and_still_downloads` checks the stored row and `latest` right
+after the download; falsified by forcing the flag on.
+
+**A storage failure while caching or pushing.** An `IOException` or `UnauthorizedAccessException` from writing the
+package becomes `PackageStorageUnavailableException`; the protocol error handler answers it 503 with `Retry-After: 60`,
+and no row is left. `ProxyFeedTests.A_storage_failure_while_caching_answers_503_and_stores_nothing` (a storage decorator
+failing one id's writes): 503 with the header, nothing cached, then 200 once writes work; falsified without the mapping
+(500).
+
+**A version row without its file.** A download that finds the row but not the package file asks the connector to repair
+it: a cached copy on a proxy feed is dropped and cached again, so that download succeeds; a pushed version is logged with
+its storage key and stays a 404. On v2, the v3 flat container and the management download.
+`ProxyFeedTests.A_cached_copy_whose_file_is_gone_is_cached_again_on_download` deletes the file before each of the three
+routes and checks one upstream download each; a pushed version stays 404 with its row. Falsified with the repair off.
+
+Seen once during these runs: `ShareFolderChoiceTests.A_directory_created_on_a_folder_serves_the_folder_and_refuses_writes_until_told_otherwise`
+failed in one full run and passed alone and in the next two full runs. Not investigated yet.
+
+Suites: unit 213, integration 529, on SQLite and SQL Server.

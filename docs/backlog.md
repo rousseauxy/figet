@@ -167,30 +167,16 @@ FiGet does not have. What applies is below, in this section and under *Soon* and
   characters; SQL Server refused the insert and the store answered it as "already exists" (BaGet #273, #590, #609).
 - ~~**Search flagged a cached older version as latest on a proxy feed.**~~ Done 2026-09-15, same entry. The merged version
   list now covers `Search()`, `/v3/query` and autocomplete.
-- **The v2 search reads a fixed window of 2,000 packages in memory.** `SearchRowsAsync` loads the first 2,000 matching
-  packages with every version, then filters, sorts and pages in memory. On a larger feed, `Find-PSResource Zz*` sends
-  `Search()?$filter=IsLatestVersion and startswith(Id,'Zz')` with no search term, the window holds the first 2,000 ids,
-  and the answer is an empty 200 with a count of 2,000, which is the failure CLAUDE.md forbids. Below the cap the cost is the
-  problem: `Find-Module *` loads every version of every package for each page. Fix: turn `startswith(Id,…)`,
-  `substringof(…,Id)` and `tolower(Id) eq` into store terms (as `Id eq` already is), page in the database when the filter
-  keeps only the latest, and where a cap stays, send a next link and log it. Test: 2,001 packages, `startswith` finds the
-  last one, `$count` says 2,001. The reference server's tracker shows seven releases of slow or timed-out latest-version
-  queries.
-- **A copy cached by a pinned download is stored as listed even when the upstream hides that version.**
-  `PackageIngestionService.ToEntity` lists every row; `EnsureCachedAsync` passes the upstream publish date but not whether
-  it is listed, so until a listing of the id reconciles it, `/api/packages/{feed}/latest`, the feed page and retention's
-  "newest is kept" treat the hidden version as current. Fix: pass the upstream's listed flag to `PushAsync` as the date is
-  passed. Test: extend `An_unlisted_upstream_version_is_not_latest_and_still_downloads` with `/latest` right after the
-  download.
-- **A storage failure while caching answers 500 and throws the download away.** Only the upstream fetch is guarded in
-  `EnsureCachedAsync`; a full disk or a permission error in `SavePackageAsync` reaches the exception handler, and the next
-  request downloads the package again. Fix: catch `IOException`/`UnauthorizedAccessException` around the store step, log
-  once per id, and serve the downloaded bytes uncached or answer 503 with `Retry-After`. Test: a storage decorator that
-  throws for one id.
-- **A version row whose file is missing is never repaired or explained.** `PushAsync` writes the row, then the file, and
-  compensates only when storage throws; a process killed between the two leaves a listed version without a `.nupkg`,
-  which the downloads answer with a bare 404 and a re-push with 409 (BaGet #298, #552; BaGetter #211). Fix: when a cached
-  row has no file, drop the row and cache it again; for a pushed row, log a warning naming the path.
+- ~~**The v2 search read a fixed window of 2,000 packages in memory.**~~ Done 2026-09-15 (docs/status.md, "The rest of the
+  cross-check's Next items"). A listing ordered by id - every recorded client search - is read a chunk at a time with no
+  cap, and id and tag predicates in the filter narrow it in the database. Other orders keep the window and log when they
+  reach it. The reference server's tracker shows seven releases of slow or timed-out latest-version queries.
+- ~~**A copy cached by a pinned download was stored as listed when the upstream hides that version.**~~ Done 2026-09-15, same
+  entry.
+- ~~**A storage failure while caching answered 500.**~~ Done 2026-09-15, same entry: 503 with `Retry-After`, nothing stored.
+  Serving the downloaded bytes uncached was not done: a disk that cannot take the package is better reported than hidden.
+- ~~**A version row whose file is missing was never repaired or explained.**~~ Done 2026-09-15, same entry (BaGet #298,
+  #552; BaGetter #211).
 
 ## Soon
 
