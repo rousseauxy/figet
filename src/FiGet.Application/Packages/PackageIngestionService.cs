@@ -74,8 +74,14 @@ public sealed class PackageIngestionService(
             // between the row and the file - put the file back. Downloads answered 404 while pushes answered "already
             // exists", and on a feed that only unlists there was no way out short of an admin's hard delete. Different bytes
             // are still a conflict.
+            //
+            // Only for a row older than a write can take: the row is added before its file is written, so a second push of
+            // the same bytes a moment later found no file, wrote one over the first push's write and answered Created too -
+            // two of six concurrent pushes, and a failed write then deleted the first push's row. The age is the one the
+            // storage check uses before it calls a file stray. A version last downloaded within it had its file then.
             var storageKey = new PackageStorageKey(feed.Key, idLower, versionLower);
-            if (string.Equals(existing!.Hash, indexed.Sha512, StringComparison.Ordinal))
+            if (string.Equals(existing!.Hash, indexed.Sha512, StringComparison.Ordinal)
+                && existing.LastUsedUtc < time.GetUtcNow().UtcDateTime - IStorageAudit.MinimumAge)
             {
                 await using var present = await storage.OpenPackageAsync(storageKey, cancellationToken);
                 if (present is null)

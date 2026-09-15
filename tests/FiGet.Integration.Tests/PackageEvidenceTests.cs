@@ -7,6 +7,7 @@ using FiGet.Domain.Entities;
 using FiGet.Integration.Tests.Infrastructure;
 using FiGet.Testing;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FiGet.Integration.Tests;
@@ -87,6 +88,22 @@ public abstract class PackageEvidenceTests
         using (var other = TestPackages.Create(id, "1.0.0", b => b.Description = "Something else"))
         {
             HttpAssert.Status(HttpStatusCode.Conflict, await PushAsync("public", other));
+        }
+
+        // A row this young may be a push still writing its file, so the same bytes are a conflict too.
+        using (var early = new MemoryStream(bytes))
+        {
+            HttpAssert.Status(HttpStatusCode.Conflict, await PushAsync("public", early));
+        }
+
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FiGet.Infrastructure.Persistence.FiGetDbContext>();
+            var idLower = id.ToLowerInvariant();
+            var aged = DateTime.UtcNow - FiGet.Application.Ports.IStorageAudit.MinimumAge - TimeSpan.FromMinutes(1);
+            await db.Set<PackageVersion>()
+                .Where(v => v.Package!.IdLower == idLower)
+                .ExecuteUpdateAsync(s => s.SetProperty(v => v.LastUsedUtc, aged), CancellationToken.None);
         }
 
         using (var same = new MemoryStream(bytes))
