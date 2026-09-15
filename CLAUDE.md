@@ -46,7 +46,7 @@ ASP.NET Core. MIT, public on GitHub; the forge mirror is read-only.
   (`dotnet tool restore`, then `dotnet ef migrations add <Name> --project <provider project> --output-dir Migrations`).
 - Stop any running FiGet instance before building: a running `FiGet.Web.exe` locks its output and the
   build keeps the old binary.
-- Record what was demonstrated in `docs/status.md`: the command, the client and version, the result.
+- Record what was demonstrated in `docs/status.md`: what was checked, how (client and version, command), when, and the result.
 - Compatibility scripts under `tests/FiGet.Compat/` run on a Windows machine with Windows PowerShell
   5.1 and PowerShell 7 installed. They are not part of `dotnet test`; run them before claiming
   a client works.

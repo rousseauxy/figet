@@ -121,7 +121,7 @@ FIGET_TEST_SQLSERVER='Server=(localdb)\MSSQLLocalDB;Integrated Security=true;Tru
 | Document | What is in it |
 |---|---|
 | [docs/configuration.md](docs/configuration.md) | Every setting |
-| [docs/status.md](docs/status.md) | What was built and how it was verified, dated |
+| [docs/status.md](docs/status.md) | What was verified, with which client, and when |
 | [docs/protocol-v2.md](docs/protocol-v2.md), [protocol-v3.md](docs/protocol-v3.md), [protocol-assets.md](docs/protocol-assets.md), [protocol-management.md](docs/protocol-management.md) | The protocol surfaces and the decisions behind them |
 | [docs/auth-plan.md](docs/auth-plan.md) | Accounts, groups, permissions, keys and sign-in |
 | [docs/backlog.md](docs/backlog.md) | What is not built, and why |

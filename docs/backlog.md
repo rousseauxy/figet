@@ -12,8 +12,8 @@ Ordered roughly by when it is likely to be worth doing, not by importance.
 ### Watch the PSResourceGet fix (comment posted 2026-09-13)
 
 Not a change to this server. PSResourceGet chooses a download URL by substring match on the version, so a
-requested version that is a text prefix of a longer one installs the wrong package (docs/status.md, "An
-install that fetched the wrong version"). It is open as PowerShell/PSResourceGet #1657, with an unmerged
+requested version that is a text prefix of a longer one installs the wrong package (`docs/status.md`, under
+NuGet v3). It is open as PowerShell/PSResourceGet #1657, with an unmerged
 fix in PR #2019.
 
 Our reproduction was posted on the PR on 2026-09-13

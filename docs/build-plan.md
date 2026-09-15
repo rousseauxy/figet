@@ -6,7 +6,7 @@ known. Where this document and the code disagree, the code is wrong until a deci
 changed on purpose.
 
 Status: written 2026-09-11 after the feasibility study. Phase 1 done the same day; corrections found while
-building it are folded in below and listed in `docs/status.md`.
+building it are folded in below; what was verified is in `docs/status.md`.
 
 ---
 

@@ -647,7 +647,7 @@ What was decided: Manage does not include an upstream's URL or credential (now a
 galleries); the email allow list was dropped by accident (restored, with an account-creation switch); the probes
 became regression tests next to the code they cover; items 1 to 14 of section 5 were done, except the parts the
 cluster operators' answers made unnecessary (S3 byte ranges, a secret-source port) and `KnownNetworks`, which belongs
-in the Helm chart. What was built, and what was deliberately left, is in `docs/status.md` under this date and in
+in the Helm chart. What was built, and what was deliberately left, is in section 6 below and in
 `docs/backlog.md` under phase 6 and the smaller review items. Two deviations from the proposals above:
 
 - **S5.2**: no DNS resolution at save time and `http` stays allowed for admins; with URL edits admin-only, the save

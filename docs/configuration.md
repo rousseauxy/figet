@@ -231,7 +231,7 @@ are now stored beside it, because both change what a client is told:
 
 Descriptions, summaries and tags are stored too, since 2026-09-13, per version with each distinct tag list kept
 once, and written in batches with their own database context. The first attempt kept them on tracked entities and
-caused the out-of-memory incident recorded in `docs/status.md`; the current shape does not. A restart reads them
+caused an out-of-memory incident while this was being built; the current shape does not. A restart reads them
 back, so listings stay described.
 
 ## Standard ASP.NET Core and OpenTelemetry settings that matter
