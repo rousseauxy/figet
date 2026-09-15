@@ -19,6 +19,7 @@ owner on 2026-09-13; the questions and answers are recorded under "Decisions". B
 | Provider groups | **Optional mapping per provider.** A provider names its groups claim; a FiGet group can be linked to a group of a provider. Membership from a linked group is refreshed at every sign-in with that provider. Provider groups never grant a role. |
 | Sign-in page with SSO enabled | **A super admin setting**: either provider buttons with a "sign in with a local account" link, or provider buttons only. `/account/login/local` always works either way. |
 | Personal API keys | **Act as their owner, optionally narrower**: never more than the user's current permissions (which follow group and role changes immediately), can be limited to one feed (as service tokens are; one key per feed for more) and to read-only, and stop working when the user is disabled or deleted. |
+| API access tokens | **Accepted next to FiGet's own keys, for the API only** (owner, 2026-09-15). A provider can be trusted for access tokens its issuer signs: an application's client-credentials token (Entra ID, Authentik, Keycloak) or a CI job's token (GitLab, GitHub Actions), in the same headers a key goes in. A token has no account: it may do what the FiGet groups linked to its groups claim may do, **at most publish**, never admin. An issuer nobody signs in with is a provider with sign-ins off and no client. Both sign-in providers and CI issuers in the first build. |
 
 ## Added to the owner's outline
 
@@ -56,7 +57,7 @@ Not asked, because each has one sensible answer; listed so they are visible.
 |---|---|
 | `Users` | user name (unique), display name, email, password hash (null for provider-only accounts), role, disabled, must-change-password, security stamp, failed-attempt count, locked-until, created, last sign-in |
 | `ExternalLogins` | user, provider, provider subject (unique per provider), email as the provider gave it, linked at |
-| `OidcProviders` | slug (used in the callback path), display name, authority, client id, protected secret, scopes, user-name claim, groups claim, enabled, order |
+| `OidcProviders` | slug (used in the callback path), display name, authority, client id, protected secret, scopes, user-name claim, groups claim, enabled, order; accept API tokens, audiences, required claims |
 | `Groups` | name (unique), description |
 | `GroupMembers` | group, user, source: manual or provider (a provider refresh replaces only its own rows) |
 | `GroupProviderLinks` | group, provider, provider group name |
@@ -110,3 +111,30 @@ Each phase ships on its own: migrations for both providers, tests on both databa
 4. **OpenID Connect.** Built 2026-09-13; Authentik registered, sign-in by the owner pending. Providers page, runtime schemes, sign-in page modes and the local fallback, account creation,
    connect and disconnect on the profile page, group mapping. Verified against a real Authentik provider.
 5. **Audit log.** Done 2026-09-13. Table, admin page with filters, retention and pruning; the console lines stay.
+6. **API access tokens.** Built 2026-09-15. Per provider: accept tokens, audiences, required claims. See below.
+
+## API access tokens
+
+What a token must be, checked on every request (`ApiTokenValidator`):
+
+- **Shape**: a credential shaped like a signed JWT goes to this check instead of the key lookup; FiGet keys start with
+  `figet_` and never look like one.
+- **Issuer**: the token's `iss` equals the authority of a provider with *accept API tokens* on. The issuer only chooses
+  which provider's keys to check it with; the discovery document's `issuer` must then match.
+- **Signature**: asymmetric algorithms only (RS, PS, ES), against the keys the issuer publishes. Keys are kept for 12
+  hours and fetched again when a token names an unknown key id, at most once per 30 seconds per provider. When the
+  issuer cannot be reached, the keys fetched before keep checking tokens.
+- **Audience**: one of the provider's audiences, which are required: with a shared issuer (gitlab.com, GitHub Actions)
+  anything else would accept anyone's token.
+- **Lifetime**: an expiry is required, one minute of clock skew, and a token valid for more than 24 hours is refused.
+- **Not an ID token**: a token with a `nonce` is a sign-in's ID token and is refused, since Entra and Authentik put the
+  client id in the audience of both.
+- **Required claims**: every `name=value` rule the provider lists, such as `ref_protected=true`.
+
+What it may then do (`AccessTokenService`): the values of the provider's groups claim are matched, ignoring case, to
+the provider's group links, as at sign-in; the token may do the highest level those groups hold on the feed, capped at
+Publish. Links and grants are read on every request, so removing either applies at once. A valid token linked to no
+group gets 403; a token failing a check is no credential (401, or 403 on a push, like an invalid key).
+
+Audited: `token.external.used` once an hour per provider and caller, `token.refused` with the provider and the reason,
+never any part of the token.

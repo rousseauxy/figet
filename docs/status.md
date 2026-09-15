@@ -2964,3 +2964,36 @@ stylesheet paint the select's popup itself (`appearance: base-select`, `::picker
 browser ignores it and keeps its own popup. The keyboard, the form and the posted value stay the native control's.
 Verified in headless Chrome 153: `appearance` computes to `base-select` and the closed control renders with the caret at
 its edge; the open list needs a real click, so that part is seen in the browser.
+
+## API access tokens next to keys - 2026-09-15
+
+The owner asked for the API to accept short-lived tokens from an identity provider or a CI system, next to FiGet's own
+keys, as a safer choice than a stored key; both sign-in providers and CI issuers in the first build, a token allowed
+only what its linked groups may do. Decisions and the checks are in `docs/auth-plan.md`, "API access tokens".
+
+- **Providers page**: an *API access tokens* section on every provider: accept tokens, audiences, required claims. An
+  issuer nobody signs in with is added with sign-ins off and no client id or secret; it never appears on the sign-in
+  page. The list shows *Sign-in* and *API tokens* badges; the provider page says what is accepted and warns when no
+  groups claim is set.
+- **Requests**: a credential shaped like a JWT, in any header a key goes in, is checked by `ApiTokenValidator`
+  (signature against the published keys, issuer, audience, expiry and a 24-hour cap, no ID tokens, required claims),
+  then allowed the highest level of its linked groups on the feed, capped at Publish.
+- **Audit**: `token.external.used` hourly per caller, `token.refused` with provider and reason.
+- Migration `ApiAccessTokens` for both providers: three columns on `OidcProviders`, off and empty for existing rows.
+
+Evidence, against `FakeOidcProvider` signing real tokens with its published key:
+
+- `ExternalSignInTests.ApiTokens` (integration, both databases): a linked token pushes with `X-NuGet-ApiKey` and reads
+  as Bearer and as a Basic password; Read reads and does not push, Manage publishes and no more, an unlinked role gets
+  403, removing the link gives 403 at the next request; wrong audience, expired, valid for two days, forged signature
+  under the published key id, an unpublished key id, HS256 and a token with a nonce are each 401, and a push with one
+  is 403 like a bad key; turning the provider's switch off refuses a good token; a CI-shaped issuer with
+  `project_path` as the groups claim publishes only with `ref_protected=true` and the right namespace and a linked
+  project; a key rollover at the issuer is picked up; a refused token is audited with its reason and no part of it; an
+  API-only issuer is added on the page without a client, the page refuses a missing audience and an unreadable rule.
+- Falsified: with the nonce check and the required-claims check disabled, the ID-token case and the CI test failed.
+- `ApiTokenRulesTests` (unit): which credentials count as JWT-shaped (not `alg: none`, not a key, not a password), and
+  the parsing of required claims and audiences.
+
+Suites: unit 213, integration 493, on SQLite and SQL Server. Not yet tried against a real Entra ID, Authentik or GitLab
+token.
