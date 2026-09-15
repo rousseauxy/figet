@@ -2,8 +2,10 @@
 #
 #   docker compose -f deploy/compose.example.yml up -d --build
 #
-# Then sign in at http://localhost:8080 as admin / admin and choose a new password. No image is published yet, so this
-# builds locally.
+# Then sign in at http://localhost:8080 as admin / admin and choose a new password.
+#
+# This builds the image from the source beside it. To run a published one instead, drop the "build:" block and use
+#   image: ghcr.io/rousseauxy/figet:latest
 
 services:
   figet:
@@ -23,6 +25,12 @@ services:
       FiGet__Feeds__0__AnonymousRead: "true"
       FiGet__Feeds__1__Name: "internal"
       FiGet__Limits__MaxPackageSizeMB: "256"
+      # Where uploads are buffered while they are checked. On its own filesystem by default; point it at the data
+      # volume when the container's writable layer is small or read-only.
+      # FiGet__Storage__TempPath: "/data/tmp"
+      # Encrypts the key ring that protects sign-in cookies, so sessions survive a rebuild. Any long random secret;
+      # without it the key ring is stored unencrypted and the log says so at every start.
+      # FiGet__DataProtection__MasterKey: "${FIGET_MASTER_KEY}"
       # SQL Server instead of SQLite:
       # FiGet__Database__Provider: "SqlServer"
       # FiGet__Database__ConnectionString: "Server=sql;Database=figet;User Id=figet;Password=...;TrustServerCertificate=True"
@@ -31,6 +39,9 @@ services:
     volumes:
       - figet-data:/data
       # - /srv/shares/scripts:/shares/scripts:ro
+    # No healthcheck here on purpose: the runtime image carries neither curl nor wget, so there is nothing in it to
+    # probe with. /health/live (the process) and /health/ready (the database too) are for whatever watches from
+    # outside - a reverse proxy, Kubernetes probes, a monitor.
     restart: unless-stopped
 
 volumes:

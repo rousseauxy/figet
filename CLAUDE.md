@@ -6,22 +6,20 @@ house rules.
 ## What this is
 
 A self-hosted NuGet v2 + v3 package server with proxy feeds, asset directories and OIDC, in
-ASP.NET Core. MIT, public once phase 2 of the build plan is green. Until then the GitHub repo
-is private and the forge mirror is read-only.
+ASP.NET Core. MIT, public on GitHub; the forge mirror is read-only.
 
 ## Rules
 
 - **English everywhere**: identifiers, comments, commit messages, docs.
 - **Nothing organisation-specific in this repo.** No customer hostnames, feed names, API keys,
   recorded traffic with real package names, or paths from a work machine. Fixtures are
-  synthetic or scrubbed. The repo will be public; treat every commit as already public.
+  synthetic or scrubbed. The repo is public; treat every commit as already public.
 - **No vendor or product names of the server FiGet replaces**, nor of its company or its tools. Say
   "the reference server", "the reference client" or "the commercial server being replaced". URL
   compatibility is described by the URLs themselves, never by naming whose they are.
 - **Commit messages** in the imperative, one change per commit, no trailers, no
   `Co-Authored-By`.
 - **Stage explicit paths.** Never `git add -A` or `git add .`.
-- **Do not push container images while the repo is private.**
 - **Both database providers stay green**: SQL Server (primary, production) and SQLite
   (secondary, stand-alone). No provider-specific SQL in the model or queries; two migration
   assemblies. A change that passes on one and not the other is not done.
@@ -59,7 +57,7 @@ is private and the forge mirror is read-only.
 src/        layered, see build plan §3
 tests/      unit and integration tests (dotnet test), FiGet.Compat/ for real-client scripts
 docs/       build plan, protocol notes, configuration reference, decisions/ for ADRs
-deploy/     Dockerfile, compose example, Helm chart (later phases)
+deploy/     Dockerfile and compose example
 ```
 
 ## Layers

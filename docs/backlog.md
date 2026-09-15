@@ -144,7 +144,7 @@ All done 2026-09-15 (docs/status.md, "The cross-check's Soon items"):
 - ~~**API access tokens, from the pre-publication review:**~~ the 24-hour cap over the token's whole life, one check of a
   refused token per request, the keys of a removed issuer dropped.
 
-### When the repository goes public: split validation from publishing
+### ~~When the repository goes public: split validation from publishing~~ (built 2026-09-16)
 
 Raised 2026-09-12, to be decided when we get there rather than now.
 
@@ -166,9 +166,11 @@ the failure that comment describes. The push-to-main trigger is currently the on
 Cost does not argue either way: public repositories get unlimited Actions minutes against 2,000 a month
 while private, so going public removes the pressure rather than creating it.
 
-Shape to decide on: keep `build-and-test` on push to main; keep the container smoke test there too, since
-it has already caught a real defect (a project added without its `COPY` line in the Dockerfile's restore
-layer); and add a *separate* tag-triggered job that pushes to GHCR once the repository is public.
+That shape is now in `ci.yml`: `build-and-test` and the container smoke test still run on every push to
+main - the smoke test has already caught a real defect, a project added without its `COPY` line in the
+Dockerfile's restore layer - and a separate `publish` job runs only for a `v*` tag, needs both of them, and
+pushes to GHCR. It also refuses to run unless the repository is public, so a tag made too early publishes
+nothing.
 
 ### ~~Pin the SDK and runtime base image tags~~ (done 2026-09-15: `sdk:10.0.401`, `aspnet:10.0.12`)
 
