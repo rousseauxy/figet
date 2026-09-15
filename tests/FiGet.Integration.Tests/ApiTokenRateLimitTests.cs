@@ -105,6 +105,6 @@ public sealed class ApiTokenRateLimitTests(ApiTokenRateLimitServerFixture server
     {
         using var client = new HttpClient { BaseAddress = server.BaseAddress };
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        return await client.GetAsync($"nuget/{feed}/v3/index.json");
+        return await client.GetAsync($"nuget/{feed}/v3/query");
     }
 }

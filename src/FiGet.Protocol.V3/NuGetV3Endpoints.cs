@@ -67,7 +67,7 @@ public static class NuGetV3Endpoints
 
     private static async Task<IResult> ServiceIndexAsync(HttpContext http, string feed, CancellationToken cancellationToken)
     {
-        var (request, error) = await FeedAccess.ResolveAsync(http, feed, Domain.Entities.TokenScopes.Read, cancellationToken);
+        var (request, error) = await FeedAccess.ResolveServiceIndexAsync(http, feed, cancellationToken);
         if (error is not null)
         {
             return error;

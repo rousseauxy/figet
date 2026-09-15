@@ -307,7 +307,7 @@ public abstract partial class ExternalSignInTests
     {
         using var client = new HttpClient { BaseAddress = server.BaseAddress };
         client.DefaultRequestHeaders.Authorization = authorization;
-        return await client.GetAsync($"nuget/{feed}/v3/index.json");
+        return await client.GetAsync($"nuget/{feed}/v3/query");
     }
 
     private async Task<HttpResponseMessage> PushWithApiKeyAsync(string feed, string token)

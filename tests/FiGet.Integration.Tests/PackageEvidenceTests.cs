@@ -155,7 +155,7 @@ public abstract class PackageEvidenceTests
     {
         using var client = server.CreateClient(FiGetServerFixture.AdminToken);
         client.DefaultRequestHeaders.Add("X-NuGet-ApiKey", "figet_not_a_real_key");
-        HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync("nuget/private/v3/index.json"));
+        HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync("nuget/private/v3/query"));
     }
 
     /// <summary>A key with an expiry date works until then and is refused after it.</summary>
@@ -168,9 +168,9 @@ public abstract class PackageEvidenceTests
         var current = (await tokens.CreateServiceTokenAsync(FiGetServerFixture.SuperAdminActor, "current", TokenScopes.Read, null, DateTime.UtcNow.AddDays(1), CancellationToken.None)).Created!.Secret;
 
         using var client = server.CreateClient(expired);
-        HttpAssert.Status(HttpStatusCode.Unauthorized, await client.GetAsync("nuget/private/v3/index.json"));
+        HttpAssert.Status(HttpStatusCode.Unauthorized, await client.GetAsync("nuget/private/v3/query"));
         using var valid = server.CreateClient(current);
-        HttpAssert.Status(HttpStatusCode.OK, await valid.GetAsync("nuget/private/v3/index.json"));
+        HttpAssert.Status(HttpStatusCode.OK, await valid.GetAsync("nuget/private/v3/query"));
     }
 
     /// <summary>The flat container index of an id nobody pushed is 404, which is how a v3 client learns it does not exist.</summary>

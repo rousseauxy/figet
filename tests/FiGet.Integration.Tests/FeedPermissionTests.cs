@@ -41,7 +41,7 @@ public abstract partial class FeedPermissionTests
 
         Assert.DoesNotContain($">{feed}<", await HttpAssert.SuccessBodyAsync(await browser.GetAsync("/")), StringComparison.Ordinal);
         HttpAssert.Status(HttpStatusCode.NotFound, await browser.GetAsync($"/feeds/{feed}"));
-        HttpAssert.Status(HttpStatusCode.Unauthorized, await browser.GetAsync($"nuget/{feed}/v3/index.json"));
+        HttpAssert.Status(HttpStatusCode.Unauthorized, await browser.GetAsync($"nuget/{feed}/v3/query"));
         HttpAssert.Status(HttpStatusCode.NotFound, await browser.GetAsync($"/admin/feeds/{feed}"));
     }
 
@@ -57,7 +57,7 @@ public abstract partial class FeedPermissionTests
         Assert.Contains($">{feed}<", await HttpAssert.SuccessBodyAsync(await browser.GetAsync("/")), StringComparison.Ordinal);
         var page = await HttpAssert.SuccessBodyAsync(await browser.GetAsync($"/feeds/{feed}"));
         Assert.DoesNotContain($"href=\"/admin/feeds/{feed}\"", page, StringComparison.Ordinal);
-        HttpAssert.Status(HttpStatusCode.OK, await browser.GetAsync($"nuget/{feed}/v3/index.json"));
+        HttpAssert.Status(HttpStatusCode.OK, await browser.GetAsync($"nuget/{feed}/v3/query"));
 
         HttpAssert.Status(HttpStatusCode.Forbidden, await PostAsync(browser, $"/admin/feeds/{feed}/pull", ("id", "Some.Package"), ("version", "1.0.0")));
         HttpAssert.Status(HttpStatusCode.NotFound, await browser.GetAsync($"/admin/feeds/{feed}"));

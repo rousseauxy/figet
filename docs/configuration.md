@@ -150,7 +150,7 @@ browsers, are not limited (sign-in attempts are, signed in or not).
 
 | Key | Default | Meaning |
 |---|---|---|
-| `AnonymousRequestsPerMinute` | `1200` | Protocol reads on anonymous-read feeds, asset downloads and pages, without a valid key or sign-in. `0` turns it off. |
+| `AnonymousRequestsPerMinute` | `1200` | Protocol reads on anonymous-read feeds, asset downloads and pages, without a valid key or sign-in, and requests that send a key or password that is refused. A request that sends no credential at all to a feed that needs one is not counted: its answer is the 401 challenge, which NuGet clients with stored credentials ask for before every request. `0` turns it off. |
 | `AnonymousBurst` | `600` | How many of those may arrive at once before the rate applies. An install of a meta-module is a burst. |
 | `SignInAttemptsPerMinute` | `20` | Sign-in posts, local and provider buttons. The next one goes back to the sign-in page with a message. `0` turns it off. |
 
@@ -258,7 +258,7 @@ Clients present a token in any of these ways; the first valid one that grants th
 - `Authorization: Basic base64(anything:<token>)` (the password of a NuGet source credential),
 - `Authorization: Bearer <token>`.
 
-A read request to a feed without anonymous read and without valid credentials gets 401 with
+A feed's v3 service index (`v3/index.json`) answers without credentials, so a client that sends its API key only with the push can find where to push; it lists the feed's endpoint addresses and nothing it holds. Any other read request to a feed without anonymous read and without valid credentials gets 401 with
 `WWW-Authenticate: Basic realm="FiGet"`, so NuGet clients retry with configured credentials. A valid token
 lacking the scope gets 403. Push, Delete and Admin scopes include Read.
 

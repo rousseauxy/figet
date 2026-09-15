@@ -46,6 +46,21 @@ public sealed class RateLimitTests(RateLimitServerFixture server) : IClassFixtur
             HttpAssert.Status(HttpStatusCode.TooManyRequests, await client.SendAsync(garbage));
         }
 
+        // With the bucket empty, a request with no credential at all on a private feed still gets its 401 challenge, not 429:
+        // NuGet clients with stored credentials send each request bare first and answer the challenge. A wrong password is
+        // still limited. Found cross-checking NuGet/Home's issues (2026-09-15).
+        for (var i = 0; i < 10; i++)
+        {
+            var challenge = await client.GetAsync("nuget/private/v3/query");
+            HttpAssert.Status(HttpStatusCode.Unauthorized, challenge);
+            Assert.Contains(challenge.Headers.WwwAuthenticate, h => h.Scheme == "Basic");
+        }
+
+        using (var wrongPassword = server.CreateClient("not-the-password"))
+        {
+            HttpAssert.Status(HttpStatusCode.TooManyRequests, await wrongPassword.GetAsync("nuget/private/v3/query"));
+        }
+
         for (var i = 0; i < 20; i++)
         {
             using var keyed = new HttpRequestMessage(HttpMethod.Get, "nuget/public/v3/index.json");

@@ -125,7 +125,7 @@ public sealed class RequestLogTests(RequestLogFixture server) : IClassFixture<Re
         var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var line = await WaitForLineAsync("package.push");
+        var line = await WaitForLineAsync($"package.push {id}");
         Assert.NotNull(line);
         Assert.Contains(id, line, StringComparison.Ordinal);
 

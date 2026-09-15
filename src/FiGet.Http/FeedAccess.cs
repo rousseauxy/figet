@@ -68,10 +68,20 @@ public static class FeedAccess
         return request.Token is null && http.User.Identity?.IsAuthenticated != true;
     }
 
+    /// <summary>
+    /// The feed for its v3 service index, which answers without credentials. NuGet clients read the index before anything
+    /// else and send an API key only with the push itself, so on a feed without anonymous read a push with a key never
+    /// started (dotnet nuget push, Publish-PSResource). The index lists only this feed's endpoint addresses; every one of
+    /// them still asks for credentials. An unknown feed is still 404, a network limit still applies, and a request without
+    /// a valid key still counts against the anonymous rate limit.
+    /// </summary>
+    public static Task<(FeedRequest? Request, IResult? Error)> ResolveServiceIndexAsync(HttpContext http, string feedName, CancellationToken cancellationToken) =>
+        ResolveAsync(http, feedName, TokenScopes.Read, assets: false, listing: false, cancellationToken, discovery: true);
+
     private static Task<(FeedRequest? Request, IResult? Error)> ResolveAsync(HttpContext http, string feedName, TokenScopes required, bool assets, CancellationToken cancellationToken) =>
         ResolveAsync(http, feedName, required, assets, listing: false, cancellationToken);
 
-    private static async Task<(FeedRequest? Request, IResult? Error)> ResolveAsync(HttpContext http, string feedName, TokenScopes required, bool assets, bool listing, CancellationToken cancellationToken)
+    private static async Task<(FeedRequest? Request, IResult? Error)> ResolveAsync(HttpContext http, string feedName, TokenScopes required, bool assets, bool listing, CancellationToken cancellationToken, bool discovery = false)
     {
         var feeds = http.RequestServices.GetRequiredService<IFeedStore>();
         var feed = await feeds.FindAsync(feedName, cancellationToken);
@@ -124,17 +134,25 @@ public static class FeedAccess
             await RecordRefusedAsync(http, tokens, refused, feed, cancellationToken);
         }
 
+        var anonymousRead = assets && listing ? feed.AnonymousList : feed.AnonymousRead;
+        var servedAnonymously = discovery || (required == TokenScopes.Read && anonymousRead);
+
+        // A request that sent no credential at all and is about to be asked for one is not counted: NuGet clients with stored
+        // credentials send every request once without them and repeat it after the 401, so counting the first half of each
+        // pair turned a large restore's challenges into 429s - and a client that never sees the 401 never sends its
+        // credentials. What such a request learns is "credentials are required", for the cost of one feed lookup.
+        var bareChallenge = !servedAnonymously && best is null && refused is null && http.User.Identity?.IsAuthenticated != true;
+
         // Counted only now that the key is checked: a request without a valid key and without a sign-in is anonymous, whatever
         // headers it sent. A garbage key does not buy a way around the limit.
-        if (!tokenAllows && http.User.Identity?.IsAuthenticated != true
+        if (!tokenAllows && !bareChallenge && http.User.Identity?.IsAuthenticated != true
             && http.RequestServices.GetService<RequestRateLimits>() is { } limits
             && !limits.TryAcquire(http, RequestRateLimits.Anonymous))
         {
             return (null, Results.Text("Too many requests from this address without credentials. Try again shortly, or use an API key.", "text/plain", statusCode: StatusCodes.Status429TooManyRequests));
         }
 
-        var anonymousRead = assets && listing ? feed.AnonymousList : feed.AnonymousRead;
-        var allowed = tokenAllows || (required == TokenScopes.Read && anonymousRead);
+        var allowed = tokenAllows || servedAnonymously;
 
         // A signed-in browser - a download link on a package page - reads with its account's level. Reading only: a
         // cookie is sent with any request the browser makes, so it must never be what lets a push or a delete through.

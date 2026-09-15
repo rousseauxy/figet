@@ -214,6 +214,41 @@ public abstract class NuGetV3Tests
         }
     }
 
+    /// <summary>
+    /// A private feed's service index answers without credentials, so a client that sends its API key only with the push
+    /// (dotnet nuget push -k, Publish-PSResource -ApiKey) finds where to push. Everything the index points at still asks for
+    /// credentials, and an unknown feed is still 404. Found cross-checking Gitea's NuGet issues (#20717, 2026-09-15).
+    /// </summary>
+    [Fact]
+    public async Task A_private_feeds_service_index_answers_without_credentials_and_nothing_else_does()
+    {
+        var id = FiGetServerFixture.UniqueId("Private.Index");
+        using (var stream = TestPackages.Create(id, "1.0.0"))
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushRawAsync("private", stream, FiGetServerFixture.AdminToken));
+        }
+
+        using var anonymous = server.CreateClient();
+        var index = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await anonymous.GetAsync("nuget/private/v3/index.json")))!;
+        Assert.Contains(index["resources"]!.AsArray(), r => ((string?)r!["@type"])?.StartsWith("PackagePublish", StringComparison.Ordinal) == true);
+
+        var idLower = id.ToLowerInvariant();
+        foreach (var path in new[] { $"nuget/private/v3/registration/{idLower}/index.json", $"nuget/private/v3/flatcontainer/{idLower}/index.json", $"nuget/private/v3/query?q={id}", $"nuget/private/v3/autocomplete?id={id}" })
+        {
+            HttpAssert.Status(HttpStatusCode.Unauthorized, await anonymous.GetAsync(path));
+        }
+
+        HttpAssert.Status(HttpStatusCode.NotFound, await anonymous.GetAsync($"nuget/{FiGetServerFixture.UniqueId("nofeed").ToLowerInvariant()}/v3/index.json"));
+
+        // And the push itself, with only the key, as the client sends it after reading the index.
+        using var push = server.CreateClient();
+        push.DefaultRequestHeaders.Add("X-NuGet-ApiKey", FiGetServerFixture.AdminToken);
+        using var second = TestPackages.Create(id, "2.0.0");
+        using var content = new MultipartFormDataContent();
+        content.Add(new StreamContent(second) { Headers = { ContentType = new MediaTypeHeaderValue("application/octet-stream") } }, "package", "package.nupkg");
+        HttpAssert.Status(HttpStatusCode.Created, await push.PutAsync((string?)index["resources"]!.AsArray().First(r => ((string?)r!["@type"])!.StartsWith("PackagePublish", StringComparison.Ordinal))!["@id"], content));
+    }
+
     [Fact]
     public async Task A_private_feed_challenges_and_accepts_Basic_credentials_through_the_NuGet_client()
     {
@@ -225,7 +260,10 @@ public abstract class NuGetV3Tests
 
         using (var anonymous = server.CreateClient())
         {
-            var challenge = await anonymous.GetAsync("nuget/private/v3/index.json");
+            // The service index answers anyone, so a client can find where to push with only an API key (cross-check of
+            // 2026-09-15); what the feed holds still asks for credentials.
+            HttpAssert.Status(HttpStatusCode.OK, await anonymous.GetAsync("nuget/private/v3/index.json"));
+            var challenge = await anonymous.GetAsync("nuget/private/v3/query");
             HttpAssert.Status(HttpStatusCode.Unauthorized, challenge);
             Assert.Contains(challenge.Headers.WwwAuthenticate, h => h.Scheme == "Basic");
             HttpAssert.Status(HttpStatusCode.Unauthorized, await anonymous.GetAsync($"nuget/private/v3/flatcontainer/{id.ToLowerInvariant()}/index.json"));

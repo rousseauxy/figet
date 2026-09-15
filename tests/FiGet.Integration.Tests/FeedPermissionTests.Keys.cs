@@ -169,7 +169,7 @@ public abstract partial class FeedPermissionTests
     {
         using var client = new HttpClient { BaseAddress = server.BaseAddress };
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes("any:" + key)));
-        return await client.GetAsync($"nuget/{feed}/v3/index.json");
+        return await client.GetAsync($"nuget/{feed}/v3/query");
     }
 
     private async Task<HttpResponseMessage> PushAsync(string feed, string key)
