@@ -193,6 +193,9 @@ only the plain root serves: see conclusion 4 above for why `GET /nuget/{feed}/ap
 | `GET /nuget/{feed}/GetUpdates()` | `packageIds`, `versions`, `includePrerelease`, `includeAllVersions`. No recorded client sends it. |
 | `GET …/$count` on the three listings | `text/plain` integer. |
 | `GET /nuget/{feed}/package/{id}/{version}` | Download by normalised version. |
+| `GET /nuget/{feed}/package/{id}` | 302 to the latest stable version, else the newest prerelease (2026-09-15). |
+| `GET /nuget/{feed}/Packages(Id='x',Version='y')/Download` | 302 to the download, for PSResourceGet's NuGet.Server mode (2026-09-15). |
+| `GET /nuget/{feed}/package-ids` and `package-versions/{id}` | The Package Manager Console's v2 autocomplete: JSON string arrays (2026-09-15). |
 | `PUT /nuget/{feed}` and `PUT /nuget/{feed}/package` | Push, multipart or raw, `X-NuGet-ApiKey` or Basic. |
 | `DELETE /nuget/{feed}/{id}/{version}` and `…/package/{id}/{version}` | Unlist or hard delete per feed. |
 
@@ -207,9 +210,35 @@ Decisions this implementation makes, all visible to clients:
   `$orderby=NormalizedVersion desc` order 1.10.0 after 1.9.0 rather than before it.
 - **Default order**: `FindPackagesById()` ascending by version, as the reference server returned;
   `Search()` and `Packages()` id ascending then version descending.
-- **`$top` is capped at 1000** and a `next` link is emitted, which is how PSResourceGet's request for 6000
-  is answered.
+- **`$top` is capped by the shape of the query** (2026-09-15), because PSResourceGet ignores `next` links and
+  steps `$skip` by fixed amounts: a tag or command search is answered in pages of 100 (its step), a
+  latest-only listing with nothing else in the filter in pages of up to 6000 (`Find-PSResource -Name *`
+  steps by 6000), anything else in pages of up to 1000 with a `next` link.
+- **A listing ordered by id** (the default, and every recorded client) is read from the database in chunks
+  with no cap on how many packages match; top-level id and tag predicates narrow it first. Other orders
+  read at most 2,000 packages and log a warning when they reach it.
+- **A top-level or of `Id eq` comparisons** (up to 50, as update scripts batch them) is answered by looking
+  up each id, upstream included on a proxy feed.
+- **`Version` is the module manifest's text** for a PowerShell module whose manifest spells the version
+  differently from its package (`2.1` packed as 2.1.0), as the PowerShell Gallery reports it (2026-09-15).
 - **Unlisted versions** report `Listed` false and `Published` 1900-01-01, as nuget.org does.
+
+## Chocolatey 2.7.4 against FiGet (2026-09-15)
+
+Run on this machine against a local FiGet, with a package that installs nothing, in two versions; every
+command succeeded: `choco search`, `search --exact`, `search --exact --all-versions`, `info`, `install
+--version 1.0.0`, `outdated`, `upgrade`, `list`, `uninstall`. The requests it sent:
+
+| Request | Used by |
+|---|---|
+| `GET /nuget/{feed}/` and `$metadata` | every command, to validate the source |
+| `Search()?$filter=IsLatestVersion&$orderby=Id&searchTerm='{id}'&targetFramework=''&includePrerelease=false&$skip=0&$top=30&semVerLevel=2.0.0` | `search` |
+| `Packages()?$filter=(tolower(Id) eq '{id}') and IsLatestVersion&semVerLevel=2.0.0` | `install`, `outdated`, `upgrade` (also for `chocolatey` itself) |
+| `FindPackagesById()?id='{id}'&semVerLevel=2.0.0` | `install --version` |
+| `Packages(Id='{id}',Version='{version}')` then `package/{id}/{version}` | the download |
+
+`tolower(Id) eq` is taken as an id lookup since the same day's search work, so these do not scan the feed.
+Not recorded as a fixture: Chocolatey is not part of the client matrix, and the table above is the evidence.
 
 ## Not yet recorded
 
