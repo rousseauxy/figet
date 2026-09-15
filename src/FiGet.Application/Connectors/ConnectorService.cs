@@ -956,6 +956,13 @@ public sealed class ConnectorService(
             return (new UpstreamCatalog([], []), true, null);
         }
 
+        // An upstream that just failed to answer is not asked about another unknown id until the pause is over: during an
+        // outage each such request waited out the whole timeout. Not authoritative, exactly as the failure itself.
+        if (metadataCache.IsUnreachable(upstream.Key, now, settings.UnreachableBackoff))
+        {
+            return (new UpstreamCatalog([], []), false, null);
+        }
+
         try
         {
             // Versions alone where that is cheaper, with the full description queued behind the request rather than
@@ -980,6 +987,7 @@ public sealed class ConnectorService(
             // id, and each answer used to become a row.
             if (catalog.Versions.Count == 0)
             {
+                metadataCache.SetReachable(upstream.Key);
                 metadataCache.SetMissing(upstream.Key, idLower, now);
                 return (catalog, true, null);
             }
@@ -987,13 +995,15 @@ public sealed class ConnectorService(
             await index.SaveAsync(upstream.Key, idLower, catalog.Id, catalog.Versions, catalog.Described, stale: false, now, cancellationToken);
             await descriptions.SaveAsync(upstream.Key, idLower, catalog.Described, cancellationToken);
             metadataCache.Set(upstream.Key, idLower, catalog.Described, now);
+            metadataCache.SetReachable(upstream.Key);
             return (catalog, true, null);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             // A timeout lands here too, which is why the answer is "not authoritative": a version missing
             // from a list we never received must not be mistaken for a version withdrawn upstream.
-            logger.LogWarning(ex, "Upstream {Upstream} did not answer for {Id}, and nothing was cached.", upstream.Name, idLower);
+            logger.LogWarning(ex, "Upstream {Upstream} did not answer for {Id}, and nothing was cached; unknown ids are not asked of it for {Pause}.", upstream.Name, idLower, settings.UnreachableBackoff);
+            metadataCache.SetUnreachable(upstream.Key, time.GetUtcNow().UtcDateTime);
             return (new UpstreamCatalog([], []), false, null);
         }
     }

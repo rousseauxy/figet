@@ -19,6 +19,13 @@ public sealed class ConnectorSettings
     public TimeSpan UpstreamTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
+    /// After an upstream fails to answer, how long an id nothing is known about is not asked of it again. During an outage
+    /// every such request used to wait out the timeout; this answers "the upstream did not answer" at once instead, and
+    /// the first request after the pause tries again.
+    /// </summary>
+    public TimeSpan UnreachableBackoff { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
     /// Where a package downloaded from an upstream is buffered while it is indexed: <c>FiGet:Storage:TempPath</c>, or the
     /// system temp directory. On a pod the system one is the container's small writable layer, and an installer-sized
     /// package filled it before it reached storage.

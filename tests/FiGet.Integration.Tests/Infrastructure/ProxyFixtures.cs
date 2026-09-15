@@ -326,6 +326,17 @@ public sealed class ProxyServerFixture() : FiGetServerFixture(TestDatabase.Sqlit
                 Upstream,
                 new Dictionary<string, StubUpstreamClient>(StringComparer.OrdinalIgnoreCase) { ["secondary"] = SecondUpstream }));
 
+            // No pause after a failing upstream: these tests switch the stub's failures on and off in quick succession, and a
+            // pause left by one would answer the next test's first question. The test of the pause turns it on for itself.
+            var settings = services.Last(d => d.ServiceType == typeof(ConnectorSettings));
+            services.Remove(settings);
+            services.AddSingleton(provider =>
+            {
+                var built = (ConnectorSettings)settings.ImplementationFactory!.Invoke(provider);
+                built.UnreachableBackoff = TimeSpan.Zero;
+                return built;
+            });
+
             // The real file storage, with writes failing for the ids a test names, as a full disk or a lost share does.
             var registered = services.Last(d => d.ServiceType == typeof(IPackageStorage));
             services.Remove(registered);

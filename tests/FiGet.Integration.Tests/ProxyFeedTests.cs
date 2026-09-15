@@ -272,6 +272,38 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         }
     }
 
+    /// <summary>
+    /// After an upstream fails to answer, ids nothing is known about are not asked of it again for a pause, so an outage
+    /// does not cost every request the whole timeout; after the pause it is asked again. Found cross-checking other
+    /// package servers' issue trackers (2026-09-15).
+    /// </summary>
+    [Fact]
+    public async Task A_failing_upstream_is_not_asked_about_unknown_ids_again_for_a_pause()
+    {
+        var settings = server.Services.GetRequiredService<ConnectorSettings>();
+        var later = FiGetServerFixture.UniqueId("Proxy.AfterOutage");
+        AddUpstream(later, "1.0.0");
+        settings.UnreachableBackoff = TimeSpan.FromMinutes(5);
+        server.Upstream.Fails = true;
+        try
+        {
+            Assert.Empty(await FindAsync("proxy", FiGetServerFixture.UniqueId("Proxy.DuringOutage")));
+            var calls = server.Upstream.CatalogCalls;
+
+            Assert.Empty(await FindAsync("proxy", FiGetServerFixture.UniqueId("Proxy.DuringOutage")));
+            server.Upstream.Fails = false;
+            Assert.Empty(await FindAsync("proxy", later));
+            Assert.Equal(calls, server.Upstream.CatalogCalls);
+        }
+        finally
+        {
+            server.Upstream.Fails = false;
+            settings.UnreachableBackoff = TimeSpan.Zero;
+        }
+
+        Assert.Single(await FindAsync("proxy", later));
+    }
+
     [Fact]
     public async Task Upstream_versions_appear_in_the_v3_registration_and_flat_container()
     {

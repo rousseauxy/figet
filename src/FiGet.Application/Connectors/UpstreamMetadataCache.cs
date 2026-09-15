@@ -61,6 +61,17 @@ public sealed class UpstreamMetadataCache(int maxPackages = UpstreamMetadataCach
         return false;
     }
 
+    /// <summary>When each upstream last failed to answer a catalogue request, by upstream key; one entry per upstream.</summary>
+    private readonly ConcurrentDictionary<int, DateTime> unreachable = new();
+
+    /// <summary>Whether the upstream failed to answer less than <paramref name="window"/> ago.</summary>
+    public bool IsUnreachable(int upstreamKey, DateTime nowUtc, TimeSpan window) =>
+        unreachable.TryGetValue(upstreamKey, out var failed) && nowUtc - failed < window;
+
+    public void SetUnreachable(int upstreamKey, DateTime nowUtc) => unreachable[upstreamKey] = nowUtc;
+
+    public void SetReachable(int upstreamKey) => unreachable.TryRemove(upstreamKey, out _);
+
     public void SetMissing(int upstreamKey, string idLower, DateTime nowUtc)
     {
         misses[Key(upstreamKey, idLower)] = nowUtc;
