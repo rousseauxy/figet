@@ -83,7 +83,8 @@ docker run -d --name figet -p 8080:8080 -v figet-data:/data \
 ```
 
 Sign in at http://localhost:8080 as `admin` / `admin`: the first thing FiGet asks is a new password. The container runs
-as a non-root, arbitrary UID and keeps its database and files under `/data`. `deploy/compose.example.yml` is the same
+as a non-root, arbitrary UID and keeps its database and files under `/data`, and the tag carries both `linux/amd64` and
+`linux/arm64`, so the same one runs on a NAS, a workstation and a cluster node. `deploy/compose.example.yml` is the same
 thing as a compose file, with SQL Server, shares and a master key as commented lines.
 
 Behind a reverse proxy, with more than one replica, or with secrets and shares to wire in, the settings that matter are

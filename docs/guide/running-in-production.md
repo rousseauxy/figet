@@ -76,6 +76,12 @@ lives in the database, so every replica shares it.
   are not limited. A request that sends no credential to a feed that needs one is not counted either: NuGet clients with
   stored credentials send each request once without them and answer the 401.
 
+## The image
+
+`ghcr.io/rousseauxy/figet:latest`, or a version tag such as `0.1.0`. One tag carries `linux/amd64` and `linux/arm64`,
+built on a runner of each architecture. It runs as a non-root, arbitrary UID in group 0, listens on 8080, and writes
+only to `/data` and `/tmp`.
+
 ## Backup and recovery
 
 Two things hold the state, and a restore needs both from the same moment:
