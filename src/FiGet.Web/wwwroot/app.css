@@ -1,7 +1,7 @@
 /* ===================================================================
    FIGET — DESIGN SYSTEM
    "Paper & graphite" neutrals, one accent, mono for versions and ids.
-   Ported from the sibling application so a theme pack written for one
+   Ported from another application of the author's so a theme pack written for one
    loads unchanged in the other: the token names below are the contract,
    and /themes/{name}.css overrides them.
    =================================================================== */
@@ -1204,7 +1204,7 @@ h2 + .fg-panel { margin-top: 0.5rem; }
 .fg-priority .fg-btn[disabled] { opacity: 0.35; cursor: default; }
 
 /* ── Error pages ────────────────────────────────────────────────── */
-/* The code as a large, faint watermark the title sits on, as in CustomsHive: recognisable at a glance, and
+/* The code as a large, faint watermark the title sits on: recognisable at a glance, and
    out of the way of the words that say what happened. */
 .fg-error-page {
   display: flex;

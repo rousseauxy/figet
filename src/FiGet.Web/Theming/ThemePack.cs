@@ -47,7 +47,7 @@ public sealed class ThemeFonts
 }
 
 /// <summary>
-/// The name and logo in the top bar. The same block the sibling application reads - <c>titlePlain</c> is its key - with a
+/// The name and logo in the top bar. The same block the theme format it came from reads - <c>titlePlain</c> is its key - with a
 /// logo added; keys either application has no use for are ignored.
 /// </summary>
 public sealed class ThemeBranding

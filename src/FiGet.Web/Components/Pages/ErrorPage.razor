@@ -6,7 +6,7 @@
 @using Microsoft.AspNetCore.Diagnostics
 @inject ILogger<ErrorPage> Logger
 
-@* One page for every error a person meets in a browser, the way CustomsHive does it: the code large enough to
+@* One page for every error a person meets in a browser: the code large enough to
    recognise at a glance, then what it means and what to do. Reached two ways - the exception handler for an
    unhandled failure, and status-code re-execution for a response that ended with an error status and no body.
    Protocol paths never come here; a package client gets FiGet's own answer (FiGetApp.IsProtocolPath). *@

@@ -44,14 +44,14 @@ public interface IThemeService
 /// overrides, served after <c>app.css</c>. The base stylesheet defines every token with a default, so a
 /// pack that sets three colours is a valid theme and everything it does not mention still looks right.
 ///
-/// YAML rather than JSON, and the same token names as the sibling application, so one pack can be
+/// YAML rather than JSON, and the same token names as the theme format it came from, so one pack can be
 /// dropped into either without editing: a brand is defined once, not once per product.
 /// </summary>
 public sealed class ThemeService : IThemeService
 {
     private static readonly IDeserializer Yaml = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
-        // A pack written for the sibling application carries keys this one has no use for, such as its
+        // A pack written for that other application carries keys this one has no use for, such as its
         // branding block. Those are ignored rather than refused, which is what makes packs portable.
         .IgnoreUnmatchedProperties()
         .Build();

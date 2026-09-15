@@ -296,7 +296,7 @@ public static class FiGetApp
                 protocol => protocol.UseResponseCompression());
         }
 
-        // Errors a person meets in a browser get a page with the code on it, as in CustomsHive: an unhandled
+        // Errors a person meets in a browser get a page with the code on it: an unhandled
         // exception renders /error, and a response that ends with an error status and no body is re-executed to
         // /error/{code}. That includes a page that finds nothing - an unknown feed, package or asset directory - and
         // sets 404 while rendering: .NET 10 drops such a page's own markup, so it would otherwise be a blank page.

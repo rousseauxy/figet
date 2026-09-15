@@ -42,7 +42,7 @@ public sealed class ErrorPageServerFixture() : FiGetServerFixture(TestDatabase.S
 }
 
 /// <summary>
-/// Errors a person meets in a browser get a page with the code on it, as CustomsHive does; errors a package client
+/// Errors a person meets in a browser get a page with the code on it; errors a package client
 /// meets keep FiGet's own answer, because what a client reads is part of the protocol.
 /// </summary>
 public sealed class ErrorPageTests(ErrorPageServerFixture server) : IClassFixture<ErrorPageServerFixture>
