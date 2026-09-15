@@ -93,9 +93,9 @@ public abstract partial class ExternalSignInTests
     }
 
     /// <summary>
-    /// One minute of clock skew either way, an expiry required, and the day-long cap. The cap is measured from now to the
-    /// expiry: a token issued seven hours ago for thirty hours has twenty-three left and passes, which is what the plan's
-    /// "valid for more than 24 hours is refused" comes to in practice.
+    /// One minute of clock skew either way, an expiry required, and the day-long cap. The cap is measured over the life the
+    /// token was issued for: a token issued seven hours ago for thirty hours has twenty-three left and is still refused
+    /// (this probe first recorded it passing; fixed 2026-09-15). One issued twelve hours ago for twenty-three passes.
     /// </summary>
     [Fact]
     public async Task Lifetime_allows_a_minute_of_skew_and_caps_the_remaining_validity_at_a_day()
@@ -115,7 +115,10 @@ public abstract partial class ExternalSignInTests
         HttpAssert.Status(HttpStatusCode.Unauthorized, await ReadIndexAsync(feed, Bearer(idp.CreateAccessToken(Audience(provider), claims, lifetime: TimeSpan.FromHours(25)))));
 
         var longLived = idp.CreateAccessToken(Audience(provider), claims, issuedAt: now.AddHours(-7), notBefore: now.AddHours(-7), expires: now.AddHours(23));
-        HttpAssert.Status(HttpStatusCode.OK, await ReadIndexAsync(feed, Bearer(longLived)));
+        HttpAssert.Status(HttpStatusCode.Unauthorized, await ReadIndexAsync(feed, Bearer(longLived)));
+
+        var dayLong = idp.CreateAccessToken(Audience(provider), claims, issuedAt: now.AddHours(-12), notBefore: now.AddHours(-12), expires: now.AddHours(11));
+        HttpAssert.Status(HttpStatusCode.OK, await ReadIndexAsync(feed, Bearer(dayLong)));
     }
 
     /// <summary>An empty nonce is still a nonce: the token is a sign-in's ID token and is refused.</summary>

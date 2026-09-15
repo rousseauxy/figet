@@ -70,8 +70,15 @@ public sealed class ApiTokenValidator(IServiceScopeFactory scopes, TimeProvider 
         IReadOnlyList<OidcProvider> providers;
         await using (var scope = scopes.CreateAsyncScope())
         {
-            providers = [.. (await scope.ServiceProvider.GetRequiredService<IOidcProviderStore>().ListAsync(cancellationToken))
-                .Where(p => p.AcceptApiTokens && issuer.Length > 0 && NormalIssuer(p.Authority) == issuer)];
+            var all = await scope.ServiceProvider.GetRequiredService<IOidcProviderStore>().ListAsync(cancellationToken);
+
+            // The keys of a provider that was deleted, or no longer accepts tokens, are not kept until the next restart.
+            foreach (var key in metadata.Keys.Where(key => !all.Any(p => p.Key == key && p.AcceptApiTokens)).ToList())
+            {
+                metadata.TryRemove(key, out _);
+            }
+
+            providers = [.. all.Where(p => p.AcceptApiTokens && issuer.Length > 0 && NormalIssuer(p.Authority) == issuer)];
         }
 
         if (providers.Count == 0)
@@ -147,7 +154,13 @@ public sealed class ApiTokenValidator(IServiceScopeFactory scopes, TimeProvider 
             return ExternalTokenCheck.Refused(provider.Slug, "an ID token, not an access token");
         }
 
-        if (validated.ValidTo - time.GetUtcNow().UtcDateTime > MaxLifetime)
+        // Measured over the whole life the token was issued for, from when it was issued or became valid, not only over what
+        // is left of it: a token minted for thirty hours is refused for all thirty, not only for its first six. A token that
+        // says neither when it was issued nor from when it is valid is held to what it has left.
+        var start = validated.TryGetPayloadValue<long>("iat", out _) ? validated.IssuedAt
+            : validated.TryGetPayloadValue<long>("nbf", out _) ? validated.ValidFrom
+            : time.GetUtcNow().UtcDateTime;
+        if (validated.ValidTo - start > MaxLifetime || validated.ValidTo - time.GetUtcNow().UtcDateTime > MaxLifetime)
         {
             return ExternalTokenCheck.Refused(provider.Slug, "valid for longer than a day");
         }
@@ -229,6 +242,13 @@ public sealed class ApiTokenValidator(IServiceScopeFactory scopes, TimeProvider 
             Task<OpenIdConnectConfiguration> task;
             lock (sync)
             {
+                // Looked at again under the lock: a request that found nothing a moment ago may arrive just after that fetch
+                // finished and was cleared, and must use its answer rather than start a second one.
+                if (configuration is { } fetched && !Stale(time.GetUtcNow().UtcDateTime, refreshKeys, keyRefreshInterval))
+                {
+                    return fetched;
+                }
+
                 task = fetching ??= FetchAsync(http, time);
             }
 

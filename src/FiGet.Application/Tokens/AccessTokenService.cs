@@ -84,6 +84,13 @@ public sealed class AccessTokenService(
     IGroupStore groups,
     IFeedPermissionStore permissions)
 {
+    /// <summary>
+    /// The last access token this request checked, with the answer. A refused token is described for the audit log right
+    /// after it was checked; keeping the answer means its signature is checked once per request, not twice, before the
+    /// anonymous rate limit applies. The service lives for one request.
+    /// </summary>
+    private (string Token, ExternalTokenCheck Check)? lastExternal;
+
     /// <summary>What an access token may carry at most: reading and publishing. Never a feed's settings, never admin.</summary>
     private const TokenScopes ExternalScopes = TokenScopes.Read | TokenScopes.Push | TokenScopes.Delete;
 
@@ -210,7 +217,7 @@ public sealed class AccessTokenService(
         // A signed token is never someone's password, so its refusal is always worth recording.
         if (IExternalTokenValidator.LooksLikeJwt(secret.Trim()))
         {
-            var check = await externalTokens.ValidateAsync(secret.Trim(), cancellationToken);
+            var check = await CheckExternalAsync(secret.Trim(), cancellationToken);
             return check.Identity is null
                 ? (check.ProviderSlug is null ? "access token" : $"access token from {check.ProviderSlug}", check.Reason)
                 : null;
@@ -282,7 +289,7 @@ public sealed class AccessTokenService(
     /// </summary>
     private async Task<ValidatedToken?> ValidateExternalAsync(string token, CancellationToken cancellationToken)
     {
-        var check = await externalTokens.ValidateAsync(token, cancellationToken);
+        var check = await CheckExternalAsync(token, cancellationToken);
         if (check.Identity is not { } identity)
         {
             return null;
@@ -292,6 +299,18 @@ public sealed class AccessTokenService(
         var links = claimed.Count == 0 ? [] : await groups.ProviderLinksForProviderAsync(identity.ProviderKey, cancellationToken);
         var groupKeys = links.Where(l => claimed.Contains(l.ProviderGroup)).Select(l => l.GroupKey).ToHashSet();
         return new ValidatedToken(0, identity.Caller, ExternalScopes, FeedKey: null, External: new ExternalCaller(identity.ProviderKey, identity.ProviderSlug, groupKeys));
+    }
+
+    private async Task<ExternalTokenCheck> CheckExternalAsync(string token, CancellationToken cancellationToken)
+    {
+        if (lastExternal is { } last && string.Equals(last.Token, token, StringComparison.Ordinal))
+        {
+            return last.Check;
+        }
+
+        var check = await externalTokens.ValidateAsync(token, cancellationToken);
+        lastExternal = (token, check);
+        return check;
     }
 
     public static string HashSecret(string secret) =>
