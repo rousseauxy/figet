@@ -830,6 +830,14 @@ public sealed class ConnectorService(
         published is { Year: > 1900 } date ? DateTime.SpecifyKind(date, DateTimeKind.Utc) : null;
 
     /// <summary>Copies what the upstream published onto a placeholder row.</summary>
+    /// <summary>
+    /// The padded lower-case tags of each described version, kept for as long as its description is. A PowerShell Gallery
+    /// module lists every command as a tag - about 60 KB a version - and lower-casing them again on every request was 95%
+    /// of a v2 page for a module with 2,101 versions: 280 ms of 290, measured 2026-09-16, so one Find-Module paid it 53
+    /// times. Keyed by the tag string itself, which the description cache holds, so an entry goes when the description does.
+    /// </summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<string, string> LowerTags = new();
+
     private static void Describe(PackageVersion row, UpstreamMetadata metadata)
     {
         row.Listed = metadata.Listed;
@@ -838,7 +846,7 @@ public sealed class ConnectorService(
         row.Title = metadata.Title;
         row.Authors = metadata.Authors;
         row.Tags = metadata.Tags;
-        row.TagsLower = " " + metadata.Tags.ToLowerInvariant() + " ";
+        row.TagsLower = LowerTags.GetValue(metadata.Tags, static tags => " " + tags.ToLowerInvariant() + " ");
         row.ProjectUrl = metadata.ProjectUrl;
         row.IconUrl = metadata.IconUrl;
         row.LicenseUrl = metadata.LicenseUrl;

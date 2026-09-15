@@ -1669,6 +1669,34 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         await db.CachedUpstreamIndexes.ExecuteDeleteAsync();
     }
 
+    /// <summary>
+    /// Listing a described upstream version again reuses its lower-cased tags instead of lower-casing them anew. For a module
+    /// with 2,101 versions and a command per tag that was 280 ms of a 290 ms v2 page, paid on each of Find-Module's 53 pages
+    /// (measured 2026-09-16). Asserted on the string instance rather than on a time, which a busy test run cannot promise.
+    /// </summary>
+    [Fact]
+    public async Task Listing_an_upstream_package_again_reuses_its_lower_cased_tags()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.TagReuse");
+        AddUpstream(id, "1.0.0");
+        AddUpstream(id, "1.1.0");
+
+        async Task<PackageVersion> ListAsync()
+        {
+            await using var scope = server.Services.CreateAsyncScope();
+            var feed = (await scope.ServiceProvider.GetRequiredService<IFeedStore>().FindAsync("proxy", CancellationToken.None))!;
+            var candidates = await scope.ServiceProvider.GetRequiredService<ConnectorService>().UpstreamCandidatesAsync(feed, id.ToLowerInvariant(), CancellationToken.None);
+            return candidates.Versions.Single(v => v.Version.ToNormalizedString() == "1.1.0").Payload!;
+        }
+
+        var first = await ListAsync();
+        var second = await ListAsync();
+
+        Assert.Contains(" psedition_desktop ", first.TagsLower, StringComparison.Ordinal);
+        Assert.StartsWith(" ", first.TagsLower, StringComparison.Ordinal);
+        Assert.Same(first.TagsLower, second.TagsLower);
+    }
+
     private void AddUpstream(string id, string version)
     {
         using var package = TestPackages.Create(id, version);
