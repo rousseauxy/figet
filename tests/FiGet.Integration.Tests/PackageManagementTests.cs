@@ -188,6 +188,25 @@ public abstract class PackageManagementTests
     }
 
     /// <summary>
+    /// A download through this API counts, as over v2 and v3: the version's download count and last use move. Found
+    /// cross-checking other package servers' issue trackers (2026-09-15): a copy fetched daily by a script looked unused.
+    /// </summary>
+    [Fact]
+    public async Task A_management_download_is_counted()
+    {
+        var id = FiGetServerFixture.UniqueId("Mgmt.Counted");
+        await PushAsync("public", id, "1.0.0");
+        using var client = server.CreateClient();
+
+        for (var i = 0; i < 2; i++)
+        {
+            HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync($"api/packages/public/download?name={id}&version=1.0.0"));
+        }
+
+        Assert.Equal(2, (long?)(await JsonArrayAsync(client, $"api/packages/public/versions?name={id}"))[0]!["downloads"]);
+    }
+
+    /// <summary>
     /// Found by running the reference client: before a download or a delete it asks what kind of feed this
     /// is, and without an answer it stops with 404 before sending the request it was asked to make.
     /// </summary>

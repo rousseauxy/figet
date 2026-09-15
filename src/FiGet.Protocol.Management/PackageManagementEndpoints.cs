@@ -10,6 +10,7 @@ using FiGet.Http;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace FiGet.Protocol.Management;
@@ -140,6 +141,10 @@ public static class PackageManagementEndpoints
         {
             return NotFound(name, version);
         }
+
+        // Counted like a v2 or v3 download: without it a copy a nightly script fetches here every day looked unused, and
+        // retention's KeepIfUsedWithinDays could prune it.
+        await store.IncrementDownloadsAsync(row.Key, http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime, cancellationToken);
 
         return Results.File(stream, "application/zip", $"{row.Package.Id}.{row.NormalizedVersion}.nupkg", enableRangeProcessing: true);
     }
