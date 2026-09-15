@@ -325,6 +325,39 @@ public sealed class ProxyServerFixture() : FiGetServerFixture(TestDatabase.Sqlit
             services.AddSingleton<IUpstreamClient>(new RoutingUpstreamClient(
                 Upstream,
                 new Dictionary<string, StubUpstreamClient>(StringComparer.OrdinalIgnoreCase) { ["secondary"] = SecondUpstream }));
+
+            // The real file storage, with writes failing for the ids a test names, as a full disk or a lost share does.
+            var registered = services.Last(d => d.ServiceType == typeof(IPackageStorage));
+            services.Remove(registered);
+            services.AddSingleton<IPackageStorage>(provider => new FailingPackageStorage(
+                (IPackageStorage)(registered.ImplementationFactory?.Invoke(provider) ?? registered.ImplementationInstance!),
+                FailingWrites));
         });
     }
+
+    /// <summary>Lower-cased ids whose package writes throw an <see cref="IOException"/>.</summary>
+    public ConcurrentDictionary<string, bool> FailingWrites { get; } = new(StringComparer.OrdinalIgnoreCase);
+}
+
+/// <summary>A package storage whose writes fail for chosen ids; everything else goes to the real storage.</summary>
+public sealed class FailingPackageStorage(IPackageStorage inner, ConcurrentDictionary<string, bool> failing) : IPackageStorage
+{
+    public Task SavePackageAsync(PackageStorageKey key, Stream nupkg, ReadOnlyMemory<byte> nuspec, bool overwrite, CancellationToken cancellationToken) =>
+        failing.ContainsKey(key.Id)
+            ? throw new IOException("There is not enough space on the disk.")
+            : inner.SavePackageAsync(key, nupkg, nuspec, overwrite, cancellationToken);
+
+    public Task<Stream?> OpenPackageAsync(PackageStorageKey key, CancellationToken cancellationToken) => inner.OpenPackageAsync(key, cancellationToken);
+
+    public Task<Stream?> OpenNuspecAsync(PackageStorageKey key, CancellationToken cancellationToken) => inner.OpenNuspecAsync(key, cancellationToken);
+
+    public Task DeletePackageAsync(PackageStorageKey key, CancellationToken cancellationToken) => inner.DeletePackageAsync(key, cancellationToken);
+
+    public Task SaveSymbolAsync(SymbolStorageKey key, Stream pdb, CancellationToken cancellationToken) => inner.SaveSymbolAsync(key, pdb, cancellationToken);
+
+    public Task<Stream?> OpenSymbolAsync(SymbolStorageKey key, CancellationToken cancellationToken) => inner.OpenSymbolAsync(key, cancellationToken);
+
+    public Task DeleteSymbolAsync(SymbolStorageKey key, CancellationToken cancellationToken) => inner.DeleteSymbolAsync(key, cancellationToken);
+
+    public Task DeleteFeedAsync(int feedKey, CancellationToken cancellationToken) => inner.DeleteFeedAsync(feedKey, cancellationToken);
 }

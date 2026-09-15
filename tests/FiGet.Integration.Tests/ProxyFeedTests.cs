@@ -958,6 +958,34 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         Assert.Equal(1, await CountAsync(pushedId, PackageOrigin.Pushed));
     }
 
+    /// <summary>
+    /// Storage that cannot be written while caching - a full disk, a lost share - answers 503 with a retry hint, not a bare
+    /// 500, leaves no row behind, and works again once storage does. Found cross-checking other package servers' issue
+    /// trackers (2026-09-15).
+    /// </summary>
+    [Fact]
+    public async Task A_storage_failure_while_caching_answers_503_and_stores_nothing()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.DiskFull");
+        AddUpstream(id, "1.0.0");
+        server.FailingWrites[id.ToLowerInvariant()] = true;
+        using var client = server.CreateClient();
+        try
+        {
+            var refused = await client.GetAsync($"nuget/proxy/package/{id}/1.0.0");
+            HttpAssert.Status(HttpStatusCode.ServiceUnavailable, refused);
+            Assert.Equal("60", refused.Headers.RetryAfter?.ToString());
+            Assert.Empty(await CachedVersionsAsync(id));
+        }
+        finally
+        {
+            server.FailingWrites.TryRemove(id.ToLowerInvariant(), out _);
+        }
+
+        HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync($"nuget/proxy/package/{id}/1.0.0"));
+        Assert.Equal(["1.0.0"], await CachedVersionsAsync(id));
+    }
+
     private async Task DeleteStoredFileAsync(string feedName, string idLower, string versionLower)
     {
         await using var scope = server.Services.CreateAsyncScope();

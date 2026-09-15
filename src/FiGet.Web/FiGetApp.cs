@@ -290,6 +290,17 @@ public static class FiGetApp
             {
                 ExceptionHandler = async context =>
                 {
+                    // Storage that cannot be written - a full disk, a lost share - is not the request's fault, and a client
+                    // or a script should come back rather than give up: 503 with a hint of when.
+                    if (context.Features.Get<IExceptionHandlerFeature>()?.Error is Application.Packages.PackageStorageUnavailableException)
+                    {
+                        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                        context.Response.Headers.RetryAfter = "60";
+                        context.Response.ContentType = "text/plain; charset=utf-8";
+                        await context.Response.WriteAsync($"The package could not be stored right now; try again shortly (request {context.TraceIdentifier}).");
+                        return;
+                    }
+
                     context.Response.StatusCode = StatusCodes.Status500InternalServerError;
                     context.Response.ContentType = "text/plain; charset=utf-8";
                     await context.Response.WriteAsync($"The server failed while handling the request (request {context.TraceIdentifier}).");

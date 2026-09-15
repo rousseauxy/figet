@@ -89,11 +89,16 @@ public sealed class PackageIngestionService(
             nupkg.Position = 0;
             await storage.SavePackageAsync(key, nupkg, indexed.Nuspec, overwrite: true, cancellationToken);
         }
-        catch
+        catch (Exception ex)
         {
             if (!existed)
             {
                 await store.DeleteVersionAsync(feed.Key, idLower, versionLower, CancellationToken.None);
+            }
+
+            if (ex is IOException or UnauthorizedAccessException)
+            {
+                throw new PackageStorageUnavailableException($"{indexed.Id} {normalized} could not be written to storage: {ex.Message}", ex);
             }
 
             throw;
