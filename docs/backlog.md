@@ -271,12 +271,13 @@ Each is Low, and none is reachable without an account that already has rights; i
 - ~~**S6.1, S6.3** Cap the nuspec entry read into memory at a few megabytes, and stream symbol PDBs to storage instead
   of holding each one whole.~~ Done 2026-09-14 (docs/status.md, "Four of the smaller review items").
 - ~~**S6.4** Validate an asset's content type set through the metadata call.~~ Done 2026-09-14, same entry.
-- **S9.2** A sweep or `figet verify` that lists files no row names: a failed delete or two concurrent replaces of an
-  asset leave one.
+- ~~**S9.2** A sweep or `figet verify` that lists files no row names.~~ Done 2026-09-15 as **Admin → Storage check**
+  (docs/status.md, "The last of the backlog").
 - ~~**Name uniqueness across feeds and alternate names** is a check in the store, not an index: a `Names` table with the
   unique index, written by both paths.~~ Done 2026-09-14 (docs/status.md, "Names as one table").
-- **Hash verification on v2 cache fill** (the v2 client library exposes the hash; v3 does not).
-- **S1.3** Locked-out and disabled answers say a name exists after five attempts; **S7.2** rate limits are per replica;
+- ~~**Hash verification on v2 cache fill.**~~ Done 2026-09-15, same entry.
+- ~~**S1.3** Locked-out answers say a name exists after five attempts.~~ Done 2026-09-15, same entry: a name nobody has locks
+  out after the same attempts. **S7.2** rate limits are per replica;
   the two connector display divergences (review 3.4). ~~S5.1 reserved IPv4 ranges; the appearance page's "Reload packs"
   acts on one replica.~~ Done 2026-09-14, same entry.
 - **A download attempt for an id no upstream lists** is still made per upstream. Kept on purpose: a package published a
@@ -295,14 +296,23 @@ Each is Low, and none is reachable without an account that already has rights; i
   header names as a setting: not built, since the scripts in use send `X-ApiKey`, which works; revisit if one sends
   another name.
 - ~~**Test evidence the cross-check found missing**~~: all fourteen tested 2026-09-15, same entry; none found a defect.
-- **Open questions a fixture would settle:** an upstream v2 feed with one unparsable version among valid ones (is the entry
-  dropped, or the whole id lost?); an uncached download through a redirect to another host or with a chunked body; whether a
-  client disconnecting mid-download logs an error each time; Chocolatey over v2; a UNC storage root on Windows.
+- ~~**Open questions a fixture would settle**~~: all five settled 2026-09-15 (docs/status.md, "The last of the backlog"). One
+  unparsable version on a v2 upstream lost the whole id - fixed; a redirected or chunked upstream download, a client
+  dropping a download, Chocolatey 2.7.4 and a UNC storage root all work as they should.
 - ~~**Plan and code disagree**~~: resolved 2026-09-15. Search reaching upstreams always is now what the build plan says; the
   total-size cache cap is dropped (see *Decided against*). An upstream that fails to answer is now not asked about unknown
   ids for 30 seconds, and a local test checks both providers' migrations against the model.
-- **Cross-check three more trackers** the same way: PSResourceGet's server and protocol issues (~150 of 936), Gitea's 50
-  `nuget` issues, and the ~40 v2-server compatibility issues in NuGet/Home.
+- ~~**Cross-check three more trackers**~~: done 2026-09-15 (PSResourceGet 936 issues, 246 read; Gitea's 50 NuGet issues;
+  NuGet/Home 1,588 screened, 110 read). All thirteen findings fixed the same day (docs/status.md, "Three more trackers").
+  Left from them:
+  - The asset upload routes raise their body limit inside the handler too, so a large asset upload that authenticates by
+    challenge may be reset like a package push was; not traced.
+  - Client behaviours to document for users, none a server can fix: a PSResourceGet registration URL ending in the feed
+    name or in `/api/v2/` with a slash leaves the repository type unknown (`Set-PSResourceRepository -ApiVersion V2`
+    fixes it); `-ApiKey` together with `-Credential` fails with 403; `Find-PSResource -Name *` lists every package twice
+    against any server but the gallery.
+  - Behaviours clients depend on that still have no test, listed in the Gitea and NuGet/Home reports, for example
+    `registration/{id}/{version}.json` leaves and a credentialed restore's challenge pairs.
 
 ## Decided against
 

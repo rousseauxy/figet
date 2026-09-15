@@ -3146,3 +3146,67 @@ separately.
   total-size cache cap (moved to *Decided against*).
 
 Suites: unit 213, integration 569, on SQLite and SQL Server; the full run twice after the last change.
+
+## The last of the backlog - 2026-09-15
+
+What was left under *Later* and the review items waiting on a decision, which the owner chose to take on.
+
+- **S1.3, lockout by name.** A name no local account has now locks out after the same five attempts as a real one, and a
+  locked account's refusal does the same password work as any other, so the answers no longer tell which names exist.
+  `AccountTests.A_name_nobody_has_locks_out_after_the_same_attempts_as_a_real_one` compares the six answers for a real and
+  an unknown name; falsified.
+- **Pinned base images:** `sdk:10.0.401` and `aspnet:10.0.12`, the SDK's bundled runtime (checked on the NAS's Docker).
+- **A client dropping a download** logs no error: `RequestLogTests.A_client_dropping_a_download_logs_no_error` (8 MB
+  package, 64 KB read, then closed).
+- **Upstream quirks,** against the real upstream client and loopback feeds (`UpstreamQuirkTests`):
+  - a download redirected to another host and sent chunked arrives whole;
+  - **one unparsable version on a v2 gallery lost the whole id**: NuGet's parser throws on it. The catalogue now falls back
+    to reading `FindPackagesById()` entry by entry through the repository's own HTTP source, keeping every valid version;
+    falsified by the test itself before the fix.
+  - A pause after an upstream fails (same day, earlier) no longer starts on an answer that could not be read - only on a
+    timeout, a refused or dropped connection or an HTTP failure - so one odd package does not pause the upstream.
+- **Hash check on v2 cache fill:** a v2 download is compared with the SHA-512 the gallery publishes for it
+  (`Packages(Id,Version)`); a mismatch is refused, never cached. Checked first against the PowerShell Gallery for
+  PSReadLine 2.3.6 and Pester 5.7.1: both match. `UpstreamQuirkTests.A_v2_download_is_checked_against_the_published_hash`;
+  falsified.
+- **S9.2, Admin → Storage check:** lists package, symbol and asset files no row names (older than an hour, uploads in
+  progress and dot-files left alone) and removes them on request, each checked again first; audited as
+  `storage.stray.removed`. `StorageCheckTests`: a stray version file and a gone feed's blob are listed and removed; a named
+  file and a fresh one are neither, even when a hand-made post names them; falsified on the age rule.
+- **A UNC storage root:** FiGet run on this machine with `Storage:Root` on the NAS share: push, v2 and v3 download (byte
+  identical), range request, asset upload, download and delete all answered as on local disk, no errors logged; the test
+  folder was removed afterwards.
+- **Chocolatey 2.7.4** (installed portably in the user profile): search, exact, all versions, info, install of a pinned
+  version, outdated, upgrade and uninstall all succeeded against a local FiGet; the requests are in `docs/protocol-v2.md`.
+
+## Three more trackers - 2026-09-15
+
+PSResourceGet, Gitea's NuGet registry and NuGet/Home were cross-checked the same way as the first three. Thirteen findings,
+all fixed, each with a test run failing against the code without the change:
+
+- **v3 service index without credentials** (Gitea #20717): `dotnet nuget push -k` and `Publish-PSResource -ApiKey` read the
+  index without the key and stopped at 401 on a private feed. The index now answers anyone; everything it points at still
+  asks. `NuGetV3Tests.A_private_feeds_service_index_answers_without_credentials_and_nothing_else_does`. Tests that used the
+  index as their "may this key read" probe now use `v3/query`.
+- **A bare credential challenge is not rate limited** (NuGet/Home #11600, #12514): clients with stored credentials send each
+  request once without them; those 401s used up the anonymous bucket and turned into 429s. `RateLimitTests` checks, with the
+  bucket empty, ten bare requests to a private feed still get 401 and a wrong password gets 429.
+- **A refused push's body is read before answering** (Gitea #21864, #33671): past 30 MB or 5 seconds the unread body reset
+  the connection and the client never saw the 401. `ChallengedPushTests` pushes 40 MB through a challenge to both roots.
+- **The same package pushed again restores a pushed version's missing file** (Gitea #39215).
+- **A module's v2 version is its manifest's text** (PSResourceGet #1908): '2.1' packed as 2.1.0 installed into a folder
+  PowerShell would not load. v3 stays normalised. Rows stored before keep their old spelling until pushed or cached again.
+- **PowerShell 7 instructions register `{feed}/api/v2`** (PSResourceGet #1657, #2030): over v3 PSResourceGet 1.2.0 can
+  install the wrong version and cannot search.
+- **Page sizes fit PSResourceGet's steps** (#1016): 6000 for a latest-only listing, 100 for tag and command searches.
+  `LargeFeedSearchTests.Pages_fit_the_steps_PSResourceGet_takes` replays the client's loops over 2,501 packages.
+- **v3 download addresses keep a prerelease label's case** (#1787).
+- **A feed named `nuget`** is warned about on its settings page, and `Packages(Id,Version)/Download` redirects (#1206,
+  #1896); the `/nuget/{feed}/nuget` alias is struck from the build plan.
+- **A batched `(Id eq 'a' or Id eq 'b')`** is looked up id by id, upstream included (#1045).
+- **v2 autocomplete** `package-ids` and `package-versions/{id}` (NuGet/Home #2896, #4279, #5377), with a GET route guard.
+- **`LegacyGallery/2.0.0`** in the service index, for `nuget list` on a v3 address (#3179).
+- **A warning, once, when an HTTPS proxy is in front but FiGet builds `http://` addresses** (NuGet/Home #13364). The live
+  instance hands out `https://` addresses and does not trigger it.
+
+Suites: unit 213, integration 596, on SQLite and SQL Server.
