@@ -5,7 +5,8 @@ tooling both work; proxy feeds that cache the PowerShell Gallery, nuget.org and 
 servers without internet access; asset
 directories for installers and scripts; and sign-in with the identity provider you already have.
 
-> **Status 2026-09-16:** feature-complete for a first release and running on a test instance. MIT licence.
+> **Status 2026-09-16:** released as 1.0.0, MIT licence. The image is `ghcr.io/rousseauxy/figet:1.0.0` (also
+> `:latest`), for `linux/amd64` and `linux/arm64`.
 >
 > This is the user guide. [README.md](../../README.md) is the short version, `docs/` beside it holds the build plan,
 > the protocol notes and the configuration reference.
