@@ -101,6 +101,10 @@ Each is Low, and none is reachable without an account that already has rights; i
   button is not, because `VACUUM` locks the whole database for its duration and a page is the wrong place to start a
   small outage. Worth revisiting with a size cap and a warning if anyone asks.
 - **A scheduled storage check.** Still a button. Unchanged from the entry above.
+- **Alerting on what the system page shows.** It reports a volume nearly full, a replica gone quiet and two versions
+  running at once; nothing tells anyone unless they open it. The change-report webhook is the obvious carrier, and the
+  hard part is not the sending but deciding what is worth waking someone for - so it waits until somebody has read the
+  page for a while and can say.
 
 ## Decided against
 
