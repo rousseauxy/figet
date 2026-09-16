@@ -25,8 +25,8 @@ server other people rely on, these are the settings that matter. Every key below
 - Retention, pruning the audit log and sweeping abandoned uploads run on one replica at a time, which takes a lease in the
   database. Nothing to configure.
 - Rate limits are counted per replica.
-- **Admin → Database** reports what the server is connected to, how large it is, which migration it is on, and when each
-  background job last started. See below.
+- **Admin → System** reports what is running, how many copies of it, how much room is left on the volume, and what the
+  database is doing. See below.
 
 ## The key ring
 
@@ -106,10 +106,24 @@ If the key ring is lost, everyone is signed out and has to sign in again; nothin
 exist, enabled, unlocked, made super administrator, given that password, and asked to choose a new one at sign-in. It
 runs on **every** start while the settings are there, and the log warns each time: remove them once you are back in.
 
-## What the database page tells you
+## What the system page tells you
 
-**Admin → Database** answers four questions and changes nothing. It counts no rows — every figure is a page count, a
-file size or a list of migrations — so it costs about as much as a health check and can be refreshed at will.
+**Admin → System** reports and changes nothing. It counts no rows and walks no files — every figure is a page count, a
+file size, a list of migrations or a handful of rows — so it costs about as much as a health check and can be refreshed
+at will.
+
+- **What is running**: the FiGet version, the .NET runtime, the operating system and the processor architecture (useful
+  on a mixed fleet, since the image is built for `amd64` and `arm64`), the public base URL, and the clock in UTC.
+- **Which copies are running.** Every instance writes a row once a minute saying it is there, with its version and when
+  it started; one that stops is listed as quiet and forgotten after two days. This is what makes a deployment of several
+  replicas visible: four pods are four rows. The page flags a count that differs from
+  `FiGet:Database:ExpectedReplicas` — which is what the server was *told* to expect, not a count of what is there — and
+  flags two versions running at once, which is a rolling update while it lasts and a stuck rollout afterwards. These
+  rows are a report: nothing reads them to decide anything, so a stale one costs a line on a page and not a job that
+  stops running.
+- **How much room is left** on the volume the storage root is on. A full volume fails a push, and nothing else on this
+  server can warn about it. It is the volume's free space, not FiGet's own footprint: what FiGet uses would mean walking
+  every stored file, which the storage check does on request.
 
 - **What you are connected to**: the engine and its version, the database file or `server / database`, and the journal
   mode (SQLite) or recovery model (SQL Server). The connection string is never shown: the page is given the host and the
@@ -122,8 +136,8 @@ file size or a list of migrations — so it costs about as much as a health chec
 - **Every background job**: its interval, when it last started, and what stops growing when it stops. A job switched off
   with `FiGet:Jobs:*` is marked — that is not a job running late, it is a table with nothing bounding it any more.
 
-Package, symbol and asset files are not in the database and not on this page; stray ones are the
-[storage check](#storage). "Last started" means a run began, not that it finished.
+Stray package, symbol and asset files are the [storage check](#storage). "Last started" means a run began, not that it
+finished.
 
 ## Health
 

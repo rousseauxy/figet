@@ -169,6 +169,14 @@ project replaces and its command-line client.
 | That release notes really are read from a v2 gallery | Same instance: an older `Az.Accounts` cached through the feed, so its 5.5.3 became an upstream row | 2026-09-16 | The notes were fetched once by the scheduled run, stored, and are served to the page from the database afterwards. `PnP.PowerShell` shows none because the gallery answers `m:null="true"` for that version - the module publishes no notes, which is not the same as our failing to read them |
 | Job intervals as settings | `JobIntervalTests` and `JobsOffTests` | 2026-09-16 | Every default is what the job did before; a zero interval means the background service is never registered, asserted by asking the built host for it |
 
+## What is running, and where
+
+| What was verified | How (client and version, command or request) | When | Result |
+|---|---|---|---|
+| That every copy says it is running | `ServerInstanceTests`, both providers | 2026-09-16 | The instance serving the tests writes its own row at start without being asked; a replica keeps one row however often it says so, and its version moves with it; an instance quiet for days is forgotten, and one seen a moment ago is not. Falsified: with the heartbeat not moving the time, both providers fail |
+| That an instance row decides nothing | Read of the code and the page | 2026-09-16 | Nothing reads these rows but the page. Which replica runs a job is still the lease, so a stale row costs a line on a page rather than a job that stops |
+| How much room is left | `FileSystemStorageSpace` against the live volume, 2026-09-16 | 2026-09-16 | The volume is found by the longest mount point containing the storage root, not by the path's root - on Linux the latter is `/` for every path and would report the container's filesystem instead of the mounted volume |
+
 ## What the database reports about itself
 
 | What was verified | How (client and version, command or request) | When | Result |
