@@ -21,6 +21,12 @@ public sealed class StubUpstreamClient : IUpstreamClient
 
     private readonly ConcurrentDictionary<string, bool> unlisted = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>When this upstream says it published a version, keyed "id|version"; the default below when absent.</summary>
+    private readonly ConcurrentDictionary<string, DateTime> published = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>What a version was published on when a test does not care. Fixed, so an assertion can name it.</summary>
+    public static readonly DateTime DefaultPublished = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
     private int versionCalls;
     private int downloadCalls;
     private int searchCalls;
@@ -141,6 +147,16 @@ public sealed class StubUpstreamClient : IUpstreamClient
     }
 
     /// <summary>
+    /// The same, for a version this upstream says it published on a particular day. A gallery's date is the one thing
+    /// a listing cannot invent for a version nobody has cached, so a test about dates has to be able to set it.
+    /// </summary>
+    public void Add(string id, string version, byte[] nupkg, DateTime publishedUtc)
+    {
+        Add(id, version, nupkg);
+        published[id + "|" + NuGetVersion.Parse(version).ToNormalizedString()] = publishedUtc;
+    }
+
+    /// <summary>
     /// Adds a version the upstream holds but no longer advertises, the way a gallery hides an old nightly.
     /// It must still be downloadable by exact version: a pinned dependency asks for one.
     /// </summary>
@@ -198,7 +214,7 @@ public sealed class StubUpstreamClient : IUpstreamClient
                 "",
                 "",
                 "",
-                new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                published.TryGetValue(idLower + "|" + v, out var publishedUtc) ? publishedUtc : DefaultPublished,
                 7,
                 !unlisted.ContainsKey(idLower + "|" + v),
                 dependencies.TryGetValue(idLower + "|" + v, out var declared) ? declared : []))

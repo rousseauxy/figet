@@ -285,12 +285,26 @@ public sealed class ConnectorService(
                 continue;
             }
 
-            foreach (var (idLower, cached) in await index.FindManyAsync(upstream.Key, asked, cancellationToken))
+            var found = await index.FindManyAsync(upstream.Key, asked, cancellationToken);
+
+            // The dates the upstream published these versions on, in one read for the whole page. Without them a
+            // version nobody has cached is served with PublishedUtc left at its default - the year 1 - because the
+            // catalogue keeps version numbers and the descriptions keep the dates. A client sorting on Published then
+            // puts the newest version last, and anything filtering on it (a report of what changed this week) drops
+            // exactly the versions it exists to find.
+            var dates = await descriptions.PublishedDatesAsync(
+                upstream.Key,
+                [.. found.Where(f => f.Value.Versions.Count > 0).Select(f => f.Key)],
+                cancellationToken);
+
+            foreach (var (idLower, cached) in found)
             {
                 if (cached.Versions.Count == 0)
                 {
                     continue;
                 }
+
+                dates.TryGetValue(idLower, out var publishedByVersion);
 
                 if (cached.Stale)
                 {
@@ -305,7 +319,7 @@ public sealed class ConnectorService(
                             cached.Unlisted?.Contains(v.Version.ToNormalizedString()) != true,
                             v.IsSemVer2,
                             VersionSource.Upstream,
-                            DescribedLike(Placeholder(idLower, v), newestLocal)))
+                            Published(DescribedLike(Placeholder(idLower, v), newestLocal), publishedByVersion)))
                         .ToList(),
                     cached.Id,
                     upstream.Name);
@@ -354,6 +368,22 @@ public sealed class ConnectorService(
         placeholder.PackageTypes = local.PackageTypes;
         placeholder.PackageTypesLower = local.PackageTypesLower;
         return placeholder;
+    }
+
+    /// <summary>
+    /// The date the upstream published this version, when it is stored. Both fields, as <see cref="Describe"/> sets
+    /// them: v2 reports Created, Published and LastUpdated from the same value, and a row that knows its publish date
+    /// but claims the year 1 for its last update is worse than one that knows neither.
+    /// </summary>
+    private static PackageVersion Published(PackageVersion row, IReadOnlyDictionary<string, DateTime>? publishedByVersion)
+    {
+        if (publishedByVersion?.TryGetValue(row.NormalizedVersion, out var published) == true)
+        {
+            row.PublishedUtc = published;
+            row.LastUpdatedUtc = published;
+        }
+
+        return row;
     }
 
     public async Task<PackageVersion?> EnsureCachedAsync(Feed feed, string id, NuGetVersion version, CancellationToken cancellationToken)

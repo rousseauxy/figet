@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
@@ -1524,6 +1525,43 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
     }
 
     /// <summary>Drops the in-memory descriptions for an id, which is what a restart does to them.</summary>
+    /// <summary>
+    /// A listing of a package this feed holds shows the gallery's own publish date for a version nobody has cached.
+    /// Measured live on 2026-09-16: of 66 rows on a real proxy feed, one reported 0001-01-01 - the stored catalogue
+    /// keeps version numbers while the dates live with the descriptions, and the listing path never read them. A
+    /// client sorting on Published put that version last, and a report filtering on it dropped the package entirely.
+    /// </summary>
+    [Fact]
+    public async Task A_version_only_the_upstream_holds_is_listed_with_the_gallerys_publish_date()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.PublishedDate");
+        var published = new DateTime(2026, 3, 4, 5, 6, 7, DateTimeKind.Utc);
+        AddUpstream(id, "1.0.0");
+        using (var newer = TestPackages.Create(id, "2.0.0"))
+        {
+            server.Upstream.Add(id, "2.0.0", newer.ToArray(), published);
+        }
+
+        // Cache 1.0.0, so the feed holds the id and a listing reaches it through the stored catalogue rather than
+        // through a live walk of the gallery.
+        using var client = server.CreateClient();
+        HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync($"nuget/proxy/package/{id}/1.0.0"));
+
+        // The one line this test turns on: with the descriptions still in memory the date could come from there, and
+        // the claim is that it survives a restart, which memory does not.
+        await ForgetDescriptionsAsync(id);
+
+        var body = await HttpAssert.SuccessBodyAsync(await client.GetAsync(
+            $"nuget/proxy/Search()?$filter=IsLatestVersion&searchTerm=''&targetFramework=''&includePrerelease=false&$skip=0&$top=100"));
+        var entry = XDocument.Parse(body).Root!
+            .Elements(Atom + "entry")
+            .Single(e => string.Equals(Property(e, "Id"), id, StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal("2.0.0", Property(entry, "Version"));
+        Assert.Equal(published, DateTime.Parse(Property(entry, "Published"), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal));
+        Assert.Equal(published, DateTime.Parse(Property(entry, "LastUpdated"), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal));
+    }
+
     private async Task ForgetDescriptionsAsync(string id)
     {
         await using var scope = server.Services.CreateAsyncScope();

@@ -76,6 +76,38 @@ public sealed class EfUpstreamDescriptionStore(FiGetDbContext db, DbContextOptio
         return described;
     }
 
+    public async Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, DateTime>>> PublishedDatesAsync(
+        int feedUpstreamKey,
+        IReadOnlyCollection<string> idsLower,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(idsLower);
+        var dates = new Dictionary<string, IReadOnlyDictionary<string, DateTime>>(StringComparer.Ordinal);
+        foreach (var chunk in idsLower.Distinct(StringComparer.Ordinal).Chunk(LookupBatch))
+        {
+            // Three columns. Reading the rows themselves would pull every description and every tag list of every
+            // version of every id on the page, which is exactly what this store exists to avoid.
+            var rows = await db.CachedUpstreamDescriptions
+                .AsNoTracking()
+                .Where(d => d.FeedUpstreamKey == feedUpstreamKey && chunk.Contains(d.IdLower) && d.PublishedUtc != null)
+                .Select(d => new { d.IdLower, d.NormalizedVersion, d.PublishedUtc })
+                .ToListAsync(cancellationToken);
+
+            foreach (var group in rows.GroupBy(r => r.IdLower, StringComparer.Ordinal))
+            {
+                var byVersion = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+                foreach (var row in group)
+                {
+                    byVersion[row.NormalizedVersion] = row.PublishedUtc!.Value;
+                }
+
+                dates[group.Key] = byVersion;
+            }
+        }
+
+        return dates;
+    }
+
     public async Task SaveAsync(int feedUpstreamKey, string idLower, IReadOnlyList<UpstreamMetadata> described, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(described);

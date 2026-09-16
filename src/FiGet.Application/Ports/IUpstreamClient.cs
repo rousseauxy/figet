@@ -153,6 +153,18 @@ public interface IUpstreamDescriptionStore
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// When this upstream published each version of these ids, by lower-cased id and then by normalised version.
+    /// Three columns of a stored description and no more: the description text and the tag sets are the hundred
+    /// megabytes that must stay out of memory, and a listing of a version nobody has cached needs only the date -
+    /// without it that version is served as published in the year 1, which a client sorting on the date reads as the
+    /// oldest thing in the feed and a report filtering on it drops.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, DateTime>>> PublishedDatesAsync(
+        int feedUpstreamKey,
+        IReadOnlyCollection<string> idsLower,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Stores what was not stored yet, and forgets versions the upstream no longer describes. An empty list changes
     /// nothing: an upstream that described nothing has not said the descriptions are gone.
     /// </summary>
