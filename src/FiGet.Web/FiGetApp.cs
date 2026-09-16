@@ -110,6 +110,7 @@ public static class FiGetApp
             provider.GetRequiredService<FiGetDbContext>(),
             Path.Combine(provider.GetRequiredService<StoragePaths>().Root, "files"),
             provider.GetRequiredService<TimeProvider>()));
+        services.AddScoped<IDatabaseFacts, FiGet.Infrastructure.Persistence.DatabaseFactsReader>();
         services.AddSingleton<IAssetStorage>(provider => new FileSystemAssetStorage(Path.Combine(provider.GetRequiredService<StoragePaths>().Root, "files")));
         services.AddSingleton(provider => new TempFileSettings { Root = provider.GetRequiredService<IOptions<FiGetOptions>>().Value.Storage.TempPath });
         services.AddSingleton(provider => new ShareFolderSettings { Root = provider.GetRequiredService<IOptions<FiGetOptions>>().Value.Assets.SharesRoot });
