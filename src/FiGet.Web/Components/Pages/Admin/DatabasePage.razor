@@ -1,0 +1,202 @@
+@page "/admin/database"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@layout AdminLayout
+@using FiGet.Web.Configuration
+@using FiGet.Web.Security
+@using Microsoft.Extensions.Options
+@inject IDatabaseFacts Facts
+@inject IJobLeaseStore Leases
+@inject IOptions<FiGetOptions> Options
+@inject KeyRingMasterKey MasterKey
+
+@*
+    What the database is, how large, how current, and whether anything is keeping it in check. Read-only on purpose:
+    every setting it names is edited where it belongs, and a page that can rebuild or lock a database is a page that can
+    take the server down from a browser.
+
+    It counts no rows. Everything here is a page count, a file size or a list of migrations, so an administrator may
+    refresh it as often as they like.
+*@
+
+<PageTitle>Database · admin · FiGet</PageTitle>
+
+<h1>Database</h1>
+<p class="fg-lede">
+    Where this server keeps everything but the package files themselves, and what keeps it from growing without end.
+    Stored files are the <a href="/admin/storage">storage check</a>.
+</p>
+
+@if (facts is null)
+{
+    <div class="fg-alert fg-alert-danger" role="alert">
+        The database did not answer. It is reachable - this page needed it to load - but it refused the questions this
+        page asks; the server log has the reason.
+    </div>
+    return;
+}
+
+@if (facts.PendingMigrations.Count > 0)
+{
+    <div class="fg-alert fg-alert-danger" role="alert">
+        <strong>@facts.PendingMigrations.Count @(facts.PendingMigrations.Count == 1 ? "migration has" : "migrations have") not been applied.</strong>
+        This build expects a newer schema than this database has, so anything the new schema added will fail.
+        <code>FiGet:Database:MigrateOnStartup</code> is @(Options.Value.Database.MigrateOnStartup ? "on, so the last start could not apply them" : "off, so nothing will apply them"):
+        @string.Join(", ", facts.PendingMigrations)
+    </div>
+}
+
+<section class="fg-panel">
+    <h2>This database</h2>
+    <dl class="fg-facts">
+        <dt>Engine</dt>
+        <dd>@(facts.Engine == DatabaseEngine.SqlServer ? "Microsoft SQL Server" : "SQLite") @facts.EngineVersion</dd>
+
+        <dt>@(facts.Engine == DatabaseEngine.SqlServer ? "Server and database" : "File")</dt>
+        <dd>@facts.Location</dd>
+
+        <dt>@(facts.Engine == DatabaseEngine.SqlServer ? "Recovery model" : "Journal mode")</dt>
+        <dd>
+            @facts.Mode
+            @if (facts.Engine == DatabaseEngine.SqlServer && facts.Mode == "FULL")
+            {
+                <span class="fg-muted"> — the log is kept until a log backup frees it, so this needs one scheduled.</span>
+            }
+        </dd>
+
+        <dt>Schema</dt>
+        <dd>
+            @(facts.AppliedMigrations.Count == 0 ? Display.None : facts.AppliedMigrations[^1])
+            <span class="fg-muted">(@Display.Count(facts.AppliedMigrations.Count) applied)</span>
+        </dd>
+
+        <dt>Replicas</dt>
+        <dd>
+            @Options.Value.Database.ExpectedReplicas configured
+            <span class="fg-muted">— one of them runs each job below, whichever holds its lease.</span>
+        </dd>
+
+        <dt>Key ring</dt>
+        <dd>
+            @if (MasterKey.IsSet)
+            {
+                <span>Encrypted with <code>FiGet:DataProtection:MasterKey</code>. Keep that key, and keep it apart from the database backup: without it the stored webhook address and every provider secret cannot be read.</span>
+            }
+            else
+            {
+                <span class="fg-badge fg-badge-warn">Not encrypted</span>
+                <span>Anyone who can read this database can forge a sign-in cookie and read the stored webhook address. Set <code>FiGet:DataProtection:MasterKey</code> from a secret.</span>
+            }
+        </dd>
+    </dl>
+</section>
+
+<section class="fg-panel">
+    <h2>Size</h2>
+    <dl class="fg-facts">
+        <dt>Total</dt>
+        <dd>@Display.Size(facts.SizeBytes)@(facts.Engine == DatabaseEngine.Sqlite ? ", including the write-ahead log" : "")</dd>
+
+        @if (facts.LogSizeBytes > 0)
+        {
+            <dt>Transaction log</dt>
+            <dd>@Display.Size(facts.LogSizeBytes)</dd>
+        }
+
+        <dt>Reclaimable</dt>
+        <dd>
+            @Display.Size(facts.ReclaimableBytes)
+            <span class="fg-muted">— already inside the total, and reused before the database grows again.</span>
+        </dd>
+    </dl>
+    <p class="fg-muted fg-small">
+        Package, symbol and asset files are not in here: they are on the storage volume, and their size is the feeds'
+        own pages. What is in here is the index of them, the descriptions cached from upstreams, the audit log and the
+        usage counts.
+    </p>
+</section>
+
+<section class="fg-panel">
+    <h2>Jobs</h2>
+    <p class="fg-muted fg-small">
+        These are what keep the database from growing without end. A job that is off is not a job that is behind: nothing
+        will ever remove what it was removing. "Last started" is when a run began, not that it finished.
+    </p>
+    <div class="fg-table-wrap">
+        <table class="fg-table">
+            <thead>
+                <tr>
+                    <th scope="col">Job</th>
+                    <th scope="col">Every</th>
+                    <th scope="col">Last started</th>
+                    <th scope="col">What it bounds</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var job in Jobs())
+                {
+                    <tr>
+                        <td>@job.Label</td>
+                        <td>
+                            @if (JobsOptions.Runs(job.Interval))
+                            {
+                                @Display.Every(job.Interval)
+                            }
+                            else
+                            {
+                                <span class="fg-badge fg-badge-warn" title="The interval is zero, so this job is not registered at all">off</span>
+                            }
+                        </td>
+                        <td>
+                            @if (Lease(job.Name) is { TakenUtc: { } taken })
+                            {
+                                @Display.Date(taken)
+                            }
+                            else
+                            {
+                                <span class="fg-muted" title="No run has taken this job's lease against this database">never</span>
+                            }
+                        </td>
+                        <td class="fg-muted">@job.Bounds</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    private DatabaseFacts? facts;
+    private IReadOnlyList<JobLeaseState> leases = [];
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        facts = await Facts.ReadAsync(HttpContext.RequestAborted);
+        leases = await Leases.ListAsync(HttpContext.RequestAborted);
+    }
+
+    private JobLeaseState? Lease(string name) => leases.FirstOrDefault(l => l.Name == name);
+
+    /// <summary>
+    /// Every job that takes a lease, with what stops growing when it stops. The list is written out rather than derived,
+    /// because "what it bounds" is the sentence an operator needs and no job knows it about itself.
+    /// </summary>
+    private IEnumerable<JobRow> Jobs()
+    {
+        var jobs = Options.Value.Jobs;
+        yield return new(JobLeaseNames.Retention, "Retention and cache pruning", jobs.Retention, "Package versions past each feed's retention rules, and cached copies past its pruning age.");
+        yield return new(JobLeaseNames.AuditPrune, "Audit prune", jobs.AuditPrune, AuditBound());
+        yield return new(JobLeaseNames.UsagePrune, "Usage prune", jobs.UsagePrune, "Per-feed download and search counts older than ninety days.");
+        yield return new(JobLeaseNames.UploadSweep, "Upload sweep", jobs.UploadSweep, "Multipart uploads nobody finished. Files on the volume, not rows here.");
+        yield return new(JobLeaseNames.CatalogueSweep, "Catalogue sweep", jobs.CatalogueSweep, "Nothing: it refreshes what upstreams offer rather than removing anything.");
+        yield return new(JobLeaseNames.ChangeReport, "Change report", jobs.ChangeReport, "Nothing: it reports what changed, and keeps release notes current.");
+    }
+
+    private string AuditBound() => Options.Value.Audit.RetentionDays > 0
+        ? $"Audit entries older than {Options.Value.Audit.RetentionDays} days (FiGet:Audit:RetentionDays)."
+        : "Nothing: FiGet:Audit:RetentionDays is 0, so audit entries are kept for ever.";
+
+    private sealed record JobRow(string Name, string Label, TimeSpan Interval, string Bounds);
+}

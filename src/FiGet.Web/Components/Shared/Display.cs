@@ -40,6 +40,21 @@ public static class Display
     public static string Count(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
 
     /// <summary>
+    /// How often something happens, in the largest whole unit that fits: "6 hours", "90 minutes", "2 days". A schedule
+    /// nobody can read at a glance is a schedule nobody checks.
+    /// </summary>
+    public static string Every(TimeSpan interval) => interval switch
+    {
+        { TotalDays: >= 1 } when interval.TotalDays == Math.Floor(interval.TotalDays) => Plural(interval.TotalDays, "day"),
+        { TotalHours: >= 1 } when interval.TotalHours == Math.Floor(interval.TotalHours) => Plural(interval.TotalHours, "hour"),
+        { TotalMinutes: >= 1 } when interval.TotalMinutes == Math.Floor(interval.TotalMinutes) => Plural(interval.TotalMinutes, "minute"),
+        _ => interval.ToString("g", CultureInfo.InvariantCulture),
+    };
+
+    private static string Plural(double value, string unit) =>
+        value.ToString("0", CultureInfo.InvariantCulture) + " " + unit + (value == 1 ? "" : "s");
+
+    /// <summary>
     /// A package id that may break after its dots. Ids are long and unspaced -
     /// <c>Microsoft.Entra.CertificateBasedAuthentication</c> - so in a narrow column they broke at any
     /// character, mid-word: "Microsoft.Entra.A / pplications". A break opportunity after each dot lets the
