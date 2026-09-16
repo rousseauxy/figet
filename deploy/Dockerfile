@@ -29,12 +29,20 @@ RUN dotnet restore src/FiGet.Web/FiGet.Web.csproj
 
 COPY src/ src/
 
+# What this build is, stamped into the assembly so the server can say it: the pages show it, and a support question that
+# starts with "which version?" should not need the image tag the operator may no longer remember pulling.
+#
+# The default is the SDK's own, which this server reads as "nobody said" - so a local build reports no version rather
+# than inventing one, and only a release build that passes the tag claims to be a release.
+ARG VERSION=1.0.0
+
 # Deliberately NOT --no-restore, however wasteful that looks next to the restore layer above.
 # With it, the publish skipped composing static web assets: on 2026-09-12 the framework script was
 # missing from the image while the app started and passed its health checks. That script is gone since
 # the pages became fully static, but the stylesheet and script are served through the same composed
 # manifest. The restore layer is still worth keeping: this re-uses it.
-RUN dotnet publish src/FiGet.Web/FiGet.Web.csproj -c Release -o /app -p:UseAppHost=false
+RUN dotnet publish src/FiGet.Web/FiGet.Web.csproj -c Release -o /app -p:UseAppHost=false \
+    -p:Version="$VERSION" -p:InformationalVersion="$VERSION"
 
 # Fail here rather than shipping that: nothing throws, so nothing in the log would say so.
 RUN test -f /app/FiGet.Web.staticwebassets.endpoints.json && test -f /app/wwwroot/app.css \

@@ -127,6 +127,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # This job has no metadata step - that one belongs to the manifest job below - and the tag is what it is building.
+      - name: Name this build after the tag
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v6
@@ -134,6 +139,9 @@ jobs:
           context: .
           file: deploy/Dockerfile
           platforms: ${{ matrix.platform }}
+          # So the running server can say which release it is, without anyone reading the image tag back off the cluster.
+          build-args: |
+            VERSION=${{ steps.version.outputs.value }}
           outputs: type=image,name=ghcr.io/${{ github.repository }},push-by-digest=true,name-canonical=true,push=true
 
       # Named by the bare hex: an artifact file name may not contain the colon of "sha256:".
