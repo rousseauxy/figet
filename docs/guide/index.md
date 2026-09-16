@@ -86,6 +86,7 @@ feeding FiGet groups. Personal API keys never do more than their owner may.
 
 ## At a glance
 
+- A **What's new** report per feed: what it gained, and where a gallery has moved ahead of it
 - NuGet v3: service index, registration, flat container, search, autocomplete, push, delete, symbols
 - NuGet v2 OData: the subset the clients send, on both `/nuget/{feed}` and `/nuget/{feed}/api/v2`
 - Feeds for PowerShell modules, NuGet packages or Chocolatey packages, each refusing the other kinds on push
@@ -122,6 +123,11 @@ One container image, built for the strictest target and therefore fine everywher
 
 - [Asset directories](asset-directories.md): FiGet's own storage or a folder on the server, who may download and list,
   allowed networks and cache modes.
+- [What's new](whats-new.md): what each feed gained and what its upstreams now offer for the packages it holds, on a
+  page, as JSON, or posted to a webhook on a schedule.
+- [PowerShell clients](powershell-clients.md): registering PowerShellGet and PSResourceGet, credentials, and the
+  client behaviours worth knowing before they cost an afternoon.
+- [API access tokens](api-access-tokens.md): a token from your identity provider or CI system used as a FiGet key.
 - [Running in production](running-in-production.md): proxies, replicas, secrets and storage.
 - [Sign-in with Microsoft Entra ID](sign-in-entra-id.md): app registration, app roles mapped to FiGet groups, and
   the provider settings in FiGet.

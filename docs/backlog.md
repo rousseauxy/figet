@@ -74,6 +74,23 @@ Each is Low, and none is reachable without an account that already has rights; i
 - **Extra API-key header names as a setting.** Not built: the scripts in use send `X-ApiKey`, which works. Revisit if a
   client sends another name.
 
+### Left out of the change report (built 2026-09-16)
+
+- **`GetUpdates()` batching for the catalogue sweep.** A v2 gallery answers "anything newer for these ids" in one
+  request, and FiGet already serves that shape itself. The sweep refreshes one id at a time instead, which is bounded
+  but not cheap for a feed of hundreds. Worth doing when a sweep starts taking longer than the day it runs on.
+- **A Matrix sender of FiGet's own.** Matrix has no incoming webhook: it needs a room id and an access token against
+  its client API. That is a second kind of credential and a URL shape that is not a webhook, so a relay - which every
+  Matrix deployment already has for its other alerts - does the job today.
+- **E-mail.** No SMTP anywhere in this server, and adding it means a mail library, credentials, retries and bounce
+  handling. A webhook plus whatever already sends mail is smaller.
+- **Release notes for a v3 upstream.** A registration leaf carries none, and the catalog resource that would is a
+  non-goal (build plan section 2). Those rows show a link instead.
+- **A scheduled storage check.** The button exists; nobody asked for it to run by itself. It would be a lease name and
+  an interval, in the shape the other jobs now have.
+- **Per-feed body formats.** One format per server today. A second per-feed setting beside the address if two feeds
+  ever need different shapes.
+
 ## Decided against
 
 - **Scanning uploads for malware** (designed 2026-09-14, dropped by the owner 2026-09-16). A ClamAV daemon beside FiGet,

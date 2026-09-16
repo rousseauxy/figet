@@ -220,6 +220,35 @@ the row is still stored.
 |---|---|---|
 | `FiGet:Audit:RetentionDays` | `365` | Entries older than this are deleted. `0` keeps them forever. How often the check runs is `FiGet:Jobs:AuditPrune`; it takes a lease in the database first, so with several replicas one of them prunes and the others skip it. |
 
+## FiGet:Changes
+
+A report per feed of what it gained and what its upstreams now offer for the packages it holds - the answer to "has
+anything we depend on moved?". Every feed shows it on its own **What's new** page and answers
+`GET /api/packages/{feed}/changes?days=N`; these settings are only about posting it somewhere.
+
+The address is a **secret**: a Teams, Slack or Power Automate webhook carries its token in its path. It can be set here
+from the environment, or on **Admin > Change reports**, where it is stored encrypted with the data-protection key ring
+and shown back as a host only. A stored address wins over this one, and a feed's own address (set the same way) wins
+over both - which is how one webhook per channel is done. Without `FiGet:DataProtection:MasterKey` that key ring sits
+unencrypted in the database, so set one.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `FiGet:Changes:Webhook:Url` | empty | Where to post. Empty, and with nothing stored on the pages, nothing is posted. **A secret**: set it from the environment (`FiGet__Changes__Webhook__Url`). |
+| `FiGet:Changes:Webhook:Format` | `Json` | `Json` for an automation runner or a relay; `Chat` writes one summary into both `content` and `text`, which a plain Discord or Slack webhook renders as it is; `Teams` posts an adaptive card, for a flow that forwards the body to Teams as one. |
+| `FiGet:Changes:Webhook:Feeds` | empty | Feed names to report on. Empty: every package feed. |
+| `FiGet:Changes:Webhook:MaxDays` | `7` | The longest window one report may cover, so a server that was off for a month posts a week of change rather than a wall. |
+| `FiGet:Changes:Webhook:SendWhenEmpty` | `false` | Whether a report with nothing in it is posted. Off: silence means nothing moved. |
+| `FiGet:Changes:Webhook:HeaderName` | empty | One extra request header, for a relay that authenticates with a bearer token rather than a token in the URL. |
+| `FiGet:Changes:Webhook:HeaderValue` | empty | Its value. **A secret**; from the environment. |
+| `FiGet:Changes:Webhook:Timeout` | `00:00:30` | How long one post may take. |
+| `FiGet:Changes:Webhook:AllowPrivateNetworks` | `false` | Whether the receiver may be on a private or loopback address, as an internal relay is. The link-local block stays refused either way. |
+| `FiGet:Changes:Webhook:MaxNotes` | `25` | How many versions one run may fetch release notes for. Only versions an upstream offers and nobody here has fetched need it; what a feed holds carries its own. `0` switches the fetching off. |
+
+Two things this deliberately does not do. It follows no redirect - a 3xx would re-send the whole body to an address
+nobody vetted - and it never writes the address anywhere: a page, a log line and an audit entry all say the host and
+no more. How often it runs is `FiGet:Jobs:ChangeReport`; a feed's routing label is on the feed's own settings page.
+
 ## FiGet:Jobs
 
 How often each background job runs. Every default is what that job did before these settings existed, so an instance
@@ -237,6 +266,7 @@ replica owns it.
 | `FiGet:Jobs:UploadSweep` | `01:00:00` | Removing multipart uploads nobody finished (`FiGet:Assets:IncompleteUploadExpiry`). |
 | `FiGet:Jobs:UsagePrune` | `1.00:00:00` | Deleting usage counts past ninety days. |
 | `FiGet:Jobs:CatalogueSweep` | `1.00:00:00` | Refreshing the stored upstream catalogue of every id a proxy feed holds, so a package nobody browsed is still known to have moved. |
+| `FiGet:Jobs:ChangeReport` | `1.00:00:00` | Posting each feed's change report, and keeping release notes current for the feeds' own pages. |
 
 Two schedules are deliberately not settings. Usage counts are flushed from memory to the database every minute: that
 is the write path rather than a schedule, and switching it off would lose counts instead of deferring them. And every
