@@ -75,6 +75,7 @@ Applies to every proxy feed. Upstreams themselves are configured per feed, above
 | --- | --- | --- |
 | `UpstreamIndexTtl` | `00:05:00` | How old one upstream's cached catalogue for a package may get before it is fetched again. Not an expiry: a catalogue older than this is still served immediately and refreshed behind the request, so only the first ever view of a package waits for the upstream. A new upstream release becomes visible to the reader after this window, on the view that follows the refresh. |
 | `UpstreamTimeout` | `00:00:30` | How long one upstream call may take before that upstream counts as unavailable for this request. Listing a package with hundreds of versions on a v2 gallery is a paged walk of several megabytes, so this is not the latency of one request. A timeout is treated as "the upstream did not answer": the last known list is served and nothing is considered withdrawn. |
+| `SweepMaxIdsPerFeed` | `1000` | The most ids the catalogue sweep refreshes per feed in one run; the rest wait for the next. A warning names the feed when it is reached. The real bound is elsewhere: refreshes are fetched one at a time, and only for ids this feed already holds. |
 | `MaxDescribedPackages` | `500` (`0` or less means the default) | Package ids one replica keeps upstream descriptions in memory for before dropping the oldest. The descriptions are the large part and every replica holds its own copy, so this decides the memory a busy instance settles at. Lowering it costs listings their description text until the next refresh, never their correctness. |
 
 ## FiGet:Theming
@@ -235,6 +236,7 @@ replica owns it.
 | `FiGet:Jobs:AuditPrune` | `06:00:00` | Deleting audit entries past `FiGet:Audit:RetentionDays`. |
 | `FiGet:Jobs:UploadSweep` | `01:00:00` | Removing multipart uploads nobody finished (`FiGet:Assets:IncompleteUploadExpiry`). |
 | `FiGet:Jobs:UsagePrune` | `1.00:00:00` | Deleting usage counts past ninety days. |
+| `FiGet:Jobs:CatalogueSweep` | `1.00:00:00` | Refreshing the stored upstream catalogue of every id a proxy feed holds, so a package nobody browsed is still known to have moved. |
 
 Two schedules are deliberately not settings. Usage counts are flushed from memory to the database every minute: that
 is the write path rather than a schedule, and switching it off would lose counts instead of deferring them. And every

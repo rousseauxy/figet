@@ -163,6 +163,10 @@ public static class FiGetApp
         services.AddSingleton<UpstreamRefreshQueue>();
         services.AddSingleton<IUpstreamRefreshQueue>(sp => sp.GetRequiredService<UpstreamRefreshQueue>());
         services.AddHostedService<UpstreamRefreshService>();
+        if (RunsJob(builder.Configuration, nameof(JobsOptions.CatalogueSweep), defaults.Jobs.CatalogueSweep))
+        {
+            services.AddHostedService<CatalogueSweepService>();
+        }
         services.AddScoped<ConnectorService>();
         services.AddScoped<FiGet.Application.Reports.ChangeReportService>();
         services.AddScoped<DependencyPuller>();

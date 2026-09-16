@@ -186,6 +186,13 @@ public sealed class ConnectorOptions
     /// what a client needs to resolve a package is in the database.
     /// </summary>
     public int MaxDescribedPackages { get; set; } = UpstreamMetadataCache.DefaultMaxPackages;
+
+    /// <summary>
+    /// The most ids the catalogue sweep refreshes per feed in one run. The bound that matters is elsewhere - the
+    /// refresh worker fetches one catalogue at a time - so this is a guard against a feed that grew past what anyone
+    /// expected, and hitting it logs a warning naming the feed rather than quietly doing half the work for ever.
+    /// </summary>
+    public int SweepMaxIdsPerFeed { get; set; } = 1000;
 }
 
 public sealed class AuthOptions
@@ -244,6 +251,9 @@ public sealed class JobsOptions
 
     /// <summary>Deleting usage counts past their retention.</summary>
     public TimeSpan UsagePrune { get; set; } = TimeSpan.FromDays(1);
+
+    /// <summary>Refreshing the stored upstream catalogue of every id a proxy feed holds.</summary>
+    public TimeSpan CatalogueSweep { get; set; } = TimeSpan.FromDays(1);
 
     public static bool Runs(TimeSpan interval) => interval > TimeSpan.Zero;
 }

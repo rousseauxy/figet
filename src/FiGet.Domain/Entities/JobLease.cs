@@ -21,6 +21,9 @@ public static class JobLeaseNames
 {
     public const string Retention = "retention";
 
+    /// <summary>Deliberately not "upstream-sweep": one character from "upload-sweep" is a lease waiting to be confused.</summary>
+    public const string CatalogueSweep = "catalogue-sweep";
+
     public const string AuditPrune = "audit-prune";
 
     public const string UploadSweep = "upload-sweep";

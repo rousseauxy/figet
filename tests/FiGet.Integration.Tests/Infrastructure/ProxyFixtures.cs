@@ -37,6 +37,11 @@ public sealed class StubUpstreamClient : IUpstreamClient
     /// <summary>The same count under the name the one-walk rule is about.</summary>
     public int CatalogCalls => Volatile.Read(ref versionCalls);
 
+    private readonly ConcurrentDictionary<string, int> catalogCallsById = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>How often this upstream was asked for one id's catalogue.</summary>
+    public int CatalogCallsFor(string id) => catalogCallsById.TryGetValue(id.ToLowerInvariant(), out var count) ? count : 0;
+
     public int DownloadCalls => Volatile.Read(ref downloadCalls);
 
     public int SearchCalls => Volatile.Read(ref searchCalls);
@@ -183,8 +188,10 @@ public sealed class StubUpstreamClient : IUpstreamClient
     public async Task<UpstreamCatalog> GetCatalogAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken)
     {
         // Counted on the way in, before the gate: a test holding the upstream needs to see that a caller
-        // arrived, not only that one finished.
+        // arrived, not only that one finished. Per id as well as in total, because "this package was never
+        // asked about" is a different claim from "fewer calls happened".
         Interlocked.Increment(ref versionCalls);
+        catalogCallsById.AddOrUpdate(idLower, 1, (_, count) => count + 1);
         if (Volatile.Read(ref catalogGate) is { } gate)
         {
             await gate.Task.WaitAsync(cancellationToken);
