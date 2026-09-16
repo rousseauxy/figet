@@ -1,30 +1,151 @@
-@page "/admin/database"
+@page "/admin/system"
 @attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
 @layout AdminLayout
+@using System.Runtime.InteropServices
 @using FiGet.Web.Configuration
+@using FiGet.Web.Connectors
 @using FiGet.Web.Security
 @using Microsoft.Extensions.Options
 @inject IDatabaseFacts Facts
 @inject IJobLeaseStore Leases
+@inject IStorageSpace Space
+@inject IServerInstanceStore Instances
 @inject IOptions<FiGetOptions> Options
 @inject KeyRingMasterKey MasterKey
+@inject TimeProvider Time
 
 @*
-    What the database is, how large, how current, and whether anything is keeping it in check. Read-only on purpose:
-    every setting it names is edited where it belongs, and a page that can rebuild or lock a database is a page that can
-    take the server down from a browser.
+    What is running, where it keeps things, how much room is left, and whether anything is keeping the database in
+    check. Read-only on purpose: every setting it names is edited where it belongs, and a page that can rebuild or lock
+    a database is a page that can take the server down from a browser.
 
-    It counts no rows. Everything here is a page count, a file size or a list of migrations, so an administrator may
-    refresh it as often as they like.
+    It counts no rows and walks no files. Everything here is a page count, a file size, a list of migrations or a handful
+    of rows, so an administrator may refresh it as often as they like.
 *@
 
-<PageTitle>Database · admin · FiGet</PageTitle>
+<PageTitle>System · admin · FiGet</PageTitle>
 
-<h1>Database</h1>
+<h1>System</h1>
 <p class="fg-lede">
-    Where this server keeps everything but the package files themselves, and what keeps it from growing without end.
-    Stored files are the <a href="/admin/storage">storage check</a>.
+    What this server is running, what it is running on, and what keeps its database from growing without end. Stored
+    files nothing points at are the <a href="/admin/storage">storage check</a>.
 </p>
+
+<section class="fg-panel">
+    <h2>This server</h2>
+    <dl class="fg-facts">
+        <dt>FiGet</dt>
+        <dd>@ServerVersion.Resolve(Options.Value.Version)</dd>
+
+        <dt>Runtime</dt>
+        <dd>@RuntimeInformation.FrameworkDescription on @RuntimeInformation.OSDescription (@RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant())</dd>
+
+        <dt>Public address</dt>
+        <dd>
+            @if (string.IsNullOrWhiteSpace(Options.Value.PublicBaseUrl))
+            {
+                <span class="fg-badge fg-badge-warn">Not set</span>
+                <span>Every URL in a protocol answer is built from the request instead, which a client behind a proxy may not be able to follow. Set <code>FiGet:PublicBaseUrl</code>.</span>
+            }
+            else
+            {
+                <code>@Options.Value.PublicBaseUrl</code>
+            }
+        </dd>
+
+        <dt>Clock</dt>
+        <dd>
+            @Display.Date(Time.GetUtcNow().UtcDateTime)
+            <span class="fg-muted">— every time on these pages is UTC, whatever the container's time zone.</span>
+        </dd>
+    </dl>
+</section>
+
+<section class="fg-panel">
+    <h2>Instances</h2>
+    <p class="fg-muted fg-small">
+        Every copy sharing this database says it is running, once a minute. One that stops saying so is listed until it
+        has been quiet for @Display.Every(InstanceHeartbeatService.Forgotten), then forgotten. Nothing here decides
+        anything: which copy runs a job is the lease below.
+    </p>
+    @if (Options.Value.Database.ExpectedReplicas != running.Count && running.Count > 0)
+    {
+        <div class="fg-alert fg-alert-warn" role="status">
+            <strong>@running.Count running, @Options.Value.Database.ExpectedReplicas expected.</strong>
+            <code>FiGet:Database:ExpectedReplicas</code> is what this server was told to expect; it is not a count of
+            what is there. On a cluster, a difference is a rollout in progress or a pod that did not come back.
+        </div>
+    }
+    @if (versions.Count > 1)
+    {
+        <div class="fg-alert fg-alert-warn" role="alert">
+            <strong>Two versions are running at once:</strong> @string.Join(", ", versions).
+            That is normal during a rolling update and a stuck rollout otherwise.
+        </div>
+    }
+    <div class="fg-table-wrap">
+        <table class="fg-table">
+            <thead>
+                <tr>
+                    <th scope="col">Instance</th>
+                    <th scope="col">Version</th>
+                    <th scope="col">Started</th>
+                    <th scope="col">Last seen</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var one in instances)
+                {
+                    var quiet = Time.GetUtcNow().UtcDateTime - one.LastSeenUtc > Quiet;
+                    <tr>
+                        <td>
+                            @one.Machine
+                            @if (one.Id == Self.Id)
+                            {
+                                <span class="fg-badge fg-badge-plain" title="The instance answering this request">this one</span>
+                            }
+                        </td>
+                        <td>@one.Version</td>
+                        <td>@Display.Date(one.StartedUtc)</td>
+                        <td>
+                            @Display.Date(one.LastSeenUtc)
+                            @if (quiet)
+                            {
+                                <span class="fg-badge fg-badge-warn" title="It has missed several heartbeats: stopped, or unable to write to the database">quiet</span>
+                            }
+                        </td>
+                    </tr>
+                }
+                @if (instances.Count == 0)
+                {
+                    <tr><td colspan="4" class="fg-muted">Nothing yet: the first heartbeat is written a moment after a start.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="fg-panel">
+    <h2>Storage</h2>
+    <dl class="fg-facts">
+        <dt>Volume</dt>
+        <dd>@(space.Known ? space.Volume : "Unknown: the system would not say what this path is mounted on.")</dd>
+
+        @if (space.Known)
+        {
+            <dt>Free</dt>
+            <dd>
+                @Display.Size(space.FreeBytes) of @Display.Size(space.TotalBytes)
+                <span class="fg-muted">— @Percent(space.UsedBytes, space.TotalBytes) used, by everything on that volume and not by FiGet alone.</span>
+            </dd>
+        }
+    </dl>
+    <p class="fg-muted fg-small">
+        A full volume fails a push, and nothing else on this server can warn about it. What FiGet's own files take is not
+        here: that would mean walking every stored file, which the <a href="/admin/storage">storage check</a> does when
+        you ask it to.
+    </p>
+</section>
 
 @if (facts is null)
 {
@@ -46,7 +167,7 @@
 }
 
 <section class="fg-panel">
-    <h2>This database</h2>
+    <h2>Database</h2>
     <dl class="fg-facts">
         <dt>Engine</dt>
         <dd>@(facts.Engine == DatabaseEngine.SqlServer ? "Microsoft SQL Server" : "SQLite") @facts.EngineVersion</dd>
@@ -173,17 +294,37 @@
 </section>
 
 @code {
+    /// <summary>Missed heartbeats before an instance is called quiet: enough for one slow minute not to raise a flag.</summary>
+    private static readonly TimeSpan Quiet = TimeSpan.FromMinutes(5);
+
     private DatabaseFacts? facts;
     private IReadOnlyList<JobLeaseState> leases = [];
+    private IReadOnlyList<ServerInstance> instances = [];
+    private IReadOnlyList<ServerInstance> running = [];
+    private IReadOnlyList<string> versions = [];
+    private VolumeSpace space = new("", 0, 0);
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
+
+    [Inject]
+    private JobInstance Self { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
         facts = await Facts.ReadAsync(HttpContext.RequestAborted);
         leases = await Leases.ListAsync(HttpContext.RequestAborted);
+        instances = await Instances.ListAsync(HttpContext.RequestAborted);
+        space = Space.Read();
+
+        // "Running" is what is still speaking, which is the only honest basis for comparing against the replica count.
+        var now = Time.GetUtcNow().UtcDateTime;
+        running = [.. instances.Where(i => now - i.LastSeenUtc <= Quiet)];
+        versions = [.. running.Select(i => i.Version).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
     }
+
+    private static string Percent(long part, long whole) =>
+        whole <= 0 ? "—" : ((int)Math.Round(100d * part / whole)).ToString(CultureInfo.InvariantCulture) + "%";
 
     private JobLeaseState? Lease(string name) => leases.FirstOrDefault(l => l.Name == name);
 

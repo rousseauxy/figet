@@ -111,6 +111,7 @@ public static class FiGetApp
             Path.Combine(provider.GetRequiredService<StoragePaths>().Root, "files"),
             provider.GetRequiredService<TimeProvider>()));
         services.AddScoped<IDatabaseFacts, FiGet.Infrastructure.Persistence.DatabaseFactsReader>();
+        services.AddSingleton<IStorageSpace>(provider => new FiGet.Infrastructure.Storage.FileSystemStorageSpace(provider.GetRequiredService<StoragePaths>().Root));
         services.AddSingleton<IAssetStorage>(provider => new FileSystemAssetStorage(Path.Combine(provider.GetRequiredService<StoragePaths>().Root, "files")));
         services.AddSingleton(provider => new TempFileSettings { Root = provider.GetRequiredService<IOptions<FiGetOptions>>().Value.Storage.TempPath });
         services.AddSingleton(provider => new ShareFolderSettings { Root = provider.GetRequiredService<IOptions<FiGetOptions>>().Value.Assets.SharesRoot });
@@ -252,6 +253,10 @@ public static class FiGetApp
         services.AddHostedService<AuditWriterService>();
         services.AddSingleton<FeedUsageCounter>();
         services.AddHostedService<Connectors.FeedUsageWriterService>();
+
+        // Not behind a Jobs interval: it takes no lease, and an instance that does not say it is running is an instance
+        // the operator cannot see.
+        services.AddHostedService<Connectors.InstanceHeartbeatService>();
 
         if (builder.Configuration.GetValue<bool>("FiGet:Logging:Json") || builder.Configuration.GetValue<bool>("DOTNET_RUNNING_IN_CONTAINER"))
         {
