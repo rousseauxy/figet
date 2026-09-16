@@ -1,4 +1,6 @@
 using FiGet.Application.Ports;
+using FiGet.Web.Configuration;
+using Microsoft.Extensions.Options;
 using FiGet.Domain.Entities;
 using FiGet.Http;
 
@@ -11,11 +13,17 @@ namespace FiGet.Web.Connectors;
 public sealed class FeedUsageWriterService(
     FeedUsageCounter counter,
     IServiceScopeFactory scopes,
+    IOptions<FiGetOptions> options,
     TimeProvider time,
     ILogger<FeedUsageWriterService> logger) : BackgroundService
 {
+    /// <summary>
+    /// Not a setting: this is the write path, not a schedule. Counts live in memory until it runs, so switching it off
+    /// would lose them rather than defer them.
+    /// </summary>
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(1);
-    private static readonly TimeSpan PruneInterval = TimeSpan.FromDays(1);
+
+    private TimeSpan PruneInterval => options.Value.Jobs.UsagePrune;
 
     /// <summary>What the graph can show at most is thirty days; the rest is kept for a longer view later, and then goes.</summary>
     public static readonly TimeSpan Retention = TimeSpan.FromDays(90);

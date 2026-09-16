@@ -65,6 +65,10 @@ public static class FiGetApp
         var services = builder.Services;
         services.AddOptions<FiGetOptions>().BindConfiguration(FiGetOptions.SectionName);
 
+        // Read here rather than through IOptions: whether a background job is registered at all has to be decided
+        // while the services are being built, and a job switched off should not exist rather than tick and do nothing.
+        var defaults = new FiGetOptions();
+
         // Everything below resolves options lazily, so settings added after this call (test hosts, later
         // configuration sources) are honoured.
         services.AddOptions<PublicUrlOptions>().Configure<IOptions<FiGetOptions>>((urls, figet) => urls.PublicBaseUrl = figet.Value.PublicBaseUrl);
@@ -111,7 +115,10 @@ public static class FiGetApp
         services.AddSingleton(provider => new ShareFolderSettings { Root = provider.GetRequiredService<IOptions<FiGetOptions>>().Value.Assets.SharesRoot });
         services.AddScoped<PackageIngestionService>();
         services.AddScoped<RetentionService>();
-        services.AddHostedService<RetentionJobService>();
+        if (RunsJob(builder.Configuration, nameof(JobsOptions.Retention), defaults.Jobs.Retention))
+        {
+            services.AddHostedService<RetentionJobService>();
+        }
         services.AddScoped<AssetService>();
         services.AddScoped<AssetArchiveService>();
         services.AddSingleton<IRemoteFileSource>(provider =>
@@ -125,7 +132,10 @@ public static class FiGetApp
                 AllowedHosts = fetch.AllowedHosts,
             });
         });
-        services.AddHostedService<AssetUploadCleanupService>();
+        if (RunsJob(builder.Configuration, nameof(JobsOptions.UploadSweep), defaults.Jobs.UploadSweep))
+        {
+            services.AddHostedService<AssetUploadCleanupService>();
+        }
         services.AddScoped<AccessTokenService>();
         services.AddScoped<AccountService>();
         services.AddScoped<FeedAccessService>();
@@ -1661,6 +1671,16 @@ public static class FiGetApp
             CreatedUtc = time.GetUtcNow().UtcDateTime,
             Upstreams = upstreams,
         };
+    }
+
+    /// <summary>
+    /// Whether a job runs at all. <c>FiGet:Jobs:{name}</c> of zero or less switches it off; anything unreadable is
+    /// the default, because a typo in a duration should not silently stop a server pruning what it must prune.
+    /// </summary>
+    private static bool RunsJob(IConfiguration configuration, string name, TimeSpan fallback)
+    {
+        var configured = configuration.GetValue<TimeSpan?>($"{FiGetOptions.SectionName}:Jobs:{name}");
+        return JobsOptions.Runs(configured ?? fallback);
     }
 
     private static MeterProviderBuilder AddRuntimeInstrumentationIfAvailable(this MeterProviderBuilder metrics) =>

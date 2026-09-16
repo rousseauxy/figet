@@ -2,6 +2,8 @@ using FiGet.Application.Packages;
 using FiGet.Application.Ports;
 using FiGet.Domain.Entities;
 using FiGet.Http;
+using FiGet.Web.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace FiGet.Web.Connectors;
 
@@ -13,10 +15,11 @@ namespace FiGet.Web.Connectors;
 public sealed class RetentionJobService(
     IServiceScopeFactory scopes,
     AuditLog audit,
+    IOptions<FiGetOptions> options,
     TimeProvider time,
     ILogger<RetentionJobService> logger) : BackgroundService
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
+    private TimeSpan Interval => options.Value.Jobs.Retention;
 
     /// <summary>Not at start-up: a restart loop must not turn into a removal loop, and migrations may still be settling.</summary>
     private static readonly TimeSpan FirstDelay = TimeSpan.FromMinutes(5);

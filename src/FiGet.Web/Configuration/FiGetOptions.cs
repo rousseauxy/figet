@@ -30,6 +30,8 @@ public sealed class FiGetOptions
 
     public AuditOptions Audit { get; set; } = new();
 
+    public JobsOptions Jobs { get; set; } = new();
+
     public DataProtectionSettings DataProtection { get; set; } = new();
 
     /// <summary>Per-address limits on what can be done without a key or a sign-in.</summary>
@@ -216,6 +218,34 @@ public sealed class LimitsOptions
 
     /// <summary>The largest archive an import accepts, and the most it may unpack to.</summary>
     public int MaxImportSizeMB { get; set; } = 4096;
+}
+
+/// <summary>
+/// How often each background job runs. Every default is what that job did before these settings existed, so an
+/// instance that sets none of them behaves exactly as it did.
+///
+/// A zero or negative interval switches the job off: its hosted service is not registered at all, so nothing spins
+/// and nothing takes a lease. That is for an operator who wants a job somewhere else - a single replica of many
+/// doing the pruning, a maintenance window - not a way to make a job cheaper.
+///
+/// The interval is also how long the runner holds the job's lease, so a longer one widens the window in which a
+/// single replica owns the job.
+/// </summary>
+public sealed class JobsOptions
+{
+    /// <summary>Retention and cache pruning, feed by feed.</summary>
+    public TimeSpan Retention { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>Deleting audit entries past <see cref="AuditOptions.RetentionDays"/>.</summary>
+    public TimeSpan AuditPrune { get; set; } = TimeSpan.FromHours(6);
+
+    /// <summary>Removing multipart uploads nobody finished.</summary>
+    public TimeSpan UploadSweep { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>Deleting usage counts past their retention.</summary>
+    public TimeSpan UsagePrune { get; set; } = TimeSpan.FromDays(1);
+
+    public static bool Runs(TimeSpan interval) => interval > TimeSpan.Zero;
 }
 
 public sealed class AuditOptions

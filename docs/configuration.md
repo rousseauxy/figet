@@ -217,7 +217,29 @@ the row is still stored.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `FiGet:Audit:RetentionDays` | `365` | Entries older than this are deleted. `0` keeps them forever. The check runs every six hours and takes a lease in the database first, so with several replicas one of them prunes and the others skip it. |
+| `FiGet:Audit:RetentionDays` | `365` | Entries older than this are deleted. `0` keeps them forever. How often the check runs is `FiGet:Jobs:AuditPrune`; it takes a lease in the database first, so with several replicas one of them prunes and the others skip it. |
+
+## FiGet:Jobs
+
+How often each background job runs. Every default is what that job did before these settings existed, so an instance
+that sets none of them behaves exactly as it did. A value of `0` (or `00:00:00`) switches a job off: its background
+service is then not registered at all, so nothing ticks and nothing takes a lease. That is for an operator who wants
+the work done elsewhere - one replica of many, a maintenance window - not a way to make a job cheaper.
+
+The interval is also how long the runner holds that job's lease, so a longer interval widens the window in which one
+replica owns it.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `FiGet:Jobs:Retention` | `01:00:00` | Retention and cache pruning, feed by feed. |
+| `FiGet:Jobs:AuditPrune` | `06:00:00` | Deleting audit entries past `FiGet:Audit:RetentionDays`. |
+| `FiGet:Jobs:UploadSweep` | `01:00:00` | Removing multipart uploads nobody finished (`FiGet:Assets:IncompleteUploadExpiry`). |
+| `FiGet:Jobs:UsagePrune` | `1.00:00:00` | Deleting usage counts past ninety days. |
+
+Two schedules are deliberately not settings. Usage counts are flushed from memory to the database every minute: that
+is the write path rather than a schedule, and switching it off would lose counts instead of deferring them. And every
+job waits five minutes after start-up before its first run, so a restart loop cannot become a removal loop.
+
 
 ## What survives a restart
 

@@ -18,7 +18,7 @@ public sealed class AuditWriterService(
     ILogger<AuditWriterService> logger) : BackgroundService
 {
     private const int BatchSize = 200;
-    private static readonly TimeSpan PruneInterval = TimeSpan.FromHours(6);
+    private TimeSpan PruneInterval => options.Value.Jobs.AuditPrune;
     private DateTime lastPrune = DateTime.MinValue;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

@@ -17,7 +17,7 @@ public sealed class AssetUploadCleanupService(
     TimeProvider time,
     ILogger<AssetUploadCleanupService> logger) : BackgroundService
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
+    private TimeSpan Interval => options.Value.Jobs.UploadSweep;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
