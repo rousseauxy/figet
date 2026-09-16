@@ -56,6 +56,8 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
 
     public DbSet<JobLease> JobLeases => Set<JobLease>();
 
+    public DbSet<ServerInstance> ServerInstances => Set<ServerInstance>();
+
     public DbSet<FeedUsage> FeedUsage => Set<FeedUsage>();
 
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
@@ -144,6 +146,16 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.HasKey(x => x.Name);
             e.Property(x => x.Name).HasMaxLength(64);
             e.Property(x => x.Holder).HasMaxLength(128);
+        });
+
+        modelBuilder.Entity<ServerInstance>(e =>
+        {
+            e.ToTable("ServerInstances");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasMaxLength(128);
+            e.Property(x => x.Machine).HasMaxLength(128);
+            e.Property(x => x.Version).HasMaxLength(64);
+            e.HasIndex(x => x.LastSeenUtc);
         });
 
         modelBuilder.Entity<Setting>(e =>

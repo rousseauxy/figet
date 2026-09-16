@@ -1144,6 +1144,35 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.ToTable("PackageVersions", (string)null);
                 });
 
+            modelBuilder.Entity("FiGet.Domain.Entities.ServerInstance", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime>("LastSeenUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Machine")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime>("StartedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LastSeenUtc");
+
+                    b.ToTable("ServerInstances", (string)null);
+                });
+
             modelBuilder.Entity("FiGet.Domain.Entities.Setting", b =>
                 {
                     b.Property<string>("Key")
