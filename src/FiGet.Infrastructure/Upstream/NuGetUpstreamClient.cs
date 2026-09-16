@@ -153,6 +153,38 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
     }
 
     /// <summary>
+    /// One version's release notes, for a change report. A v2 gallery answers a single-version lookup - the same call
+    /// the hash check makes - and that entry carries the notes; a v3 source does not report them at all, so those rows
+    /// go without rather than guess.
+    /// </summary>
+    public async Task<string?> GetReleaseNotesAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(upstream);
+        ArgumentNullException.ThrowIfNull(version);
+        var repository = Repository(upstream);
+        if (await repository.GetResourceAsync<ServiceIndexResourceV3>(cancellationToken) is not null)
+        {
+            // A v3 registration leaf carries no release notes, and the catalog resource that would is not read here.
+            return null;
+        }
+
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(settings.UpstreamTimeout);
+            return await TolerantV2Catalog.ReadReleaseNotesAsync(repository, upstream.Url, idLower, version, timeout.Token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            // Best effort by design: a report is not worth failing over a gallery's bad afternoon, and the row simply
+            // shows no notes. Debug, not warning: this is an extra, and a gallery that never answers it would
+            // otherwise fill a log with something nobody can act on.
+            System.Diagnostics.Debug.WriteLine(ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// A v2 gallery publishes each package's hash; a download that does not match it - truncated by a proxy, altered on the
     /// way, or a different file behind the same name - is refused rather than cached and served as that version. A v3 source
     /// publishes no hash to compare with. A gallery that does not answer the question, or states no hash, is not held to one.

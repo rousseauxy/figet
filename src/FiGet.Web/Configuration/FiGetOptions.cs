@@ -303,6 +303,13 @@ public sealed class ChangeWebhookOptions
 
     /// <summary>Whether the receiver may be on a private or loopback address, as an internal relay is.</summary>
     public bool AllowPrivateNetworks { get; set; }
+
+    /// <summary>
+    /// How many versions one run may fetch release notes for. Only versions an upstream offers and nobody here has
+    /// fetched need it - what this feed holds carries its own notes - so this is a handful a day, one small request
+    /// each. Zero switches the fetching off and those rows simply show none.
+    /// </summary>
+    public int MaxNotes { get; set; } = 25;
 }
 
 public sealed class AuditOptions

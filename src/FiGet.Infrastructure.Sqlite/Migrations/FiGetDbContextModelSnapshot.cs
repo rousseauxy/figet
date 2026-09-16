@@ -296,6 +296,10 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                     b.Property<DateTime?>("PublishedUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ReleaseNotes")
+                        .HasMaxLength(8000)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Summary")
                         .IsRequired()
                         .HasColumnType("TEXT");

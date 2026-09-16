@@ -4,6 +4,7 @@ using FiGet.Application.Reports;
 using FiGet.Domain.Entities;
 using FiGet.Http;
 using FiGet.Web.Configuration;
+using NuGet.Versioning;
 using Microsoft.Extensions.Options;
 
 namespace FiGet.Web.Connectors;
@@ -55,6 +56,8 @@ public sealed class ChangeReportJobService(
         var feeds = scope.ServiceProvider.GetRequiredService<IFeedStore>();
         foreach (var feed in await feeds.ListAsync(cancellationToken))
         {
+            // Every package feed, whether or not it has a webhook: the run also keeps release notes current for the
+            // pages, and a feed nobody reports on still has readers.
             if (feed.Kind == FeedKind.Assets || !Reported(feed))
             {
                 continue;
@@ -81,6 +84,14 @@ public sealed class ChangeReportJobService(
         var settings = scope.ServiceProvider.GetRequiredService<ISettingStore>();
         var reports = scope.ServiceProvider.GetRequiredService<ChangeReportService>();
 
+        var now = time.GetUtcNow().UtcDateTime;
+        var from = await ReportedThroughAsync(settings, feed, now, cancellationToken);
+        var report = await reports.BuildAsync(feed, from, now, cancellationToken);
+
+        // Notes are fetched before the webhook is considered, and kept: they are for the feed's page as much as for a
+        // report, and an instance that posts nowhere should still be able to show what a new version says it changed.
+        report = await WithReleaseNotesAsync(scope.ServiceProvider, feed, report, cancellationToken);
+
         var webhook = await webhooks.ForAsync(feed, cancellationToken);
         if (webhook is null)
         {
@@ -88,9 +99,6 @@ public sealed class ChangeReportJobService(
         }
 
         using var sender = webhook as IDisposable;
-        var now = time.GetUtcNow().UtcDateTime;
-        var from = await ReportedThroughAsync(settings, feed, now, cancellationToken);
-        var report = await reports.BuildAsync(feed, from, now, cancellationToken);
         if (!report.Any && !options.Value.Changes.Webhook.SendWhenEmpty)
         {
             // Silence means nothing moved, which is the whole reason a daily report is bearable.
@@ -115,6 +123,60 @@ public sealed class ChangeReportJobService(
 
         await settings.SetAsync(ChangeWebhookFactory.ReportedThroughKey(feed.Key), now.ToString("o", CultureInfo.InvariantCulture), null, cancellationToken);
         return ChangeReportOutcome.Sent;
+    }
+
+    /// <summary>
+    /// Fills in release notes for the versions an upstream offers and nobody here has fetched - the only rows that can
+    /// lack them, since a version this feed holds carries its own. Fetched one small request at a time, capped, and
+    /// **stored**, so the feed's page shows the same notes this report sent and the next run asks for none of them
+    /// again. Only this job fetches: a page anybody may open must not be a way to make this server call a gallery.
+    /// </summary>
+    private async Task<ChangeReport> WithReleaseNotesAsync(IServiceProvider services, Feed feed, ChangeReport report, CancellationToken cancellationToken)
+    {
+        var budget = options.Value.Changes.Webhook.MaxNotes;
+        var missing = report.Changes
+            .Where(c => c.Kind == PackageChangeKind.Upstream && c.ReleaseNotes.Length == 0)
+            .Take(Math.Max(0, budget))
+            .ToList();
+        if (missing.Count == 0 || feed.Upstreams.Count == 0)
+        {
+            return report;
+        }
+
+        var client = services.GetRequiredService<IUpstreamClient>();
+        var descriptions = services.GetRequiredService<IUpstreamDescriptionStore>();
+        var found = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var change in missing)
+        {
+            var upstream = feed.Upstreams.FirstOrDefault(u => u.Enabled && string.Equals(u.Name, change.Upstream, StringComparison.Ordinal));
+            if (upstream is null || !NuGetVersion.TryParse(change.Version, out var version))
+            {
+                continue;
+            }
+
+            try
+            {
+                var notes = await client.GetReleaseNotesAsync(upstream, change.Id.ToLowerInvariant(), version, cancellationToken);
+                if (string.IsNullOrWhiteSpace(notes))
+                {
+                    continue;
+                }
+
+                await descriptions.SetReleaseNotesAsync(upstream.Key, change.Id.ToLowerInvariant(), change.Version, notes, cancellationToken);
+                found[change.Id + "|" + change.Version] = notes;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogDebug(ex, "Release notes for {Id} {Version} could not be read; the row goes without.", change.Id, change.Version);
+            }
+        }
+
+        return found.Count == 0
+            ? report
+            : report with
+            {
+                Changes = [.. report.Changes.Select(c => found.TryGetValue(c.Id + "|" + c.Version, out var notes) ? c with { ReleaseNotes = notes } : c)],
+            };
     }
 
     /// <summary>Whether this feed is one of the feeds reported on; an empty list means every package feed.</summary>

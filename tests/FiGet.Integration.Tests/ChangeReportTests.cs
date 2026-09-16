@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json.Nodes;
+using FiGet.Application.Connectors;
 using FiGet.Application.Ports;
 using FiGet.Application.Reports;
 using FiGet.Domain.Entities;
@@ -270,6 +271,71 @@ public sealed class ChangeReportTests(ProxyServerFixture server) : IClassFixture
         };
         HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(browser));
         HttpAssert.Status(HttpStatusCode.OK, await browser.GetAsync("feeds/private/changes"));
+    }
+
+    /// <summary>
+    /// Release notes for a version nobody has fetched: read from the gallery once, kept, and shown on the page after
+    /// that. Only the scheduled send fetches - the page and the API must never make this server call a gallery, or a
+    /// reader could aim it at one.
+    /// </summary>
+    [Fact]
+    public async Task Release_notes_are_fetched_once_kept_and_then_shown_without_asking_again()
+    {
+        var id = FiGetServerFixture.UniqueId("Report.Notes");
+        await SeedAsync(id, "proxy", ("1.0.0", DateTime.UtcNow.AddDays(-30), true), ("2.0.0", DateTime.UtcNow.AddHours(-2), false));
+        server.Upstream.SetReleaseNotes(id, "2.0.0", "Removes Invoke-Legacy.");
+
+        // The page first: it shows no notes, and asks the gallery for none.
+        var beforePage = server.Upstream.NoteCalls;
+        using var client = server.CreateClient();
+        HttpAssert.Status(HttpStatusCode.OK, await client.GetAsync("feeds/proxy/changes?days=1"));
+        Assert.Equal(beforePage, server.Upstream.NoteCalls);
+        Assert.Equal("", Assert.Single((await BuildAsync("proxy", 1)).Of(PackageChangeKind.Upstream), c => c.Id == id).ReleaseNotes);
+
+        // The send fetches them once and keeps them.
+        var job = server.Services.GetRequiredService<FiGet.Web.Connectors.ChangeReportJobService>();
+        var feed = await FeedAsync("proxy");
+        await job.SendAsync(feed, TestContext.Current.CancellationToken);
+        var afterSend = server.Upstream.NoteCalls;
+        Assert.True(afterSend > beforePage, "The scheduled send did not ask the gallery for release notes.");
+
+        // Now the report carries them, and nothing asks the gallery again - not the page, not a second report.
+        Assert.Equal("Removes Invoke-Legacy.", Assert.Single((await BuildAsync("proxy", 1)).Of(PackageChangeKind.Upstream), c => c.Id == id).ReleaseNotes);
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("feeds/proxy/changes?days=1"));
+        Assert.Contains("Removes Invoke-Legacy.", page, StringComparison.Ordinal);
+        Assert.Equal(afterSend, server.Upstream.NoteCalls);
+    }
+
+    /// <summary>
+    /// A later catalogue refresh must keep them: the refresh has no notes of its own to offer, and silently losing
+    /// them would be invisible until somebody noticed an empty column.
+    /// </summary>
+    [Fact]
+    public async Task Stored_release_notes_survive_a_catalogue_refresh()
+    {
+        var id = FiGetServerFixture.UniqueId("Report.NotesKept");
+        await SeedAsync(id, "proxy", ("1.0.0", DateTime.UtcNow.AddDays(-30), true), ("2.0.0", DateTime.UtcNow.AddHours(-2), false));
+        server.Upstream.SetReleaseNotes(id, "2.0.0", "Kept across a refresh.");
+
+        var job = server.Services.GetRequiredService<FiGet.Web.Connectors.ChangeReportJobService>();
+        await job.SendAsync(await FeedAsync("proxy"), TestContext.Current.CancellationToken);
+        Assert.Equal("Kept across a refresh.", Assert.Single((await BuildAsync("proxy", 1)).Of(PackageChangeKind.Upstream), c => c.Id == id).ReleaseNotes);
+
+        // A refresh of the same id, as the sweep or a stale listing would do.
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            var connector = scope.ServiceProvider.GetRequiredService<ConnectorService>();
+            await connector.UpstreamCandidatesAsync(await FeedAsync("proxy"), id.ToLowerInvariant(), TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal("Kept across a refresh.", Assert.Single((await BuildAsync("proxy", 1)).Of(PackageChangeKind.Upstream), c => c.Id == id).ReleaseNotes);
+    }
+
+    private async Task<Feed> FeedAsync(string name)
+    {
+        await using var scope = server.Services.CreateAsyncScope();
+        var feeds = scope.ServiceProvider.GetRequiredService<IFeedStore>();
+        return (await feeds.FindAsync(name, TestContext.Current.CancellationToken))!;
     }
 
     private async Task<ChangeReport> BuildAsync(string feed, int days)

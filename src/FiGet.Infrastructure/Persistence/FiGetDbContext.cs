@@ -296,6 +296,7 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             // "What did this gallery publish this week": a range seek per upstream, over a table whose rows carry an
             // unbounded description each - so reading it any other way means reading all of them.
             e.HasIndex(x => new { x.FeedUpstreamKey, x.PublishedUtc });
+            e.Property(x => x.ReleaseNotes).HasMaxLength(8000);
             e.HasOne(x => x.FeedUpstream).WithMany().HasForeignKey(x => x.FeedUpstreamKey).OnDelete(DeleteBehavior.Cascade);
         });
 

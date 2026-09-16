@@ -33,6 +33,14 @@ public sealed class CachedUpstreamDescription
 
     public string Authors { get; set; } = "";
 
+    /// <summary>
+    /// What the gallery says changed in this version, when somebody asked. Null for almost every row: it is fetched
+    /// only for versions a change report mentioned, one small request each, because a version list does not carry it
+    /// and fetching it for every version of every id is how the unbounded version of this table ran a server out of
+    /// memory. A refresh of the description must keep whatever is here, having none of its own to offer.
+    /// </summary>
+    public string? ReleaseNotes { get; set; }
+
     public string ProjectUrl { get; set; } = "";
 
     public string IconUrl { get; set; } = "";

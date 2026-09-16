@@ -4,6 +4,7 @@ using FiGet.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace FiGet.Infrastructure.SqlServer.Migrations
 {
     [DbContext(typeof(FiGetDbContext))]
-    partial class FiGetDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260916095953_UpstreamReleaseNotes")]
+    partial class UpstreamReleaseNotes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

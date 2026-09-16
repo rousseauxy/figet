@@ -24,6 +24,42 @@ internal static class TolerantV2Catalog
     /// <summary>A gallery pages at 100; a package with thousands of versions is tens of pages, and this bounds a feed that never ends.</summary>
     private const int MaxPages = 200;
 
+    /// <summary>
+    /// One version's release notes, from the single-entry route every v2 gallery serves. Read here rather than through
+    /// NuGet's own parser because that parser does not carry release notes at all - it drops the element - and the
+    /// whole point of fetching one entry is the field it drops.
+    ///
+    /// Null when the gallery does not answer, or says nothing: a report shows no notes rather than a guess.
+    /// </summary>
+    public static async Task<string?> ReadReleaseNotesAsync(
+        SourceRepository repository,
+        string sourceUrl,
+        string idLower,
+        NuGetVersion version,
+        CancellationToken cancellationToken)
+    {
+        var http = (await repository.GetResourceAsync<HttpSourceResource>(cancellationToken))?.HttpSource;
+        if (http is null)
+        {
+            return null;
+        }
+
+        var root = sourceUrl.TrimEnd('/') + "/";
+        var url = new Uri($"{root}Packages(Id='{Uri.EscapeDataString(idLower)}',Version='{Uri.EscapeDataString(version.ToNormalizedString())}')");
+        var document = await http.ProcessStreamAsync(
+            new HttpSourceRequest(url, NullLogger.Instance),
+            async stream => stream is null ? null : await XDocument.LoadAsync(stream, LoadOptions.None, cancellationToken),
+            NullLogger.Instance,
+            cancellationToken);
+
+        // The route answers one entry, but a gallery that answers a feed with one entry in it is just as correct.
+        var entry = document?.Root is { } root2 && root2.Name == Atom + "entry"
+            ? root2
+            : document?.Root?.Elements(Atom + "entry").FirstOrDefault();
+        var notes = entry?.Element(Meta + "properties")?.Element(Data + "ReleaseNotes")?.Value?.Trim();
+        return string.IsNullOrEmpty(notes) ? null : notes;
+    }
+
     public static async Task<IReadOnlyList<UpstreamMetadata>> ReadAsync(SourceRepository repository, string sourceUrl, string idLower, CancellationToken cancellationToken)
     {
         var http = (await repository.GetResourceAsync<HttpSourceResource>(cancellationToken))?.HttpSource

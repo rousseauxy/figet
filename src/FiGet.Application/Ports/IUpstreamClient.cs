@@ -103,6 +103,15 @@ public interface IUpstreamClient
     Task<Stream?> OpenPackageAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken);
 
     /// <summary>
+    /// What one version's release notes say, or null when this upstream does not report them. One small request for
+    /// one version, not a walk of the catalogue: a change report wants these for the handful of versions that moved.
+    ///
+    /// Only a v2 gallery answers. A v3 registration leaf carries no release notes, and FiGet does not read the catalog
+    /// resource that would, so nuget.org rows simply have none.
+    /// </summary>
+    Task<string?> GetReleaseNotesAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Only the versions of one id, when the upstream can answer that more cheaply than the full catalogue - a v3
     /// source's flat container, 0.17 s where describing the same versions took 3.2 s. Null when it cannot: on a v2
     /// gallery the versions come from the same paged walk as the descriptions, and asking for them alone costs more.
@@ -139,7 +148,7 @@ public sealed record CachedUpstreamCatalog(
 /// order: it is written only for versions not stored yet, and read only when memory has nothing.
 /// </summary>
 /// <summary>One version an upstream published, as a report of recent activity reads it.</summary>
-public readonly record struct UpstreamPublished(string IdLower, string NormalizedVersion, DateTime PublishedUtc, string Authors);
+public readonly record struct UpstreamPublished(string IdLower, string NormalizedVersion, DateTime PublishedUtc, string Authors, string ReleaseNotes);
 
 public interface IUpstreamDescriptionStore
 {
@@ -173,6 +182,12 @@ public interface IUpstreamDescriptionStore
         DateTime toUtc,
         int take,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Keeps one version's release notes, fetched after the fact because a version list does not carry them. Stored
+    /// only for versions a report mentioned, so this stays a handful of rows rather than every version of every id.
+    /// </summary>
+    Task SetReleaseNotesAsync(int feedUpstreamKey, string idLower, string normalizedVersion, string releaseNotes, CancellationToken cancellationToken);
 
     Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, DateTime>>> PublishedDatesAsync(
         int feedUpstreamKey,

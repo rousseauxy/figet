@@ -76,6 +76,16 @@ public sealed class EfUpstreamDescriptionStore(FiGetDbContext db, DbContextOptio
         return described;
     }
 
+    public async Task SetReleaseNotesAsync(int feedUpstreamKey, string idLower, string normalizedVersion, string releaseNotes, CancellationToken cancellationToken)
+    {
+        // Capped at the column, and by the same reasoning: a release note is a paragraph, and a gallery that sends a
+        // novel is not worth the row it would grow into.
+        var notes = releaseNotes.Length <= 8000 ? releaseNotes : releaseNotes[..8000];
+        await db.CachedUpstreamDescriptions
+            .Where(d => d.FeedUpstreamKey == feedUpstreamKey && d.IdLower == idLower && d.NormalizedVersion == normalizedVersion)
+            .ExecuteUpdateAsync(s => s.SetProperty(d => d.ReleaseNotes, notes), cancellationToken);
+    }
+
     public async Task<IReadOnlyList<UpstreamPublished>> PublishedBetweenAsync(
         int feedUpstreamKey,
         DateTime fromUtc,
@@ -93,10 +103,10 @@ public sealed class EfUpstreamDescriptionStore(FiGetDbContext db, DbContextOptio
             .Where(d => d.FeedUpstreamKey == feedUpstreamKey && d.PublishedUtc >= fromUtc && d.PublishedUtc < toUtc)
             .OrderByDescending(d => d.PublishedUtc)
             .Take(take)
-            .Select(d => new { d.IdLower, d.NormalizedVersion, d.PublishedUtc, d.Authors })
+            .Select(d => new { d.IdLower, d.NormalizedVersion, d.PublishedUtc, d.Authors, d.ReleaseNotes })
             .ToListAsync(cancellationToken);
 
-        return [.. rows.Select(r => new UpstreamPublished(r.IdLower, r.NormalizedVersion, r.PublishedUtc!.Value, r.Authors))];
+        return [.. rows.Select(r => new UpstreamPublished(r.IdLower, r.NormalizedVersion, r.PublishedUtc!.Value, r.Authors, r.ReleaseNotes ?? ""))];
     }
 
     public async Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, DateTime>>> PublishedDatesAsync(

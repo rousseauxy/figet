@@ -77,7 +77,7 @@ public sealed class ChangeReportService(IPackageStore packages, IUpstreamDescrip
                 Previous(held, change.IdLower, change.Version),
                 Breaking(held, change.IdLower, change.Version),
                 change.PublishedUtc,
-                "",
+                change.ReleaseNotes,
                 change.Authors,
                 PackageChangeKind.Upstream,
                 change.Upstream));
@@ -105,18 +105,18 @@ public sealed class ChangeReportService(IPackageStore packages, IUpstreamDescrip
             return [];
         }
 
-        var published = new Dictionary<string, Dictionary<string, (DateTime PublishedUtc, string Authors)>>(StringComparer.Ordinal);
+        var published = new Dictionary<string, Dictionary<string, (DateTime PublishedUtc, string Authors, string ReleaseNotes)>>(StringComparer.Ordinal);
         foreach (var upstream in feed.Upstreams.Where(u => u.Enabled))
         {
             foreach (var row in await descriptions.PublishedBetweenAsync(upstream.Key, fromUtc, toUtc, MaxRows, cancellationToken))
             {
                 if (!published.TryGetValue(row.IdLower, out var versions))
                 {
-                    versions = new Dictionary<string, (DateTime, string)>(StringComparer.OrdinalIgnoreCase);
+                    versions = new Dictionary<string, (DateTime, string, string)>(StringComparer.OrdinalIgnoreCase);
                     published[row.IdLower] = versions;
                 }
 
-                versions[row.NormalizedVersion] = (row.PublishedUtc, row.Authors);
+                versions[row.NormalizedVersion] = (row.PublishedUtc, row.Authors, row.ReleaseNotes);
             }
         }
 
@@ -160,8 +160,8 @@ public sealed class ChangeReportService(IPackageStore packages, IUpstreamDescrip
                 continue;
             }
 
-            var (publishedUtc, authors) = window[newest.Version.ToNormalizedString()];
-            changes.Add(new UpstreamChange(local.Id, local.IdLower, newest.Version, publishedUtc, authors, upstream.Upstream));
+            var (publishedUtc, authors, releaseNotes) = window[newest.Version.ToNormalizedString()];
+            changes.Add(new UpstreamChange(local.Id, local.IdLower, newest.Version, publishedUtc, authors, releaseNotes, upstream.Upstream));
         }
 
         return changes;
@@ -176,5 +176,5 @@ public sealed class ChangeReportService(IPackageStore packages, IUpstreamDescrip
     private static IReadOnlyList<NuGetVersion> Parsed(IEnumerable<string> versions) =>
         [.. versions.Where(v => NuGetVersion.TryParse(v, out _)).Select(NuGetVersion.Parse)];
 
-    private sealed record UpstreamChange(string Id, string IdLower, NuGetVersion Version, DateTime PublishedUtc, string Authors, string Upstream);
+    private sealed record UpstreamChange(string Id, string IdLower, NuGetVersion Version, DateTime PublishedUtc, string Authors, string ReleaseNotes, string Upstream);
 }

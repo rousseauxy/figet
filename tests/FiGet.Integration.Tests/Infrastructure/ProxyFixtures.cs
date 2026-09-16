@@ -263,6 +263,25 @@ public sealed class StubUpstreamClient : IUpstreamClient
         return Task.FromResult(hits);
     }
 
+    /// <summary>Release notes this upstream reports for one version, keyed "id|version".</summary>
+    private readonly ConcurrentDictionary<string, string> releaseNotes = new(StringComparer.OrdinalIgnoreCase);
+
+    private int noteCalls;
+
+    /// <summary>How often this upstream was asked for release notes: the fetching is meant to be rare and capped.</summary>
+    public int NoteCalls => Volatile.Read(ref noteCalls);
+
+    /// <summary>Gives a version release notes, the way a v2 gallery reports them on its single-entry route.</summary>
+    public void SetReleaseNotes(string id, string version, string notes) =>
+        releaseNotes[id + "|" + NuGetVersion.Parse(version).ToNormalizedString()] = notes;
+
+    public Task<string?> GetReleaseNotesAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref noteCalls);
+        FailIfAsked();
+        return Task.FromResult(releaseNotes.TryGetValue(idLower + "|" + version.ToNormalizedString(), out var notes) ? notes : null);
+    }
+
     public Task<Stream?> OpenPackageAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref downloadCalls);
@@ -298,6 +317,9 @@ public sealed class RoutingUpstreamClient(StubUpstreamClient fallback, IReadOnly
 
     public Task<IReadOnlyList<UpstreamVersion>?> GetVersionsAsync(FeedUpstream upstream, string idLower, CancellationToken cancellationToken) =>
         For(upstream).GetVersionsAsync(upstream, idLower, cancellationToken);
+
+    public Task<string?> GetReleaseNotesAsync(FeedUpstream upstream, string idLower, NuGetVersion version, CancellationToken cancellationToken) =>
+        For(upstream).GetReleaseNotesAsync(upstream, idLower, version, cancellationToken);
 }
 
 /// <summary>
