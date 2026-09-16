@@ -100,6 +100,14 @@ public sealed class Feed
     /// </summary>
     public string? ClientBaseUrl { get; set; }
 
+    /// <summary>
+    /// A label sent with this feed's change report, for a receiver that routes on it - one webhook serving several
+    /// chat channels, which is how a dispatcher flow is usually built. Null or empty: nothing is sent, which is the
+    /// right body for a receiver that has one channel. Not a secret, which is why a feed manager may set it while the
+    /// address the report goes to stays an administrator's.
+    /// </summary>
+    public string? ChangeTarget { get; set; }
+
     /// <summary>Install commands on package pages (see <c>InstructionTemplates</c>). Null: the default.</summary>
     public string? PackageInstructions { get; set; }
 

@@ -32,6 +32,8 @@ public sealed class FiGetOptions
 
     public JobsOptions Jobs { get; set; } = new();
 
+    public ChangesOptions Changes { get; set; } = new();
+
     public DataProtectionSettings DataProtection { get; set; } = new();
 
     /// <summary>Per-address limits on what can be done without a key or a sign-in.</summary>
@@ -255,7 +257,52 @@ public sealed class JobsOptions
     /// <summary>Refreshing the stored upstream catalogue of every id a proxy feed holds.</summary>
     public TimeSpan CatalogueSweep { get; set; } = TimeSpan.FromDays(1);
 
+    /// <summary>Posting each feed's change report to the webhook, when one is configured.</summary>
+    public TimeSpan ChangeReport { get; set; } = TimeSpan.FromDays(1);
+
     public static bool Runs(TimeSpan interval) => interval > TimeSpan.Zero;
+}
+
+/// <summary>What is reported, and where. How often is <see cref="JobsOptions.ChangeReport"/>.</summary>
+public sealed class ChangesOptions
+{
+    public ChangeWebhookOptions Webhook { get; set; } = new();
+}
+
+/// <summary>
+/// Where a change report is posted. The URL is a secret - a Teams, Slack or Power Automate address carries its token
+/// in its path - so it comes from the environment, or from the encrypted setting an administrator writes on the pages.
+/// </summary>
+public sealed class ChangeWebhookOptions
+{
+    /// <summary>Where to post, when no administrator has set one on the pages. Empty: the webhook is off.</summary>
+    public string? Url { get; set; }
+
+    /// <summary>`Json` for automation, `Chat` for a Discord or Slack webhook, `Teams` for an adaptive card.</summary>
+    public string Format { get; set; } = "Json";
+
+    /// <summary>Feeds to report on, by name. Empty: every package feed.</summary>
+    public List<string> Feeds { get; set; } = [];
+
+    /// <summary>
+    /// The longest window one report may cover. A server that was down for a month reports a week of change rather
+    /// than a wall nobody reads.
+    /// </summary>
+    public int MaxDays { get; set; } = 7;
+
+    /// <summary>Whether a report with nothing in it is posted. Off: silence means nothing moved.</summary>
+    public bool SendWhenEmpty { get; set; }
+
+    /// <summary>One extra request header, for a relay that authenticates with a bearer token rather than a URL.</summary>
+    public string? HeaderName { get; set; }
+
+    /// <summary>Its value. A secret, from the environment.</summary>
+    public string? HeaderValue { get; set; }
+
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>Whether the receiver may be on a private or loopback address, as an internal relay is.</summary>
+    public bool AllowPrivateNetworks { get; set; }
 }
 
 public sealed class AuditOptions

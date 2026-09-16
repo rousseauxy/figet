@@ -167,6 +167,13 @@ public static class FiGetApp
         {
             services.AddHostedService<CatalogueSweepService>();
         }
+
+        services.AddScoped<ChangeWebhookFactory>();
+        services.AddSingleton<ChangeReportJobService>();
+        if (RunsJob(builder.Configuration, nameof(JobsOptions.ChangeReport), defaults.Jobs.ChangeReport))
+        {
+            services.AddHostedService(provider => provider.GetRequiredService<ChangeReportJobService>());
+        }
         services.AddScoped<ConnectorService>();
         services.AddScoped<FiGet.Application.Reports.ChangeReportService>();
         services.AddScoped<DependencyPuller>();

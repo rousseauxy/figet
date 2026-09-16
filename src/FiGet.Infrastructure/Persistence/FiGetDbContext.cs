@@ -85,6 +85,7 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.Property(x => x.DeletionBehavior).HasConversion<string>().HasMaxLength(16);
             e.Property(x => x.Purpose).HasConversion<string>().HasMaxLength(16);
             e.Property(x => x.ClientBaseUrl).HasMaxLength(512);
+            e.Property(x => x.ChangeTarget).HasMaxLength(64);
             e.Property(x => x.FolderRoot).HasMaxLength(1024);
             e.Ignore(x => x.IsFolderBacked);
             e.Property(x => x.AllowedNetworks).HasMaxLength(FeedNetworks.MaxLength);

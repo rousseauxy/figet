@@ -24,6 +24,9 @@ public static class JobLeaseNames
     /// <summary>Deliberately not "upstream-sweep": one character from "upload-sweep" is a lease waiting to be confused.</summary>
     public const string CatalogueSweep = "catalogue-sweep";
 
+    /// <summary>Posting each feed's change report.</summary>
+    public const string ChangeReport = "change-report";
+
     public const string AuditPrune = "audit-prune";
 
     public const string UploadSweep = "upload-sweep";

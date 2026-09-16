@@ -91,6 +91,14 @@ public sealed class EfFeedStore(FiGetDbContext db) : IFeedStore
         return true;
     }
 
+    public async Task<bool> UpdateChangeTargetAsync(int key, string? target, CancellationToken cancellationToken)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(target) ? null : target.Trim();
+        return await db.Feeds
+            .Where(f => f.Key == key)
+            .ExecuteUpdateAsync(s => s.SetProperty(f => f.ChangeTarget, trimmed), cancellationToken) > 0;
+    }
+
     public async Task<bool> UpdateRetentionAsync(int key, RetentionRules rules, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(rules);

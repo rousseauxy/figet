@@ -449,6 +449,10 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                     b.Property<bool>("AnonymousRead")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ChangeTarget")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("ChartColor")
                         .HasColumnType("INTEGER");
 
