@@ -56,7 +56,10 @@
         <dt>Clock</dt>
         <dd>
             @Display.Date(Time.GetUtcNow().UtcDateTime)
-            <span class="fg-muted">— every time on these pages is UTC, whatever the container's time zone.</span>
+            <span class="fg-muted">
+                — the server keeps and serves every instant as UTC; your browser shows it in your own zone, and the
+                tooltip on any time gives the UTC behind it.
+            </span>
         </dd>
     </dl>
 </section>

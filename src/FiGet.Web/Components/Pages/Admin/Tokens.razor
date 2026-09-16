@@ -63,8 +63,8 @@ else
                         <td><code>@token.Prefix…</code></td>
                         <td><span class="fg-badge">@token.Scopes</span></td>
                         <td>@(token.Feed?.Name ?? "All feeds")</td>
-                        <td class="fg-num">@Date(token.CreatedUtc)</td>
-                        <td class="fg-num">@Date(token.LastUsedUtc)</td>
+                        <td class="fg-num">@Display.Date(token.CreatedUtc)</td>
+                        <td class="fg-num">@Display.Date(token.LastUsedUtc)</td>
                         <td>
                             @if (token.RevokedUtc is not null)
                             {
@@ -72,7 +72,7 @@ else
                             }
                             else
                             {
-                                <span class="fg-num">@Date(token.ExpiresUtc, "Never")</span>
+                                <span class="fg-num">@Display.Date(token.ExpiresUtc, "Never")</span>
                             }
                         </td>
                         <td class="fg-cell-actions">
@@ -120,7 +120,7 @@ else
                         <td>@token.Name</td>
                         <td><code>@token.Prefix…</code></td>
                         <td>@PersonalKeyLimits(token)</td>
-                        <td class="fg-num">@Date(token.LastUsedUtc)</td>
+                        <td class="fg-num">@Display.Date(token.LastUsedUtc)</td>
                         <td>
                             @if (token.RevokedUtc is not null)
                             {
@@ -128,7 +128,7 @@ else
                             }
                             else
                             {
-                                <span class="fg-num">@Date(token.ExpiresUtc, "Never")</span>
+                                <span class="fg-num">@Display.Date(token.ExpiresUtc, "Never")</span>
                             }
                         </td>
                         <td class="fg-cell-actions">
@@ -275,8 +275,6 @@ else
     private static string PersonalKeyLimits(AccessToken token) =>
         (token.Scopes.HasFlag(TokenScopes.Push) ? "Read and publish" : "Read") + " · " + (token.Feed?.Name ?? "all feeds");
 
-    private static string Date(DateTime? value, string empty = "—") =>
-        value is null ? empty : value.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
 
     private sealed class TokenForm
     {

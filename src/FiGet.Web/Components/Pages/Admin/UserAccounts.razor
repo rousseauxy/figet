@@ -68,7 +68,7 @@
                             <span class="fg-badge fg-badge-plain">Active</span>
                         }
                     </td>
-                    <td class="fg-num">@(user.LastSignInUtc?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? Display.None)</td>
+                    <td class="fg-num">@Display.Date(user.LastSignInUtc)</td>
                     <td class="fg-cell-actions">
                         @if (user.Key == actor?.Key)
                         {

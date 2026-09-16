@@ -117,7 +117,7 @@
                     </div>
                 </dd>
             }
-            <dt>Created</dt><dd class="fg-num">@feed.CreatedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) UTC</dd>
+            <dt>Created</dt><dd class="fg-num">@Display.Date(feed.CreatedUtc) UTC</dd>
             <dt>@(IsAssets ? "Files" : "Versions")</dt><dd class="fg-num">@versionCount.ToString("N0", CultureInfo.InvariantCulture)</dd>
         </dl>
     </section>

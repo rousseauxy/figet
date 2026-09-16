@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Encodings.Web;
+using System.Text.Unicode;
 using Microsoft.AspNetCore.Components;
 
 namespace FiGet.Web.Components.Shared;
@@ -10,6 +11,9 @@ namespace FiGet.Web.Components.Shared;
 /// </summary>
 public static class Display
 {
+    /// <summary>Escapes what markup would read and nothing else: the rest is text and should stay legible in the source.</summary>
+    private static readonly HtmlEncoder Text = HtmlEncoder.Create(UnicodeRanges.All);
+
     /// <summary>An em dash, used everywhere a value is genuinely unknown rather than zero.</summary>
     public const string None = "—";
 
@@ -70,11 +74,28 @@ public static class Display
             ? new MarkupString(string.Empty)
             : new MarkupString(HtmlEncoder.Default.Encode(id).Replace(".", ".<wbr>", StringComparison.Ordinal));
 
-    /// <summary>A UTC timestamp, or the empty marker when there is nothing to show.</summary>
-    public static string Date(DateTime? value, string empty = None) =>
-        value is null || value == default(DateTime)
-            ? empty
-            : value.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC";
+    /// <summary>
+    /// A timestamp, written as UTC and marked up so the browser can show it in the reader's own zone.
+    ///
+    /// The element carries the instant in <c>datetime</c>, which is what the script rewrites from and what a copy or a
+    /// screen reader gets; the text between the tags is the same instant in UTC, which is what anyone without that
+    /// script sees. So the page never depends on the script being there, and never on the server's time zone either -
+    /// two instances in different regions render the same page, and the reader's browser decides what it says.
+    /// </summary>
+    public static MarkupString Date(DateTime? value, string empty = None)
+    {
+        if (value is null || value == default(DateTime))
+        {
+            // Encoded, because the marker is a caller's string; through an encoder that leaves text alone and escapes
+            // only what markup would read, so an em dash stays an em dash instead of arriving as a numeric entity.
+            return new MarkupString(Text.Encode(empty));
+        }
+
+        var utc = DateTime.SpecifyKind(value.Value, DateTimeKind.Utc);
+        var instant = utc.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture);
+        var shown = utc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC";
+        return new MarkupString($"<time class=\"fg-time\" datetime=\"{instant}\">{shown}</time>");
+    }
 
     /// <summary>
     /// The URL only when it is one we are willing to render as a link. A package's own metadata is not

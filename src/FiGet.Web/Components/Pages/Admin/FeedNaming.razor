@@ -76,7 +76,7 @@
                                     }
                                 </td>
                                 <td class="fg-num">@alias.CreatedUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
-                                <td class="fg-num">@(alias.LastUsedUtc is { } used ? used.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " UTC" : "not since it was added")</td>
+                                <td class="fg-num">@Display.Date(alias.LastUsedUtc, "not since it was added")</td>
                                 <td class="fg-cell-actions">
                                     <form method="post" action="/admin/feeds/@feed.Name/aliases/remove" data-confirm="@($"Remove the alternate name {alias.Name}? A client still using it gets 404.")" data-confirm-button="Remove">
                                         <AntiforgeryToken />

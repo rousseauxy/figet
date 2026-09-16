@@ -50,7 +50,7 @@
                     <tbody>
                         @foreach (var file in report.Stray)
                         {
-                            <tr><td><code class="fg-small">@file.Path</code></td><td>@Size(file.Size)</td><td>@file.ModifiedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)</td></tr>
+                            <tr><td><code class="fg-small">@file.Path</code></td><td>@Size(file.Size)</td><td>@Display.Date(file.ModifiedUtc)</td></tr>
                         }
                     </tbody>
                 </table>

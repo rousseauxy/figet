@@ -111,7 +111,7 @@
     <dl class="fg-facts">
         <dt>Role</dt><dd>@RoleName(user.Role)</dd>
         <dt>Member since</dt><dd class="fg-num">@user.CreatedUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</dd>
-        <dt>Last sign-in</dt><dd class="fg-num">@(user.LastSignInUtc?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? Display.None)</dd>
+        <dt>Last sign-in</dt><dd class="fg-num">@Display.Date(user.LastSignInUtc)</dd>
     </dl>
 </section>
 
@@ -130,7 +130,7 @@
                             <td class="fg-small fg-muted">
                                 @if (login is not null)
                                 {
-                                    <span>Connected@(string.IsNullOrEmpty(login.Email) ? "" : " as " + login.Email) since @login.LinkedUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</span>
+                                    <span>Connected@(string.IsNullOrEmpty(login.Email) ? "" : " as " + login.Email) since @Display.Date(login.LinkedUtc)</span>
                                 }
                                 else if (!provider.Enabled)
                                 {
@@ -204,7 +204,7 @@
                             <td><code>@key.Prefix…</code></td>
                             <td>@(key.Scopes.HasFlag(TokenScopes.Push) ? "Read and publish" : "Read")</td>
                             <td>@(key.Feed?.Name ?? "All feeds")</td>
-                            <td class="fg-num">@Date(key.LastUsedUtc)</td>
+                            <td class="fg-num">@Display.Date(key.LastUsedUtc)</td>
                             <td>
                                 @if (key.RevokedUtc is not null)
                                 {
@@ -212,7 +212,7 @@
                                 }
                                 else
                                 {
-                                    <span class="fg-num">@Date(key.ExpiresUtc, "Never")</span>
+                                    <span class="fg-num">@Display.Date(key.ExpiresUtc, "Never")</span>
                                 }
                             </td>
                             <td class="fg-cell-actions">
@@ -441,8 +441,6 @@
         await LoadAsync();
     }
 
-    private static string Date(DateTime? value, string empty = "—") =>
-        value is null ? empty : value.Value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
 
     public static string RoleName(UserRole role) => role switch
     {

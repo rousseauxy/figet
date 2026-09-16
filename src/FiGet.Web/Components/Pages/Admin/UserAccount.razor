@@ -47,8 +47,8 @@
         <dt>Display name</dt><dd>@(string.IsNullOrEmpty(user.DisplayName) ? Display.None : user.DisplayName)</dd>
         <dt>Email</dt><dd>@(string.IsNullOrEmpty(user.Email) ? Display.None : user.Email)</dd>
         <dt>Role</dt><dd>@Profile.RoleName(user.Role)</dd>
-        <dt>Created</dt><dd class="fg-num">@user.CreatedUtc.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) UTC</dd>
-        <dt>Last sign-in</dt><dd class="fg-num">@(user.LastSignInUtc?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? Display.None)</dd>
+        <dt>Created</dt><dd class="fg-num">@Display.Date(user.CreatedUtc) UTC</dd>
+        <dt>Last sign-in</dt><dd class="fg-num">@Display.Date(user.LastSignInUtc)</dd>
         <dt>Password</dt><dd>@(user.PasswordHash is null ? "None (signs in through a provider)" : "Set")</dd>
         <dt>Sign-in providers</dt><dd>@(providerNames.Count == 0 ? Display.None : string.Join(", ", providerNames))</dd>
     </dl>

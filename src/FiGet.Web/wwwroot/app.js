@@ -895,4 +895,52 @@
         zone.classList.remove("fg-dropzone-over");
         uploadAll(zone, event.dataTransfer ? event.dataTransfer.files : null);
     });
+
+    // -- Times in the reader's own zone ------------------------------------------------------------
+    // The server writes every instant as UTC, because it has no business guessing where a reader is and
+    // because two instances in different regions must render the same page. The browser does know, so
+    // each <time> is rewritten here to local time, keeping UTC in the tooltip. Nothing depends on this:
+    // with no script the page shows the UTC it was served, which is what the datetime attribute says.
+
+    function localTimes(root) {
+        var times = (root || document).querySelectorAll("time.fg-time[datetime]:not([data-local])");
+        for (var i = 0; i < times.length; i++) {
+            var element = times[i];
+            var instant = new Date(element.getAttribute("datetime"));
+            if (isNaN(instant.getTime())) {
+                continue;
+            }
+
+            // Marked before anything is changed, so a second pass over the same element cannot double-apply
+            // and cannot lose the UTC text into the tooltip twice.
+            element.setAttribute("data-local", "");
+            if (!element.title) {
+                element.title = element.textContent.trim();
+            }
+
+            element.textContent = format(instant);
+        }
+    }
+
+    // The same shape the server writes, so a page does not change its layout when the script runs: the
+    // numbers move, the width does not.
+    function format(instant) {
+        function pad(value) {
+            return value < 10 ? "0" + value : String(value);
+        }
+
+        return instant.getFullYear() + "-" + pad(instant.getMonth() + 1) + "-" + pad(instant.getDate()) +
+            " " + pad(instant.getHours()) + ":" + pad(instant.getMinutes());
+    }
+
+    localTimes(document);
+
+    document.addEventListener("DOMContentLoaded", function () {
+        localTimes(document);
+        if (window.Blazor && typeof window.Blazor.addEventListener === "function") {
+            window.Blazor.addEventListener("enhancedload", function () {
+                localTimes(document);
+            });
+        }
+    });
 })();
