@@ -115,6 +115,48 @@ public sealed class ChangeReportTests(ProxyServerFixture server) : IClassFixture
         Assert.Equal("2.1.0", change.Version);
     }
 
+    /// <summary>
+    /// A nightly is not news. Found against the real PowerShell Gallery on 2026-09-16: a module that publishes one
+    /// every day (PnP.PowerShell 3.4.27-nightly) would be in every report forever, and its actual release would be
+    /// one line among a month of them. No client installs a prerelease without asking for it by name.
+    /// </summary>
+    [Fact]
+    public async Task An_upstream_prerelease_is_not_reported_to_a_feed_on_a_stable_version()
+    {
+        var id = FiGetServerFixture.UniqueId("Report.Nightly");
+        await SeedAsync(
+            id,
+            "proxy",
+            ("1.0.0", DateTime.UtcNow.AddDays(-30), true),
+            ("2.0.0", DateTime.UtcNow.AddHours(-3), false),
+            ("2.1.0-nightly", DateTime.UtcNow.AddHours(-2), false));
+
+        // The nightly is the highest version in the window, so "highest" alone would report it. What the reader needs
+        // is the release: the rule is about prereleases, not about this id.
+        var change = Assert.Single((await BuildAsync("proxy", 1)).Of(PackageChangeKind.Upstream), c => c.Id == id);
+
+        Assert.Equal("2.0.0", change.Version);
+    }
+
+    /// <summary>
+    /// A feed whose own newest version is a prerelease is following that line deliberately, so the next one is exactly
+    /// what it wants to hear about.
+    /// </summary>
+    [Fact]
+    public async Task An_upstream_prerelease_is_reported_to_a_feed_already_on_one()
+    {
+        var id = FiGetServerFixture.UniqueId("Report.OnRc");
+        await SeedAsync(
+            id,
+            "proxy",
+            ("2.0.0-rc1", DateTime.UtcNow.AddDays(-30), true),
+            ("2.0.0-rc2", DateTime.UtcNow.AddHours(-2), false));
+
+        var change = Assert.Single((await BuildAsync("proxy", 1)).Of(PackageChangeKind.Upstream), c => c.Id == id);
+
+        Assert.Equal("2.0.0-rc2", change.Version);
+    }
+
     /// <summary>A version published before the window did not become news by our asking about it later.</summary>
     [Fact]
     public async Task A_version_published_before_the_window_is_not_reported()

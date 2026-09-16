@@ -94,9 +94,9 @@ public sealed class ChangeReportService(IPackageStore packages, IUpstreamDescrip
     /// <summary>
     /// The versions this feed's upstreams published in the window, for ids the feed holds and nobody has fetched yet.
     ///
-    /// One row per id: the highest such version. A gallery that has been ahead of us for a year publishes something
-    /// most weeks, and reporting each of those as news would cry wolf daily; what a reader needs to know is that
-    /// there is something newer and how far ahead it now is.
+    /// One row per id: the highest such version, and a prerelease only for a feed already on one. A gallery that has
+    /// been ahead of us for a year publishes something most weeks, and reporting each of those as news would cry wolf
+    /// daily; what a reader needs to know is that there is something newer and how far ahead it now is.
     /// </summary>
     private async Task<IReadOnlyList<UpstreamChange>> UpstreamChangesAsync(Feed feed, DateTime fromUtc, DateTime toUtc, CancellationToken cancellationToken)
     {
@@ -150,8 +150,16 @@ public sealed class ChangeReportService(IPackageStore packages, IUpstreamDescrip
                 .OrderByDescending(v => v, VersionComparer.Default)
                 .FirstOrDefault();
 
+            // A prerelease is not what a fleet pulls by accident: every client needs an explicit flag to install one.
+            // Measured against the real PowerShell Gallery on 2026-09-16, reporting them makes this group useless -
+            // a module that ships a nightly (PnP.PowerShell 3.4.27-nightly, one every day) would be news every single
+            // day, and its actual release would drown among them. A feed whose own newest version is a prerelease is
+            // tracking that line on purpose, so there it is news again.
+            var prereleases = highestHeld?.IsPrerelease ?? false;
+
             var newest = upstream.Versions
                 .Where(c => c.Listed && window.ContainsKey(c.Version.ToNormalizedString()))
+                .Where(c => prereleases || !c.Version.IsPrerelease)
                 .Where(c => highestHeld is null || VersionComparer.Default.Compare(c.Version, highestHeld) > 0)
                 .OrderByDescending(c => c.Version, VersionComparer.Default)
                 .FirstOrDefault();

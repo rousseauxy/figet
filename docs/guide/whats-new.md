@@ -25,6 +25,11 @@ Two more rules worth knowing:
   only the highest is reported. A gallery that has been ahead of you for a year would otherwise be news every day.
 - **Unlisted versions are left out.** A version this feed no longer offers is not news, and a cached copy the gallery
   has withdrawn is the opposite of news.
+- **A prerelease an upstream offers is not reported**, unless the newest version this feed holds is itself a
+  prerelease - a feed following a release candidate wants the next one. No client installs a prerelease without asking
+  for it by name, and a module that publishes a nightly would otherwise be in every report forever, with its actual
+  release one line among a month of them. The other two groups keep prereleases: somebody pushing or fetching one did
+  it on purpose.
 
 ## Reading it from a script
 
