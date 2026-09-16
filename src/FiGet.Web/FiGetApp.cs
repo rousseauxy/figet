@@ -231,6 +231,11 @@ public static class FiGetApp
         // one interactive view - the signed-in package grid - and it was removed on 2026-09-13: it duplicated the
         // static table, and its circuit was the only reason a replica had to stay pinned to a reader.
         services.AddRazorComponents();
+        // The framework gives every hosted service five seconds between them to stop, and two of ours want most of that
+        // on their own: the audit writer drains what it has queued, and an instance removes its row so that a row left
+        // behind means a crash rather than a deployment. Ten seconds fits both with room to spare, stays inside the ten
+        // a `docker stop` allows before it kills the process, and is well inside a pod's thirty.
+        services.Configure<HostOptions>(host => host.ShutdownTimeout = TimeSpan.FromSeconds(10));
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
         services.AddResponseCompression(compression =>
         {

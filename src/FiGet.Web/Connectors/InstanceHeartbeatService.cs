@@ -74,8 +74,10 @@ public sealed class InstanceHeartbeatService(
         try
         {
             // The stopping token is already cancelled here, so this gets its own short one rather than none at all: a
-            // shutdown must not hang on a database that is not answering.
-            using var leaving = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            // shutdown must not hang on a database that is not answering. Deliberately small against the host's own
+            // shutdown budget, which every hosted service shares - spend it all here and the audit writer would lose
+            // what it had queued.
+            using var leaving = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             await using var scope = scopes.CreateAsyncScope();
             await scope.ServiceProvider.GetRequiredService<IServerInstanceStore>().ForgetAsync(NameOf(options.Value), leaving.Token);
         }
