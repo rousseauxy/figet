@@ -43,4 +43,7 @@ public sealed class EfServerInstanceStore(FiGetDbContext db) : IServerInstanceSt
 
     public Task<int> PruneAsync(DateTime beforeUtc, CancellationToken cancellationToken) =>
         db.ServerInstances.Where(i => i.LastSeenUtc < beforeUtc).ExecuteDeleteAsync(cancellationToken);
+
+    public Task ForgetAsync(string id, CancellationToken cancellationToken) =>
+        db.ServerInstances.Where(i => i.Id == id).ExecuteDeleteAsync(cancellationToken);
 }

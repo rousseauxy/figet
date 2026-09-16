@@ -19,4 +19,11 @@ public interface IServerInstanceStore
     /// keep a row per pod for ever, and the list would stop being readable long before it became large.
     /// </summary>
     Task<int> PruneAsync(DateTime beforeUtc, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Removes one instance's row, which it does for itself as it stops. That is what makes a row that is still there
+    /// worth reading: an instance that was asked to stop leaves no trace, so what remains is what went away without
+    /// being asked - a crash, a killed pod, a lost node.
+    /// </summary>
+    Task ForgetAsync(string id, CancellationToken cancellationToken);
 }

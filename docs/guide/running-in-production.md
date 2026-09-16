@@ -115,12 +115,15 @@ at will.
 - **What is running**: the FiGet version, the .NET runtime, the operating system and the processor architecture (useful
   on a mixed fleet, since the image is built for `amd64` and `arm64`), the public base URL, and the clock in UTC.
 - **Which copies are running.** Every instance writes a row once a minute saying it is there, with its version and when
-  it started; one that stops is listed as quiet and forgotten after two days. This is what makes a deployment of several
-  replicas visible: four pods are four rows. The page flags a count that differs from
-  `FiGet:Database:ExpectedReplicas` — which is what the server was *told* to expect, not a count of what is there — and
-  flags two versions running at once, which is a rolling update while it lasts and a stuck rollout afterwards. These
-  rows are a report: nothing reads them to decide anything, so a stale one costs a line on a page and not a job that
-  stops running.
+  it started, and **removes its own row when it is asked to stop**. So a restart and a rolling update leave nothing
+  behind, and a row still there for a copy that is gone means it went away *without* being asked — a crash, a killed
+  pod, a lost node. That row is kept for a day to say so, marked quiet once it has missed three heartbeats.
+  Each row is named after the machine, or `FiGet:InstanceName` where a deployment sets one. The name is a *place*, not
+  a process: a copy that restarts under the same name takes its own row back instead of adding one.
+  The page warns only when **fewer** copies are running than `FiGet:Database:ExpectedReplicas` — something that should
+  be there is not. More copies than expected, or two versions at once, is what a rolling update looks like from here, so
+  it is stated plainly rather than raised as an alarm. These rows are a report: nothing reads them to decide anything,
+  so a stale one costs a line on a page and not a job that stops running.
 - **How much room is left** on the volume the storage root is on. A full volume fails a push, and nothing else on this
   server can warn about it. It is the volume's free space, not FiGet's own footprint: what FiGet uses would mean walking
   every stored file, which the storage check does on request.

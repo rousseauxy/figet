@@ -51,6 +51,16 @@ public sealed class FiGetOptions
     /// assembly's informational version, which is what a local run has.
     /// </summary>
     public string? Version { get; set; }
+
+    /// <summary>
+    /// What this copy calls itself among the copies sharing a database, listed on the system page. Empty: the machine
+    /// name, which on a cluster is the pod and in a container is the container's id.
+    ///
+    /// It is the identity of a <em>place</em>, not of a process, so a copy that restarts takes its own row back rather
+    /// than adding one. Give every copy its own: two that share a name share a row, and the page then reports fewer
+    /// running than are - visibly, as a warning, but wrongly.
+    /// </summary>
+    public string? InstanceName { get; set; }
 }
 
 public sealed class DataProtectionSettings

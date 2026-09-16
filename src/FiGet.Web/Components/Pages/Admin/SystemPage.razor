@@ -67,24 +67,34 @@
 <section class="fg-panel">
     <h2>Instances</h2>
     <p class="fg-muted fg-small">
-        Every copy sharing this database says it is running, once a minute. One that stops saying so is listed until it
-        has been quiet for @Display.Every(InstanceHeartbeatService.Forgotten), then forgotten. Nothing here decides
-        anything: which copy runs a job is the lease below.
+        Every copy sharing this database says it is running, once a minute, under its own name - the machine, or
+        <code>FiGet:InstanceName</code> where a deployment sets one - and removes its own row when it is asked to stop. So a row still here for a copy that is gone means it went away <em>without</em> being asked - a crash, a
+        killed pod, a lost node - and it is kept for @Display.Every(InstanceHeartbeatService.Forgotten) to say so.
+        Nothing here decides anything: which copy runs a job is the lease below.
     </p>
-    @if (Options.Value.Database.ExpectedReplicas != running.Count && running.Count > 0)
-    {
-        <div class="fg-alert fg-alert-warn" role="status">
-            <strong>@running.Count running, @Options.Value.Database.ExpectedReplicas expected.</strong>
-            <code>FiGet:Database:ExpectedReplicas</code> is what this server was told to expect; it is not a count of
-            what is there. On a cluster, a difference is a rollout in progress or a pod that did not come back.
-        </div>
-    }
-    @if (versions.Count > 1)
+    @* A warning is for what is missing. More copies than expected, or two versions at once, is what a rolling update
+       looks like from here - saying so in an alert box would cry wolf at every deployment. *@
+    @if (running.Count > 0 && running.Count < Options.Value.Database.ExpectedReplicas)
     {
         <div class="fg-alert fg-alert-warn" role="alert">
-            <strong>Two versions are running at once:</strong> @string.Join(", ", versions).
-            That is normal during a rolling update and a stuck rollout otherwise.
+            <strong>@running.Count running, @Options.Value.Database.ExpectedReplicas expected.</strong>
+            Something that should be here is not: a copy that stopped without saying so, or one that cannot reach this
+            database. <code>FiGet:Database:ExpectedReplicas</code> is what this server was told to expect.
         </div>
+    }
+    else if (running.Count > Options.Value.Database.ExpectedReplicas || versions.Count > 1)
+    {
+        <p class="fg-muted fg-small">
+            @if (running.Count > Options.Value.Database.ExpectedReplicas)
+            {
+                <span>@running.Count running where @Options.Value.Database.ExpectedReplicas are expected.</span>
+            }
+            @if (versions.Count > 1)
+            {
+                <span>Two versions at once: @string.Join(", ", versions).</span>
+            }
+            <span>Both are what a rolling update looks like while it lasts; if it lasts, the rollout is stuck.</span>
+        </p>
     }
     <div class="fg-table-wrap">
         <table class="fg-table">
@@ -99,11 +109,15 @@
             <tbody>
                 @foreach (var one in instances)
                 {
-                    var quiet = Time.GetUtcNow().UtcDateTime - one.LastSeenUtc > Quiet;
+                    var quiet = Time.GetUtcNow().UtcDateTime - one.LastSeenUtc > InstanceHeartbeatService.Quiet;
                     <tr>
                         <td class="fg-badge-trail">
-                            @one.Machine
-                            @if (one.Id == Self.Id)
+                            @one.Id
+                            @if (!string.Equals(one.Machine, one.Id, StringComparison.Ordinal))
+                            {
+                                <span class="fg-muted fg-small">on @one.Machine</span>
+                            }
+                            @if (one.Id == self)
                             {
                                 <span class="fg-badge fg-badge-plain" title="The instance answering this request">this one</span>
                             }
@@ -297,24 +311,21 @@
 </section>
 
 @code {
-    /// <summary>Missed heartbeats before an instance is called quiet: enough for one slow minute not to raise a flag.</summary>
-    private static readonly TimeSpan Quiet = TimeSpan.FromMinutes(5);
-
     private DatabaseFacts? facts;
     private IReadOnlyList<JobLeaseState> leases = [];
     private IReadOnlyList<ServerInstance> instances = [];
     private IReadOnlyList<ServerInstance> running = [];
     private IReadOnlyList<string> versions = [];
+    private string self = "";
     private VolumeSpace space = new("", 0, 0);
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
 
-    [Inject]
-    private JobInstance Self { get; set; } = default!;
 
     protected override async Task OnInitializedAsync()
     {
+        self = InstanceHeartbeatService.NameOf(Options.Value);
         facts = await Facts.ReadAsync(HttpContext.RequestAborted);
         leases = await Leases.ListAsync(HttpContext.RequestAborted);
         instances = await Instances.ListAsync(HttpContext.RequestAborted);
@@ -322,7 +333,7 @@
 
         // "Running" is what is still speaking, which is the only honest basis for comparing against the replica count.
         var now = Time.GetUtcNow().UtcDateTime;
-        running = [.. instances.Where(i => now - i.LastSeenUtc <= Quiet)];
+        running = [.. instances.Where(i => now - i.LastSeenUtc <= InstanceHeartbeatService.Quiet)];
         versions = [.. running.Select(i => i.Version).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
     }
 
