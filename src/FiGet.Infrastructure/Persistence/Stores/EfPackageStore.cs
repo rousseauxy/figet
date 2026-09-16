@@ -131,6 +131,42 @@ public sealed class EfPackageStore(FiGetDbContext db) : IPackageStore
         return rows;
     }
 
+    public async Task<IReadOnlyList<Package>> ListHeldPackagesAsync(int feedKey, IReadOnlyCollection<string> idsLower, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(idsLower);
+        var packages = new List<Package>();
+        foreach (var chunk in idsLower.Distinct(StringComparer.Ordinal).Chunk(LookupBatch))
+        {
+            // Projected into the entities rather than loaded as them: the caller applies rules about versions, and
+            // every column it does not read is a column of description text per version of every id on the page.
+            packages.AddRange(await db.Packages.AsNoTracking()
+                .Where(p => p.FeedKey == feedKey && chunk.Contains(p.IdLower))
+                .Select(p => new Package
+                {
+                    Key = p.Key,
+                    FeedKey = p.FeedKey,
+                    Id = p.Id,
+                    IdLower = p.IdLower,
+                    Versions = p.Versions
+                        .Select(v => new PackageVersion
+                        {
+                            Key = v.Key,
+                            PackageKey = v.PackageKey,
+                            NormalizedVersion = v.NormalizedVersion,
+                            NormalizedVersionLower = v.NormalizedVersionLower,
+                            OriginalVersion = v.OriginalVersion,
+                            Listed = v.Listed,
+                            Origin = v.Origin,
+                            PublishedUtc = v.PublishedUtc,
+                        })
+                        .ToList(),
+                })
+                .ToListAsync(cancellationToken));
+        }
+
+        return packages;
+    }
+
     public async Task<IReadOnlyList<Package>> GetPackagesAsync(IReadOnlyCollection<long> packageKeys, CancellationToken cancellationToken)
     {
         if (packageKeys.Count == 0)

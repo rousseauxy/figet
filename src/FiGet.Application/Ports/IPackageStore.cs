@@ -46,6 +46,14 @@ public interface IPackageStore
     Task<IReadOnlyList<HeldVersion>> ListHeldVersionsAsync(int feedKey, IReadOnlyCollection<string> idsLower, CancellationToken cancellationToken);
 
     /// <summary>
+    /// These ids' packages with their versions carrying only what decides ownership - the version, whether it is
+    /// listed, and whether it was pushed here. For a caller that has to apply the proxy rules (a pushed id is served
+    /// locally, an upstream owns an id) but shows none of the metadata: loading the rows themselves would pull the
+    /// description, tags and search text of every version of a module that may have two thousand.
+    /// </summary>
+    Task<IReadOnlyList<Package>> ListHeldPackagesAsync(int feedKey, IReadOnlyCollection<string> idsLower, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Every package the feed stores, with every version, listed or not, and no dependencies. What a
     /// management listing of a whole feed needs; a feed of a few thousand versions is one query per table.
     /// </summary>

@@ -138,6 +138,9 @@ public sealed record CachedUpstreamCatalog(
 /// <see cref="IUpstreamIndexStore"/> because it is display, never correctness, and because its size is a different
 /// order: it is written only for versions not stored yet, and read only when memory has nothing.
 /// </summary>
+/// <summary>One version an upstream published, as a report of recent activity reads it.</summary>
+public readonly record struct UpstreamPublished(string IdLower, string NormalizedVersion, DateTime PublishedUtc, string Authors);
+
 public interface IUpstreamDescriptionStore
 {
     /// <summary>
@@ -159,6 +162,18 @@ public interface IUpstreamDescriptionStore
     /// without it that version is served as published in the year 1, which a client sorting on the date reads as the
     /// oldest thing in the feed and a report filtering on it drops.
     /// </summary>
+    /// <summary>
+    /// What this upstream published in <c>[fromUtc, toUtc)</c>, whatever the id, newest first, at most
+    /// <paramref name="take"/>. The window comes first on purpose: a gallery's catalogue holds every version of every
+    /// id anyone here ever asked about, and a report wants the few that are new.
+    /// </summary>
+    Task<IReadOnlyList<UpstreamPublished>> PublishedBetweenAsync(
+        int feedUpstreamKey,
+        DateTime fromUtc,
+        DateTime toUtc,
+        int take,
+        CancellationToken cancellationToken);
+
     Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, DateTime>>> PublishedDatesAsync(
         int feedUpstreamKey,
         IReadOnlyCollection<string> idsLower,

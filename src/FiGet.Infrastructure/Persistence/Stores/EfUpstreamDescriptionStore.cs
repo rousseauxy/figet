@@ -76,6 +76,29 @@ public sealed class EfUpstreamDescriptionStore(FiGetDbContext db, DbContextOptio
         return described;
     }
 
+    public async Task<IReadOnlyList<UpstreamPublished>> PublishedBetweenAsync(
+        int feedUpstreamKey,
+        DateTime fromUtc,
+        DateTime toUtc,
+        int take,
+        CancellationToken cancellationToken)
+    {
+        if (take <= 0)
+        {
+            return [];
+        }
+
+        var rows = await db.CachedUpstreamDescriptions
+            .AsNoTracking()
+            .Where(d => d.FeedUpstreamKey == feedUpstreamKey && d.PublishedUtc >= fromUtc && d.PublishedUtc < toUtc)
+            .OrderByDescending(d => d.PublishedUtc)
+            .Take(take)
+            .Select(d => new { d.IdLower, d.NormalizedVersion, d.PublishedUtc, d.Authors })
+            .ToListAsync(cancellationToken);
+
+        return [.. rows.Select(r => new UpstreamPublished(r.IdLower, r.NormalizedVersion, r.PublishedUtc!.Value, r.Authors))];
+    }
+
     public async Task<IReadOnlyDictionary<string, IReadOnlyDictionary<string, DateTime>>> PublishedDatesAsync(
         int feedUpstreamKey,
         IReadOnlyCollection<string> idsLower,

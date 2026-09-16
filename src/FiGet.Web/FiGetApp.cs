@@ -154,6 +154,7 @@ public static class FiGetApp
         services.AddSingleton<IUpstreamRefreshQueue>(sp => sp.GetRequiredService<UpstreamRefreshQueue>());
         services.AddHostedService<UpstreamRefreshService>();
         services.AddScoped<ConnectorService>();
+        services.AddScoped<FiGet.Application.Reports.ChangeReportService>();
         services.AddScoped<DependencyPuller>();
 
         services.AddDataProtection()
