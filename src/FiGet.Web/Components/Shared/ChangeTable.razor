@@ -1,0 +1,93 @@
+@using FiGet.Application.Reports
+
+@*
+    One group of a change report. A section of its own rather than one table with a column for the group: the three
+    answer different questions - what we published, what we fetched, what is waiting - and a reader looks at one.
+*@
+
+<section class="fg-panel">
+    <h2>@Title <span class="fg-num fg-muted">@Changes.Count</span></h2>
+
+    @if (Changes.Count == 0)
+    {
+        <p class="fg-empty">@Empty</p>
+    }
+    else
+    {
+        <div class="fg-table-wrap">
+            <table class="fg-table">
+                <thead>
+                    <tr>
+                        <th>Package</th>
+                        <th>New version</th>
+                        <th>Previous</th>
+                        <th>Published</th>
+                        @if (ShowUpstream)
+                        {
+                            <th>Upstream</th>
+                        }
+                        <th>Release notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var change in Changes)
+                    {
+                        <tr class="@(change.Breaking ? "fg-change-breaking" : "")">
+                            <td><a href="/feeds/@Feed/packages/@Uri.EscapeDataString(change.Id)">@Display.BreakableId(change.Id)</a></td>
+                            <td>
+                                @change.Version
+                                @if (change.Breaking)
+                                {
+                                    <span class="fg-badge fg-badge-warn" title="The major version grew, so this release may remove what a script calls">breaking</span>
+                                }
+                            </td>
+                            <td class="fg-muted">@(change.PreviousVersion ?? Display.None)</td>
+                            <td>@Display.Date(change.PublishedUtc)</td>
+                            @if (ShowUpstream)
+                            {
+                                <td class="fg-muted">@change.Upstream</td>
+                            }
+                            <td class="fg-change-notes">
+                                @if (change.ReleaseNotes.Length > 0)
+                                {
+                                    @change.ReleaseNotes
+                                }
+                                else
+                                {
+                                    <span class="fg-muted" title="@NotesTitle(change)">@Display.None</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = "";
+
+    [Parameter]
+    public string Feed { get; set; } = "";
+
+    [Parameter]
+    public IReadOnlyList<PackageChange> Changes { get; set; } = [];
+
+    [Parameter]
+    public string Empty { get; set; } = "Nothing in this period.";
+
+    /// <summary>Which upstream offers it. Only the group where more than one answer is possible shows it.</summary>
+    [Parameter]
+    public bool ShowUpstream { get; set; }
+
+    /// <summary>
+    /// Why a row has no notes. For a version nobody has fetched there are none to have: release notes live in the
+    /// package, and a gallery does not put them in the answers a version list is built from.
+    /// </summary>
+    private static string NotesTitle(PackageChange change) =>
+        change.Kind == PackageChangeKind.Upstream
+            ? "Not known until the version is fetched: a gallery does not report release notes in a version list."
+            : "This version carries no release notes.";
+}

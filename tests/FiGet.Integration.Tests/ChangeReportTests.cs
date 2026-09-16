@@ -217,6 +217,61 @@ public sealed class ChangeReportTests(ProxyServerFixture server) : IClassFixture
         HttpAssert.Status(HttpStatusCode.OK, await admin.GetAsync("api/packages/private/changes"));
     }
 
+    /// <summary>The page a reader opens, with a section per group.</summary>
+    [Fact]
+    public async Task The_page_shows_the_three_groups()
+    {
+        var id = FiGetServerFixture.UniqueId("Report.Page");
+        await PushAsync("proxy", id, "1.0.0");
+
+        using var client = server.CreateClient();
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("feeds/proxy/changes"));
+
+        Assert.Contains("Pushed here", page, StringComparison.Ordinal);
+        Assert.Contains("Cached from an upstream", page, StringComparison.Ordinal);
+        Assert.Contains("Newer upstream, not fetched", page, StringComparison.Ordinal);
+        Assert.Contains(id, page, StringComparison.Ordinal);
+    }
+
+    /// <summary>The window is chosen with the pills, and a shorter one leaves older changes out.</summary>
+    [Fact]
+    public async Task The_period_pills_change_the_window()
+    {
+        var id = FiGetServerFixture.UniqueId("Report.Pills");
+        await SeedAsync(id, "proxy", ("1.0.0", DateTime.UtcNow.AddDays(-40), true), ("2.0.0", DateTime.UtcNow.AddDays(-10), false));
+
+        using var client = server.CreateClient();
+        var week = await HttpAssert.SuccessBodyAsync(await client.GetAsync("feeds/proxy/changes?days=7"));
+        var month = await HttpAssert.SuccessBodyAsync(await client.GetAsync("feeds/proxy/changes?days=30"));
+
+        Assert.DoesNotContain(id, week, StringComparison.Ordinal);
+        Assert.Contains(id, month, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Without Read the page answers 404 and does not name the feed: a feed that needs credentials is not confirmed
+    /// to exist, which is the rule the browse pages follow.
+    /// </summary>
+    [Fact]
+    public async Task The_page_is_not_found_without_read()
+    {
+        using var anonymous = server.CreateClient();
+        using var response = await anonymous.GetAsync("feeds/private/changes");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.DoesNotContain("Pushed here", body, StringComparison.Ordinal);
+
+        // Signed in, the same page answers: a page is read with a cookie, which is why the token above proves nothing
+        // about who may see it.
+        using var browser = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = true, CookieContainer = new CookieContainer() })
+        {
+            BaseAddress = server.BaseAddress,
+        };
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(browser));
+        HttpAssert.Status(HttpStatusCode.OK, await browser.GetAsync("feeds/private/changes"));
+    }
+
     private async Task<ChangeReport> BuildAsync(string feed, int days)
     {
         await using var scope = server.Services.CreateAsyncScope();
