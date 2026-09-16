@@ -14,6 +14,13 @@ public sealed class JobLease
     public required string Holder { get; set; }
 
     public DateTime ExpiresUtc { get; set; }
+
+    /// <summary>
+    /// When this job last started, which is the one thing an operator cannot otherwise learn: only two of the six jobs
+    /// record anything, and then only when they had work to do. It is deliberately "started" and not "succeeded" - the
+    /// lease is taken before the run, and a run that throws leaves the time where a successful one would.
+    /// </summary>
+    public DateTime? TakenUtc { get; set; }
 }
 
 /// <summary>The jobs that take a lease, named once.</summary>

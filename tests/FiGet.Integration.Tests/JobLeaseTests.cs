@@ -51,6 +51,42 @@ public abstract class JobLeaseTests
         Assert.Single(results, taken => taken);
     }
 
+    /// <summary>
+    /// When each job last started, which is what the database page reports. Every take writes it, including a renewal
+    /// and a takeover, so "last started" cannot silently freeze at the first run.
+    /// </summary>
+    [Fact]
+    public async Task Taking_a_job_records_when_it_started()
+    {
+        var job = "taken-" + Guid.NewGuid().ToString("N")[..8];
+        var now = new DateTime(2026, 9, 16, 8, 0, 0, DateTimeKind.Utc);
+        var hour = TimeSpan.FromHours(1);
+
+        Assert.Null(await TakenAsync(job));
+
+        Assert.True(await TryAsync(job, "replica-a", now, now + hour));
+        Assert.Equal(now, await TakenAsync(job));
+
+        // A renewal moves it: otherwise a job running every hour would report the day it first ran.
+        Assert.True(await TryAsync(job, "replica-a", now.AddMinutes(59), now.AddMinutes(59) + hour));
+        Assert.Equal(now.AddMinutes(59), await TakenAsync(job));
+
+        // A replica that could not take the job leaves the time alone.
+        Assert.False(await TryAsync(job, "replica-b", now.AddMinutes(61), now.AddMinutes(61) + hour));
+        Assert.Equal(now.AddMinutes(59), await TakenAsync(job));
+
+        // And a takeover after the lease ran out records the new holder's run.
+        Assert.True(await TryAsync(job, "replica-b", now.AddMinutes(180), now.AddMinutes(180) + hour));
+        Assert.Equal(now.AddMinutes(180), await TakenAsync(job));
+    }
+
+    private async Task<DateTime?> TakenAsync(string job)
+    {
+        await using var scope = server.Services.CreateAsyncScope();
+        var leases = await scope.ServiceProvider.GetRequiredService<IJobLeaseStore>().ListAsync(TestContext.Current.CancellationToken);
+        return leases.FirstOrDefault(l => l.Name == job)?.TakenUtc;
+    }
+
     private async Task<bool> TryAsync(string job, string holder, DateTime now, DateTime expires)
     {
         await using var scope = server.Services.CreateAsyncScope();

@@ -819,6 +819,9 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<DateTime?>("TakenUtc")
+                        .HasColumnType("datetime2");
+
                     b.HasKey("Name");
 
                     b.ToTable("JobLeases", (string)null);
