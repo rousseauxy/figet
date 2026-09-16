@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text.Json.Nodes;
 using FiGet.Application.Ports;
 using FiGet.Application.Reports;
 using FiGet.Domain.Entities;
@@ -163,6 +164,57 @@ public sealed class ChangeReportTests(ProxyServerFixture server) : IClassFixture
         Assert.Equal("public", report.Feed);
         Assert.Contains(report.Of(PackageChangeKind.Pushed), c => c.Id == id);
         Assert.Empty(report.Of(PackageChangeKind.Upstream));
+    }
+
+    /// <summary>The route a script calls, answering the same report the page shows.</summary>
+    [Fact]
+    public async Task The_changes_route_answers_the_report_as_json()
+    {
+        var id = FiGetServerFixture.UniqueId("Report.Api");
+        await PushAsync("proxy", id, "1.0.0");
+        await PushAsync("proxy", id, "2.0.0");
+
+        using var client = server.CreateClient();
+        var body = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync("api/packages/proxy/changes?days=1")))!;
+
+        Assert.Equal("proxy", (string?)body["feed"]);
+        Assert.Equal(1, (int?)body["days"]);
+        Assert.False((bool?)body["truncated"]);
+
+        var change = body["changes"]!.AsArray().Single(c => (string?)c!["name"] == id && (string?)c["version"] == "2.0.0")!;
+        Assert.Equal("pushed", (string?)change["kind"]);
+        Assert.Equal("1.0.0", (string?)change["previousVersion"]);
+        Assert.True((bool?)change["breaking"]);
+
+        // Absent rather than empty: the reader of a JSON document should not have to tell "" from "nothing to say".
+        Assert.Null(change["upstream"]);
+    }
+
+    /// <summary>A hand-edited window is clamped, never refused: the worst it should do is show a different week.</summary>
+    [Theory]
+    [InlineData("?days=100000", 90)]
+    [InlineData("?days=-5", 1)]
+    [InlineData("?days=abc", 7)]
+    [InlineData("", 7)]
+    public async Task The_window_is_clamped_rather_than_refused(string query, int days)
+    {
+        using var client = server.CreateClient();
+        var body = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync("api/packages/proxy/changes" + query)))!;
+
+        Assert.Equal(days, (int?)body["days"]);
+    }
+
+    /// <summary>The same gate as browsing the feed: what a reader may not see, a script may not read either.</summary>
+    [Fact]
+    public async Task The_changes_route_needs_read_on_the_feed()
+    {
+        using (var anonymous = server.CreateClient())
+        {
+            HttpAssert.Status(HttpStatusCode.Unauthorized, await anonymous.GetAsync("api/packages/private/changes"));
+        }
+
+        using var admin = server.CreateClient(FiGetServerFixture.AdminToken);
+        HttpAssert.Status(HttpStatusCode.OK, await admin.GetAsync("api/packages/private/changes"));
     }
 
     private async Task<ChangeReport> BuildAsync(string feed, int days)

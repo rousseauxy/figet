@@ -24,6 +24,7 @@ FiGet.
 | GET | `/versions?name=&version=` | Read | Every stored version, newest first; `name` and `version` narrow it. `[]` when nothing matches. |
 | GET | `/latest?name=&stableOnly=` | Read | A list with one entry per package: the highest listed version, or the highest listed stable one. |
 | GET | `/download?name=&version=` | Read | The `.nupkg`. `version` may also be `latest` (the version `/latest?stableOnly=true` reports) or `latest-unstable` (the highest listed, prerelease included). 404 when the feed does not store that version. |
+| GET | `/changes?days=` | Read | What changed among the packages this feed holds, over the last `days` (1 to 90, 7 by default; anything else is clamped, never refused). See below. |
 | POST | `/delete?name=&version=` | Delete | 200; 404 when not found. |
 | POST | `/status?name=&version=` | Delete | Body `{"listed": true\|false}`. 200. |
 | PUT, POST | `/upload`, `/upload/{fileName}` | Push | The body is the package. 201; 409 when the version exists and the feed does not allow overwrite. |
@@ -48,6 +49,50 @@ follow the feed's anonymous-read setting.
   "deprecated": false
 }
 ```
+
+## What changed
+
+FiGet's own route - the reference server has nothing like it, so no client expects another shape. It answers the
+question a scheduled report asks: *has anything we depend on moved?*
+
+```json
+{
+  "feed": "modules",
+  "from": "2026-09-09T06:00:00Z",
+  "to": "2026-09-16T06:00:00Z",
+  "days": 7,
+  "truncated": false,
+  "changes": [
+    {
+      "name": "PnP.PowerShell",
+      "version": "3.4.1",
+      "previousVersion": "3.3.0",
+      "breaking": true,
+      "published": "2026-09-15T08:12:00Z",
+      "kind": "upstream",
+      "upstream": "gallery",
+      "authors": "PnP"
+    }
+  ]
+}
+```
+
+- **`kind`** is `pushed` (pushed to this feed), `cached` (fetched from an upstream and kept here) or `upstream` (an
+  upstream offers it and nobody here has fetched it). The third is the point of the route: it is the warning that the
+  gallery has moved ahead of what this feed serves.
+- **Only ids this feed holds.** A gallery publishing something nobody here uses is not this feed's news; that is what
+  separates this from reading a gallery's own feed of recent packages.
+- **`previousVersion`** is the next highest listed version this feed holds, and **`breaking`** says its major version
+  grew - the one thing worth marking before a fleet installs it. Neither says anything about 0.x, where a minor
+  version may break just as thoroughly.
+- **One row per id**: among the versions an upstream published inside the window and above what this feed holds, the
+  highest. A gallery that has been ahead for a year would otherwise be news every day.
+- **Unlisted versions are left out**, on both sides: a version this feed no longer offers is not news.
+- **`truncated`** says the window held more than the report carries (500 per group).
+- **No upstream is contacted.** The upstream half is read from the stored catalogues, so a route any reader may call
+  cannot turn into traffic a gallery has to carry. Keeping those catalogues current is a scheduled sweep's job.
+- Absent rather than empty: `previousVersion`, `upstream`, `authors` and `releaseNotes` are omitted when there is
+  nothing to say, so a reader need not tell `""` from "nothing".
 
 ## Decisions
 

@@ -1,9 +1,11 @@
+using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FiGet.Application.Connectors;
 using FiGet.Application.Packages;
 using FiGet.Application.Ports;
+using FiGet.Application.Reports;
 using FiGet.Domain.Entities;
 using FiGet.Domain.Versions;
 using FiGet.Http;
@@ -42,6 +44,7 @@ public static class PackageManagementEndpoints
         group.MapGet("", FeedInfoAsync);
         group.MapGet("/versions", VersionsAsync);
         group.MapGet("/latest", LatestAsync);
+        group.MapGet("/changes", ChangesAsync);
         group.MapGet("/download", DownloadAsync);
         group.MapPost("/delete", DeleteAsync).DisableAntiforgery();
         group.MapPost("/status", StatusAsync).DisableAntiforgery();
@@ -115,6 +118,36 @@ public static class PackageManagementEndpoints
         }
 
         return Results.Json(rows, Json);
+    }
+
+    /// <summary>
+    /// What changed among the packages this feed holds: pushed here, cached from an upstream, or offered by an
+    /// upstream and not fetched yet. FiGet's own route, not one the reference server has, so no client expects a
+    /// different shape.
+    ///
+    /// Unlike <c>/versions</c> it reports versions this feed does not hold, because "the gallery has something newer
+    /// than what you are running" is the question it exists to answer. It never reaches an upstream to answer it: the
+    /// stored catalogues are what it reads, and the sweep is what keeps those current.
+    /// </summary>
+    private static async Task<IResult> ChangesAsync(
+        HttpContext http,
+        string feed,
+        string? days,
+        ChangeReportService reports,
+        TimeProvider time,
+        CancellationToken cancellationToken)
+    {
+        var (request, error) = await FeedAccess.ResolveAsync(http, feed, TokenScopes.Read, cancellationToken);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        // Read as text and clamped, never refused: bound as a number, the framework answers 400 before this handler
+        // runs, and a hand-edited address should at worst show a different window.
+        var asked = int.TryParse(days, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : (int?)null;
+        var report = await reports.BuildAsync(request!.Feed, ChangeReportService.Days(asked), time.GetUtcNow().UtcDateTime, cancellationToken);
+        return Results.Json(ChangesJson.Of(report), Json);
     }
 
     private static async Task<IResult> DownloadAsync(HttpContext http, string feed, string? name, string? version, IPackageStore store, IPackageStorage storage, ConnectorService connector, CancellationToken cancellationToken)
@@ -347,6 +380,50 @@ public static class PackageManagementEndpoints
         {
             return null;
         }
+    }
+
+    /// <summary>A change report, as the changes route answers it.</summary>
+    private sealed record ChangesJson(string Feed, DateTime From, DateTime To, int Days, bool Truncated, IReadOnlyList<ChangeJson> Changes)
+    {
+        public static ChangesJson Of(ChangeReport report) => new(
+            report.Feed,
+            report.FromUtc,
+            report.ToUtc,
+            (int)Math.Round((report.ToUtc - report.FromUtc).TotalDays),
+            report.StoppedAtLimit,
+            [.. report.Changes.Select(ChangeJson.Of)]);
+    }
+
+    /// <summary>
+    /// One row of a change report. <c>kind</c> is written by hand rather than from the enum's name: the wire contract
+    /// must not move the day somebody renames a member.
+    /// </summary>
+    private sealed record ChangeJson(
+        string Name,
+        string Version,
+        string? PreviousVersion,
+        bool Breaking,
+        DateTime Published,
+        string Kind,
+        string? Upstream,
+        string? Authors,
+        string? ReleaseNotes)
+    {
+        public static ChangeJson Of(PackageChange change) => new(
+            change.Id,
+            change.Version,
+            change.PreviousVersion,
+            change.Breaking,
+            change.PublishedUtc,
+            change.Kind switch
+            {
+                PackageChangeKind.Pushed => "pushed",
+                PackageChangeKind.Cached => "cached",
+                _ => "upstream",
+            },
+            change.Upstream.Length == 0 ? null : change.Upstream,
+            change.Authors.Length == 0 ? null : change.Authors,
+            change.ReleaseNotes.Length == 0 ? null : change.ReleaseNotes);
     }
 
     /// <summary>One version, named as the reference client's model names it.</summary>
