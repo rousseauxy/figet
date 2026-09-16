@@ -34,7 +34,7 @@
                     {
                         <tr class="@(change.Breaking ? "fg-change-breaking" : "")">
                             <td><a href="/feeds/@Feed/packages/@Uri.EscapeDataString(change.Id)">@Display.BreakableId(change.Id)</a></td>
-                            <td class="fg-change-version">
+                            <td class="fg-badge-trail">
                                 @change.Version
                                 @if (change.Breaking)
                                 {

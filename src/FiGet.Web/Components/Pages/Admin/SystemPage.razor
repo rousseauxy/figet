@@ -41,7 +41,7 @@
         <dd>@RuntimeInformation.FrameworkDescription on @RuntimeInformation.OSDescription (@RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant())</dd>
 
         <dt>Public address</dt>
-        <dd>
+        <dd class="fg-badge-lead">
             @if (string.IsNullOrWhiteSpace(Options.Value.PublicBaseUrl))
             {
                 <span class="fg-badge fg-badge-warn">Not set</span>
@@ -98,7 +98,7 @@
                 {
                     var quiet = Time.GetUtcNow().UtcDateTime - one.LastSeenUtc > Quiet;
                     <tr>
-                        <td>
+                        <td class="fg-badge-trail">
                             @one.Machine
                             @if (one.Id == Self.Id)
                             {
@@ -107,7 +107,7 @@
                         </td>
                         <td>@one.Version</td>
                         <td>@Display.Date(one.StartedUtc)</td>
-                        <td>
+                        <td class="fg-badge-trail">
                             @Display.Date(one.LastSeenUtc)
                             @if (quiet)
                             {
@@ -197,7 +197,7 @@
         </dd>
 
         <dt>Key ring</dt>
-        <dd>
+        <dd class="fg-badge-lead">
             @if (MasterKey.IsSet)
             {
                 <span>Encrypted with <code>FiGet:DataProtection:MasterKey</code>. Keep that key, and keep it apart from the database backup: without it the stored webhook address and every provider secret cannot be read.</span>

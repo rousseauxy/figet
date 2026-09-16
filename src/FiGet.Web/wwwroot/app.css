@@ -558,8 +558,10 @@ pre code { padding: 0; background: none; }
 /* A change report: the rows that may break somebody's script are marked down the edge, where the eye finds them
    without reading a column, and release notes are held to a width so one verbose entry cannot push the table wide. */
 .fg-change-breaking > td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
-/* Razor drops the whitespace between a version and the badge that follows it, so the gap is set here. */
-.fg-change-version .fg-badge { margin-left: 0.4rem; }
+/* A cell whose text is followed by a badge: Razor drops the whitespace between them, so the gap is set here. Not on
+   .fg-badge itself, which would indent the badges that stand alone in a cell of their own. */
+.fg-badge-trail .fg-badge { margin-left: 0.4rem; }
+.fg-badge-lead .fg-badge { margin-right: 0.4rem; }
 .fg-change-notes { max-width: 34rem; white-space: pre-wrap; }
 .fg-badge-danger { background: var(--danger-soft); color: var(--danger); }
 .fg-badge-info   { background: var(--info-soft);   color: var(--info); }
