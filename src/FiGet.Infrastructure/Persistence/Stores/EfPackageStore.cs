@@ -11,6 +11,9 @@ public sealed class EfPackageStore(FiGetDbContext db) : IPackageStore
 {
     private const string LikeEscape = "\\";
 
+    /// <summary>Values per <c>IN</c> list, kept well under SQL Server's 2100 parameters and SQLite's variable limit.</summary>
+    private const int LookupBatch = 500;
+
     public async Task<Package?> GetPackageAsync(int feedKey, string idLower, bool includeDependencies, CancellationToken cancellationToken)
     {
         IQueryable<Package> query = db.Packages.AsNoTracking().Where(p => p.FeedKey == feedKey && p.IdLower == idLower);
@@ -65,6 +68,67 @@ public sealed class EfPackageStore(FiGetDbContext db) : IPackageStore
             .Select(p => p.IdLower)
             .ToListAsync(cancellationToken);
         return held.ToHashSet(StringComparer.Ordinal);
+    }
+
+    public async Task<IReadOnlyList<string>> ListIdsAsync(int feedKey, CancellationToken cancellationToken) =>
+        await db.Packages.AsNoTracking()
+            .Where(p => p.FeedKey == feedKey)
+            .OrderBy(p => p.IdLower)
+            .Select(p => p.IdLower)
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<PublishedVersion>> ListPublishedBetweenAsync(int feedKey, DateTime fromUtc, DateTime toUtc, int take, CancellationToken cancellationToken)
+    {
+        // The feed's packages first, then their versions by key. PackageVersions has no feed of its own, so the other
+        // plan is to seek the date across every feed on the instance and throw away what belongs to the others - which
+        // would make a quiet feed's page cost whatever the busiest feed is doing. Chunked like every other id lookup
+        // here, to stay well under SQL Server's parameter limit.
+        var packages = await db.Packages.AsNoTracking()
+            .Where(p => p.FeedKey == feedKey)
+            .Select(p => new { p.Key, p.Id, p.IdLower })
+            .ToListAsync(cancellationToken);
+        if (packages.Count == 0 || take <= 0)
+        {
+            return [];
+        }
+
+        var byKey = packages.ToDictionary(p => p.Key, p => p);
+        var rows = new List<PublishedVersion>();
+        foreach (var chunk in packages.Select(p => p.Key).Chunk(LookupBatch))
+        {
+            var found = await db.PackageVersions.AsNoTracking()
+                .Where(v => chunk.Contains(v.PackageKey) && v.Listed && v.PublishedUtc >= fromUtc && v.PublishedUtc < toUtc)
+                .OrderByDescending(v => v.PublishedUtc)
+                .Take(take)
+                .Select(v => new { v.PackageKey, v.NormalizedVersion, v.Origin, v.PublishedUtc, v.ReleaseNotes, v.Authors })
+                .ToListAsync(cancellationToken);
+
+            rows.AddRange(found.Select(v => new PublishedVersion(
+                byKey[v.PackageKey].Id,
+                byKey[v.PackageKey].IdLower,
+                v.NormalizedVersion,
+                v.Origin,
+                v.PublishedUtc,
+                v.ReleaseNotes,
+                v.Authors)));
+        }
+
+        return [.. rows.OrderByDescending(r => r.PublishedUtc).ThenBy(r => r.IdLower, StringComparer.Ordinal).Take(take)];
+    }
+
+    public async Task<IReadOnlyList<HeldVersion>> ListHeldVersionsAsync(int feedKey, IReadOnlyCollection<string> idsLower, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(idsLower);
+        var rows = new List<HeldVersion>();
+        foreach (var chunk in idsLower.Distinct(StringComparer.Ordinal).Chunk(LookupBatch))
+        {
+            rows.AddRange(await db.PackageVersions.AsNoTracking()
+                .Where(v => v.Package!.FeedKey == feedKey && chunk.Contains(v.Package.IdLower))
+                .Select(v => new HeldVersion(v.Package!.IdLower, v.NormalizedVersion, v.Listed))
+                .ToListAsync(cancellationToken));
+        }
+
+        return rows;
     }
 
     public async Task<IReadOnlyList<Package>> GetPackagesAsync(IReadOnlyCollection<long> packageKeys, CancellationToken cancellationToken)

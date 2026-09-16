@@ -329,6 +329,8 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
 
                     b.HasIndex("TagSetHash");
 
+                    b.HasIndex("FeedUpstreamKey", "PublishedUtc");
+
                     b.HasIndex("FeedUpstreamKey", "IdLower", "NormalizedVersion")
                         .IsUnique();
 
@@ -1125,6 +1127,8 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
 
                     b.HasIndex("PackageKey", "NormalizedVersionLower")
                         .IsUnique();
+
+                    b.HasIndex("PackageKey", "PublishedUtc");
 
                     b.ToTable("PackageVersions", (string)null);
                 });

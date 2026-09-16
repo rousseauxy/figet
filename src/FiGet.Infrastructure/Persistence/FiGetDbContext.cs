@@ -291,6 +291,10 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.Property(x => x.TagSetHash).HasMaxLength(64);
             e.HasIndex(x => new { x.FeedUpstreamKey, x.IdLower, x.NormalizedVersion }).IsUnique();
             e.HasIndex(x => x.TagSetHash);
+
+            // "What did this gallery publish this week": a range seek per upstream, over a table whose rows carry an
+            // unbounded description each - so reading it any other way means reading all of them.
+            e.HasIndex(x => new { x.FeedUpstreamKey, x.PublishedUtc });
             e.HasOne(x => x.FeedUpstream).WithMany().HasForeignKey(x => x.FeedUpstreamKey).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -320,6 +324,10 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.Property(x => x.NormalizedVersion).HasMaxLength(64);
             e.Property(x => x.NormalizedVersionLower).HasMaxLength(64);
             e.HasIndex(x => new { x.PackageKey, x.NormalizedVersionLower }).IsUnique();
+
+            // "What did this feed gain in the last week": the feed's packages are seeked first, then each one's
+            // versions by date. Without this the date is a scan of every version of every package on the instance.
+            e.HasIndex(x => new { x.PackageKey, x.PublishedUtc });
             e.Property(x => x.Origin).HasConversion<string>().HasMaxLength(16);
             // Tags, TagsLower, Authors, Summary and Copyright are unbounded, like Description: a PowerShell Gallery module lists
             // every exported command as a tag, and real modules carry 15,000 to 20,000 characters of them. The columns that

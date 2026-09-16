@@ -4,6 +4,19 @@ using FiGet.Domain.Search;
 
 namespace FiGet.Application.Ports;
 
+/// <summary>One version that arrived in a window, with what a change report shows of it and nothing more.</summary>
+public sealed record PublishedVersion(
+    string Id,
+    string IdLower,
+    string NormalizedVersion,
+    PackageOrigin Origin,
+    DateTime PublishedUtc,
+    string ReleaseNotes,
+    string Authors);
+
+/// <summary>A version the feed holds, for working out what a client was installing before a new one appeared.</summary>
+public readonly record struct HeldVersion(string IdLower, string NormalizedVersion, bool Listed);
+
 /// <summary>Query and command surface over package metadata.</summary>
 public interface IPackageStore
 {
@@ -15,6 +28,22 @@ public interface IPackageStore
 
     /// <summary>Which of these lower-cased ids the feed holds a package for.</summary>
     Task<IReadOnlySet<string>> HeldIdsAsync(int feedKey, IReadOnlyCollection<string> idsLower, CancellationToken cancellationToken);
+
+    /// <summary>Every lower-cased id the feed holds, in order, and nothing else about them.</summary>
+    Task<IReadOnlyList<string>> ListIdsAsync(int feedKey, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Listed versions of this feed published in <c>[fromUtc, toUtc)</c>, newest first, at most
+    /// <paramref name="take"/> of them. For a report of what changed: a projection rather than the rows, because the
+    /// rows carry the description, the tags and the search text of every version, and a report shows a handful.
+    /// </summary>
+    Task<IReadOnlyList<PublishedVersion>> ListPublishedBetweenAsync(int feedKey, DateTime fromUtc, DateTime toUtc, int take, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Every version the feed holds of these ids, as bare strings: what a report needs to say which version came
+    /// before a new one, without loading the versions themselves.
+    /// </summary>
+    Task<IReadOnlyList<HeldVersion>> ListHeldVersionsAsync(int feedKey, IReadOnlyCollection<string> idsLower, CancellationToken cancellationToken);
 
     /// <summary>
     /// Every package the feed stores, with every version, listed or not, and no dependencies. What a
