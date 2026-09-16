@@ -163,6 +163,69 @@ public sealed class ChangeWebhookDeliveryTests : IAsyncLifetime
         Assert.Single(posted);
     }
 
+    /// <summary>
+    /// The address an administrator saves is stored encrypted and shown back as a host, never as itself. The stored
+    /// value is read straight out of the settings table here, because "it is encrypted" is exactly the kind of claim
+    /// that quietly stops being true.
+    /// </summary>
+    [Fact]
+    public async Task A_saved_address_is_stored_encrypted_and_shown_as_a_host()
+    {
+        const string Secret = "https://receiver.example.test/hooks/SECRET-PATH-VALUE?sig=SECRET-QUERY-VALUE";
+
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            var factory = scope.ServiceProvider.GetRequiredService<ChangeWebhookFactory>();
+            await factory.SetUrlAsync(ChangeWebhookFactory.ServerKey, Secret, "tester", TestContext.Current.CancellationToken);
+        }
+
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            var settings = scope.ServiceProvider.GetRequiredService<ISettingStore>();
+            var stored = await settings.GetAsync(ChangeWebhookFactory.ServerKey, TestContext.Current.CancellationToken);
+
+            Assert.NotNull(stored);
+            Assert.DoesNotContain("SECRET-PATH-VALUE", stored, StringComparison.Ordinal);
+            Assert.DoesNotContain("SECRET-QUERY-VALUE", stored, StringComparison.Ordinal);
+            Assert.DoesNotContain("receiver.example.test", stored, StringComparison.Ordinal);
+
+            // And it is still usable: encrypted, not mangled.
+            var factory = scope.ServiceProvider.GetRequiredService<ChangeWebhookFactory>();
+            var webhook = await factory.ServerAsync(TestContext.Current.CancellationToken);
+            Assert.Equal("https://receiver.example.test", webhook!.Host);
+            (webhook as IDisposable)?.Dispose();
+        }
+
+        // Put the test's own receiver back, so the ordering of these tests cannot matter.
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            var factory = scope.ServiceProvider.GetRequiredService<ChangeWebhookFactory>();
+            await factory.SetUrlAsync(ChangeWebhookFactory.ServerKey, "", "tester", TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>A feed's own address wins over the server's: one webhook per channel is exactly this.</summary>
+    [Fact]
+    public async Task A_feeds_own_address_is_used_instead_of_the_servers()
+    {
+        await using var scope = server.Services.CreateAsyncScope();
+        var feeds = scope.ServiceProvider.GetRequiredService<IFeedStore>();
+        var factory = scope.ServiceProvider.GetRequiredService<ChangeWebhookFactory>();
+        var feed = await feeds.FindAsync("public", TestContext.Current.CancellationToken);
+
+        await factory.SetUrlAsync(ChangeWebhookFactory.FeedKey(feed!.Key), "https://feed.example.test/hook", "tester", TestContext.Current.CancellationToken);
+        try
+        {
+            var webhook = await factory.ForAsync(feed, TestContext.Current.CancellationToken);
+            Assert.Equal("https://feed.example.test", webhook!.Host);
+            (webhook as IDisposable)?.Dispose();
+        }
+        finally
+        {
+            await factory.SetUrlAsync(ChangeWebhookFactory.FeedKey(feed.Key), "", "tester", TestContext.Current.CancellationToken);
+        }
+    }
+
     private async Task<ChangeReportOutcome> SendAsync(string feed)
     {
         await using var scope = server.Services.CreateAsyncScope();

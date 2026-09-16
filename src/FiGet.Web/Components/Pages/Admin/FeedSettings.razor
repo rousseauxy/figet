@@ -145,6 +145,32 @@
         </EditForm>
     </Accordion>
 
+    @* Which channel this feed's change report is routed to, for a receiver that dispatches on a label. Not a secret -
+       the address it goes to is, and that stays on the administrator's page - so a manager sets it here. *@
+    @if (!IsAssets)
+    {
+        <Accordion Id="changes" Title="@ChangeTargetTitle" FormName="feed-change-target" Succeeded="@(TargetSaved == "ok")">
+            <form method="post" action="/admin/feeds/@feed.Name/changes/target" class="fg-form">
+                <AntiforgeryToken />
+                <div class="fg-field">
+                    <label for="change-target">Report target (empty: none is sent)</label>
+                    <input id="change-target" name="target" class="fg-input" maxlength="64" value="@feed.ChangeTarget" placeholder="for example: intune" />
+                    <span class="fg-small fg-muted">
+                        Sent with this feed's report as <code>target</code>, for a receiver that routes on it - one webhook
+                        serving several channels. A receiver with one channel needs none. Where reports go is on
+                        <a href="/admin/changes">Change reports</a>, and what they say is on
+                        <a href="/feeds/@feed.Name/changes">the feed's own page</a>.
+                    </span>
+                </div>
+                @if (TargetSaved == "toolong")
+                {
+                    <p class="fg-error">A target is at most 64 characters.</p>
+                }
+                <button type="submit" class="fg-btn fg-btn-primary">Save target</button>
+            </form>
+        </Accordion>
+    }
+
     @* The content of an asset directory: FiGet's own storage, or one sub-folder of the shares mount, chosen by name. Admins
        only, and not for a directory whose folder configuration sets, since the next start would put that back. *@
     @if (ShowsFolderForm)
@@ -259,6 +285,13 @@
 
     [SupplyParameterFromForm(FormName = "feed-networks")]
     private NetworksForm? Networks { get; set; }
+
+    [SupplyParameterFromQuery(Name = "target")]
+    private string? TargetSaved { get; set; }
+
+    private string ChangeTargetTitle => string.IsNullOrWhiteSpace(Target?.ChangeTarget)
+        ? "Change report target: none"
+        : $"Change report target: {Target!.ChangeTarget}";
 
     private string? networksError;
     private bool networksSaved;

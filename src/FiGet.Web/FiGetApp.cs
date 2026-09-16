@@ -1318,6 +1318,82 @@ public static class FiGetApp
                 $"/admin/feeds/{Uri.EscapeDataString(target.Name)}/retention?retention={report.Unlisted}.{report.Deleted}.{report.Pruned}.{report.FreedBytes}{(report.StoppedAtLimit ? ".more" : "")}");
         });
 
+        // Posting this feed's report now, for somebody who has just wired a receiver up and wants to see it arrive.
+        // A manager's, because it sends this feed's own news to an address an administrator already chose.
+        manageFeed.MapPost("/feeds/{feed}/changes/send", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            ChangeReportJobService reports,
+            CancellationToken cancellationToken) =>
+        {
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            if (target is null)
+            {
+                return Results.NotFound();
+            }
+
+            var outcome = await reports.SendAsync(target, cancellationToken);
+            return Results.Redirect($"/feeds/{Uri.EscapeDataString(target.Name)}/changes?sent={outcome.ToString().ToLowerInvariant()}");
+        });
+
+        // The label this feed's reports carry, for a receiver that routes on it. Not a secret, so a manager sets it.
+        manageFeed.MapPost("/feeds/{feed}/changes/target", async (
+            string feed,
+            HttpContext http,
+            IFeedStore feeds,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var target = await feeds.FindAsync(feed, cancellationToken);
+            if (target is null)
+            {
+                return Results.NotFound();
+            }
+
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var label = form["target"].ToString().Trim();
+            if (label.Length > 64)
+            {
+                return Results.Redirect($"/admin/feeds/{Uri.EscapeDataString(target.Name)}?target=toolong");
+            }
+
+            await feeds.UpdateChangeTargetAsync(target.Key, label, cancellationToken);
+            audit.Record(http, "feed.changetarget", target.Name, $"feed={target.Name} target={(label.Length == 0 ? "none" : label)}");
+            return Results.Redirect($"/admin/feeds/{Uri.EscapeDataString(target.Name)}?target=ok");
+        });
+
+        // A test report, so an administrator can prove a receiver works without reading the address back out of a page.
+        adminOnly.MapPost("/changes/test", async (
+            HttpContext http,
+            IFeedStore feeds,
+            ChangeReportJobService reports,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var outcome = ChangeReportOutcome.NoWebhook;
+            foreach (var feed in await feeds.ListAsync(cancellationToken))
+            {
+                if (feed.Kind == FeedKind.Assets)
+                {
+                    continue;
+                }
+
+                outcome = await reports.SendAsync(feed, cancellationToken);
+                if (outcome is ChangeReportOutcome.Sent or ChangeReportOutcome.Failed)
+                {
+                    break;
+                }
+            }
+
+            return Results.Redirect(outcome switch
+            {
+                ChangeReportOutcome.Sent => "/admin/changes?saved=test-sent",
+                ChangeReportOutcome.Failed => "/admin/changes?saved=test-failed",
+                _ => "/admin/changes?saved=test-empty",
+            });
+        });
+
         // Renaming changes the URL every client has registered, so it stays with admins, like deleting.
         adminOnly.MapPost("/feeds/{feed}/rename", async (
             string feed,

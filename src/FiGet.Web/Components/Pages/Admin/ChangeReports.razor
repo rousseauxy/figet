@@ -1,0 +1,135 @@
+@page "/admin/changes"
+@attribute [Authorize(Policy = FiGetApp.AdminPolicy)]
+@layout AdminLayout
+@using System.ComponentModel.DataAnnotations
+@using FiGet.Application.Reports
+@using FiGet.Web.Connectors
+@using Microsoft.Extensions.Options
+@inject ChangeWebhookFactory Webhooks
+@inject IOptions<FiGet.Web.Configuration.FiGetOptions> Options
+@inject FiGet.Http.AuditLog Audit
+
+@*
+    Where change reports are posted. An administrator's page and not a feed manager's, for the same reason an
+    upstream's address is: this is a request the server makes from inside its own network, and whoever sets it decides
+    where a report - and the token in the URL - ends up.
+*@
+
+<PageTitle>Change reports · admin · FiGet</PageTitle>
+
+<h1>Change reports</h1>
+<p class="fg-lede">
+    A daily report per feed of what it gained and what its upstreams now offer, posted to an address you choose.
+    Each feed's own page shows the same report at any time.
+</p>
+
+@if (message is not null)
+{
+    <div class="fg-alert @(messageIsError ? "fg-alert-danger" : "fg-alert-ok")" role="@(messageIsError ? "alert" : "status")">@message</div>
+}
+
+<section class="fg-panel">
+    <h2>Where reports go</h2>
+
+    <dl class="fg-facts">
+        <dt>Address</dt>
+        <dd>@(host.Length == 0 ? "Not set: no report is posted." : host)</dd>
+        <dt>Body</dt>
+        <dd>@Format</dd>
+        <dt>How often</dt>
+        <dd>@(Options.Value.Jobs.ChangeReport <= TimeSpan.Zero ? "Switched off (FiGet:Jobs:ChangeReport)" : Options.Value.Jobs.ChangeReport.ToString())</dd>
+    </dl>
+
+    <p class="fg-muted fg-small">
+        Only the scheme and host are shown, here and in every log line and audit entry: the rest of a webhook address
+        is usually its password. The address is stored encrypted with the key ring that protects sign-in cookies, so
+        set <code>FiGet:DataProtection:MasterKey</code> if you have not - without it that key ring sits unencrypted in
+        the database beside it. A feed can also carry its own address; that is how one webhook per channel is done.
+    </p>
+
+    <EditForm Model="Input!" FormName="webhook" OnValidSubmit="SaveAsync" method="post" class="fg-form">
+        <div class="fg-field">
+            <label for="webhook-url">Webhook address</label>
+            <InputText id="webhook-url" type="password" autocomplete="off" @bind-Value="Input!.Url" placeholder="https://receiver.example/hooks/..." />
+            <span class="fg-small fg-muted">Empty clears it, and the server falls back to <code>FiGet:Changes:Webhook:Url</code> if that is set.</span>
+        </div>
+        <button type="submit" class="fg-btn fg-btn-primary">Save address</button>
+    </EditForm>
+
+    @if (host.Length > 0)
+    {
+        <form method="post" action="/admin/changes/test">
+            <AntiforgeryToken />
+            <button type="submit" class="fg-btn fg-btn-sm">Send a test report</button>
+            <span class="fg-small fg-muted">Posts one report for the first feed that has something to say, so you can prove the receiver works without reading the address back.</span>
+        </form>
+    }
+</section>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "webhook")]
+    private WebhookForm? Input { get; set; }
+
+    [SupplyParameterFromQuery(Name = "saved")]
+    private string? Saved { get; set; }
+
+    private string host = "";
+    private string? message;
+    private bool messageIsError;
+
+    private string Format => Webhooks.Format() switch
+    {
+        ChangeWebhookFormat.Chat => "Chat (Discord and Slack read it as it is)",
+        ChangeWebhookFormat.Teams => "Teams adaptive card",
+        _ => "JSON (for automation)",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new WebhookForm();
+        await LoadAsync();
+        (message, messageIsError) = Saved switch
+        {
+            "ok" => ("Address saved.", false),
+            "cleared" => ("Address cleared; nothing is posted unless configuration names one.", false),
+            "test-sent" => ("A test report was posted.", false),
+            "test-empty" => ("Nothing has changed, so there was nothing to post. Push a package or wait for an upstream to move, then try again.", false),
+            "test-failed" => ("The receiver did not accept the report; the log line names the host and the reason.", true),
+            _ => (null, false),
+        };
+    }
+
+    private async Task LoadAsync()
+    {
+        var webhook = await Webhooks.ServerAsync(HttpContext.RequestAborted);
+        host = webhook?.Host ?? "";
+        (webhook as IDisposable)?.Dispose();
+    }
+
+    private async Task SaveAsync()
+    {
+        var url = (Input!.Url ?? "").Trim();
+        if (url.Length > 0 && (!Uri.TryCreate(url, UriKind.Absolute, out var parsed) || parsed.Scheme is not ("http" or "https")))
+        {
+            (message, messageIsError) = ("That is not an http or https address.", true);
+            return;
+        }
+
+        await Webhooks.SetUrlAsync(ChangeWebhookFactory.ServerKey, url, HttpContext.User.Identity?.Name, HttpContext.RequestAborted);
+
+        // The audit says that it changed and to which host, never to which address: the path is the credential.
+        await LoadAsync();
+        Audit.Record(HttpContext, "changes.webhook", "server", $"host={(host.Length == 0 ? "none" : host)}");
+        Input = new WebhookForm();
+        HttpContext.Response.Redirect(url.Length == 0 ? "/admin/changes?saved=cleared" : "/admin/changes?saved=ok");
+    }
+
+    private sealed class WebhookForm
+    {
+        [StringLength(2048, ErrorMessage = "That address is too long.")]
+        public string? Url { get; set; }
+    }
+}
