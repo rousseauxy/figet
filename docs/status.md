@@ -169,6 +169,17 @@ project replaces and its command-line client.
 | That release notes really are read from a v2 gallery | Same instance: an older `Az.Accounts` cached through the feed, so its 5.5.3 became an upstream row | 2026-09-16 | The notes were fetched once by the scheduled run, stored, and are served to the page from the database afterwards. `PnP.PowerShell` shows none because the gallery answers `m:null="true"` for that version - the module publishes no notes, which is not the same as our failing to read them |
 | Job intervals as settings | `JobIntervalTests` and `JobsOffTests` | 2026-09-16 | Every default is what the job did before; a zero interval means the background service is never registered, asserted by asking the built host for it |
 
+## What the database reports about itself
+
+| What was verified | How (client and version, command or request) | When | Result |
+|---|---|---|---|
+| That the page can never print a credential | `ConnectionTargetTests`, nine cases over both dialects | 2026-09-16 | The host and the catalogue are read by an allow-list, so a password, a user name, and a key invented for the test to stand in for the next one a provider adds are all absent. Falsified: with the list widened to pass the string through, six of the nine fail |
+| The figures, on both engines | `DatabaseFactsTests` on SQLite and SQL Server | 2026-09-16 | Each engine names its own version, reports a size above zero with reclaimable space inside it, and answers its journal mode or recovery model. SQLite counts its write-ahead log in the total and reports no transaction log; SQL Server reports one and keeps it apart from the data |
+| That the schema shown is the schema in force | Same suite | 2026-09-16 | The newest applied migration is the last one in that provider's assembly and nothing is pending - which is also a second guard against a migration added to one provider and not the other |
+| That it stays cheap enough to refresh | Same suite | 2026-09-16 | A read is a handful of pragmas or one file query; it counts no rows, and is asserted to finish inside two seconds |
+| When each job last ran | `JobLeaseTests.Taking_a_job_records_when_it_started`, both providers | 2026-09-16 | Taking a lease records the time, a renewal moves it, a replica that could not take the job leaves it alone, and a takeover records the new holder's run. Falsified: with the renewal not recording, both providers fail |
+| Who may read it | `DatabasePageTests` | 2026-09-16 | An administrator sees the engine, the migration id and all six jobs; an anonymous request and a signed-in account without the role are both sent to the sign-in page, and no rendered page carries `Password=` or a connection string |
+
 ## Performance
 
 | What was verified | How (client and version, command or request) | When | Result |

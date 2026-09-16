@@ -91,6 +91,17 @@ Each is Low, and none is reachable without an account that already has rights; i
 - **Per-feed body formats.** One format per server today. A second per-feed setting beside the address if two feeds
   ever need different shapes.
 
+### Left out of the database page (built 2026-09-16)
+
+- **Per-table rows and sizes** (dropped by the owner, 2026-09-16). The reference server lists every table; FiGet reports
+  totals instead. SQLite cannot report a per-table size at all without `SQLITE_ENABLE_DBSTAT_VTAB`, so that list would
+  have meant two different pages for the two engines, and row counts are the one thing on such a page that is not free.
+  What the sizes were *for* - "what stops this growing?" - is answered by the jobs table instead.
+- **Reclaiming space from the page.** `VACUUM` on SQLite, a statistics rebuild on SQL Server. The figure is shown; the
+  button is not, because `VACUUM` locks the whole database for its duration and a page is the wrong place to start a
+  small outage. Worth revisiting with a size cap and a warning if anyone asks.
+- **A scheduled storage check.** Still a button. Unchanged from the entry above.
+
 ## Decided against
 
 - **Scanning uploads for malware** (designed 2026-09-14, dropped by the owner 2026-09-16). A ClamAV daemon beside FiGet,

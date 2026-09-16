@@ -25,6 +25,8 @@ server other people rely on, these are the settings that matter. Every key below
 - Retention, pruning the audit log and sweeping abandoned uploads run on one replica at a time, which takes a lease in the
   database. Nothing to configure.
 - Rate limits are counted per replica.
+- **Admin → Database** reports what the server is connected to, how large it is, which migration it is on, and when each
+  background job last started. See below.
 
 ## The key ring
 
@@ -103,6 +105,25 @@ If the key ring is lost, everyone is signed out and has to sign in again; nothin
 `FiGet:Auth:Recovery:UserName` and `FiGet:Auth:Recovery:Password` and restart. That account is created if it does not
 exist, enabled, unlocked, made super administrator, given that password, and asked to choose a new one at sign-in. It
 runs on **every** start while the settings are there, and the log warns each time: remove them once you are back in.
+
+## What the database page tells you
+
+**Admin → Database** answers four questions and changes nothing. It counts no rows — every figure is a page count, a
+file size or a list of migrations — so it costs about as much as a health check and can be refreshed at will.
+
+- **What you are connected to**: the engine and its version, the database file or `server / database`, and the journal
+  mode (SQLite) or recovery model (SQL Server). The connection string is never shown: the page is given the host and the
+  catalogue and nothing else, so it cannot print a password.
+- **How large it is**, and how much of that the engine will reuse before it grows again. On SQLite the write-ahead log is
+  counted in the total, because that is a second file and the volume fills up with the sum. On SQL Server the transaction
+  log is its own line, and a `FULL` recovery model with no log backup is the usual reason a log dwarfs its data.
+- **Which migration the schema is on.** Migrations waiting to be applied are reported loudly: that means this build
+  expects a newer schema than the database has, and anything the new schema added will fail.
+- **Every background job**: its interval, when it last started, and what stops growing when it stops. A job switched off
+  with `FiGet:Jobs:*` is marked — that is not a job running late, it is a table with nothing bounding it any more.
+
+Package, symbol and asset files are not in the database and not on this page; stray ones are the
+[storage check](#storage). "Last started" means a run began, not that it finished.
 
 ## Health
 
