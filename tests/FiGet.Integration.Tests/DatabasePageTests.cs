@@ -3,6 +3,7 @@ using FiGet.Application.Accounts;
 using FiGet.Application.Ports;
 using FiGet.Domain.Entities;
 using FiGet.Integration.Tests.Infrastructure;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FiGet.Integration.Tests;
@@ -88,6 +89,32 @@ public sealed class DatabasePageTests(SqliteServerFixture server) : IClassFixtur
         using var refused = await plain.GetAsync("/admin/database");
         HttpAssert.Status(HttpStatusCode.Redirect, refused);
         Assert.Contains("/account/login", refused.Headers.Location!.OriginalString, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A job whose lease exists without a recorded time has run - the lease is proof of it - and the page must not call
+    /// that "never". It is what every instance upgraded from 1.1.0 shows for one interval, which is exactly when an
+    /// operator is most likely to be looking.
+    /// </summary>
+    [Fact]
+    public async Task A_job_that_ran_before_the_time_was_recorded_is_not_called_never()
+    {
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            var leases = scope.ServiceProvider.GetRequiredService<IJobLeaseStore>();
+            await leases.TryAcquireAsync(JobLeaseNames.UploadSweep, "replica-before-upgrade", DateTime.UtcNow, DateTime.UtcNow.AddHours(1), TestContext.Current.CancellationToken);
+
+            // As an upgrade leaves it: the row is there, the time is not.
+            var db = scope.ServiceProvider.GetRequiredService<FiGet.Infrastructure.Persistence.FiGetDbContext>();
+            await db.Database.ExecuteSqlRawAsync("update JobLeases set TakenUtc = null where Name = {0}", [JobLeaseNames.UploadSweep], TestContext.Current.CancellationToken);
+        }
+
+        using var client = Browser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
+
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/database"));
+
+        Assert.Contains("not recorded", page, StringComparison.Ordinal);
     }
 
     /// <summary>A client that keeps its cookies and follows nothing: pages authenticate by cookie, not by token.</summary>

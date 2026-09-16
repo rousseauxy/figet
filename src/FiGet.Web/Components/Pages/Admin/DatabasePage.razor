@@ -147,13 +147,21 @@
                             }
                         </td>
                         <td>
-                            @if (Lease(job.Name) is { TakenUtc: { } taken })
+                            @switch (Lease(job.Name))
                             {
-                                @Display.Date(taken)
-                            }
-                            else
-                            {
-                                <span class="fg-muted" title="No run has taken this job's lease against this database">never</span>
+                                case { TakenUtc: { } taken }:
+                                    @Display.Date(taken)
+                                    break;
+
+                                case not null:
+                                    // The lease exists, so the job has run - before this server recorded when. It says so
+                                    // for one interval after the upgrade that added the column, and then never again.
+                                    <span class="fg-muted" title="This job has run: it holds a lease. When it last started was not recorded before this version">not recorded</span>
+                                    break;
+
+                                default:
+                                    <span class="fg-muted" title="No run has ever taken this job's lease against this database">never</span>
+                                    break;
                             }
                         </td>
                         <td class="fg-muted">@job.Bounds</td>
