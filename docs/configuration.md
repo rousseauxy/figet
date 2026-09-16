@@ -265,7 +265,7 @@ replica owns it.
 | `FiGet:Jobs:AuditPrune` | `06:00:00` | Deleting audit entries past `FiGet:Audit:RetentionDays`. |
 | `FiGet:Jobs:UploadSweep` | `01:00:00` | Removing multipart uploads nobody finished (`FiGet:Assets:IncompleteUploadExpiry`). |
 | `FiGet:Jobs:UsagePrune` | `1.00:00:00` | Deleting usage counts past ninety days. |
-| `FiGet:Jobs:CatalogueSweep` | `1.00:00:00` | Refreshing the stored upstream catalogue of every id a proxy feed holds, so a package nobody browsed is still known to have moved. |
+| `FiGet:Jobs:CatalogueSweep` | `1.00:00:00` | Refreshing the stored upstream catalogue of every id a proxy feed holds, so a package nobody browsed is still known to have moved. This interval is also what counts as fresh: a catalogue fetched more recently than this is left alone, so on a feed people actually browse a run queues nothing and records nothing. Silence from this job means there was nothing to do. |
 | `FiGet:Jobs:ChangeReport` | `1.00:00:00` | Posting each feed's change report, and keeping release notes current for the feeds' own pages. |
 
 Two schedules are deliberately not settings. Usage counts are flushed from memory to the database every minute: that
