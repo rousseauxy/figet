@@ -169,6 +169,16 @@ project replaces and its command-line client.
 | That release notes really are read from a v2 gallery | Same instance: an older `Az.Accounts` cached through the feed, so its 5.5.3 became an upstream row | 2026-09-16 | The notes were fetched once by the scheduled run, stored, and are served to the page from the database afterwards. `PnP.PowerShell` shows none because the gallery answers `m:null="true"` for that version - the module publishes no notes, which is not the same as our failing to read them |
 | Job intervals as settings | `JobIntervalTests` and `JobsOffTests` | 2026-09-16 | Every default is what the job did before; a zero interval means the background service is never registered, asserted by asking the built host for it |
 
+## The image
+
+| What was verified | How (client and version, command or request) | When | Result |
+|---|---|---|---|
+| What a registry scanner actually finds, and what can be done about it | A work registry's report on 1.2.0, checked package by package against the base image and against Ubuntu's own fixes | 2026-10-01 | Every finding was a base-image OS package, none FiGet's code or its dependencies. Rebuilding would have changed nothing: the base image that morning carried the same versions as the published image. Eighteen of twenty had no fix published by Ubuntu at all |
+| That a chiseled runtime removes rather than patches them | `docker export` of `aspnet:10.0.12-noble-chiseled-extra`, file by file | 2026-10-01 | No PAM, no util-linux (`mount`, `bsdutils`, `libsmartcols`, `libblkid`), no `openssl` command, no shell, no package manager - and ICU and the time-zone database still present, which the plain chiseled image lacks. glibc and OpenSSL's libraries remain, because .NET uses them |
+| That FiGet runs on it unchanged | The image built on the chiseled base and run as `--user 1001060000:0`, the shape OpenShift assigns | 2026-10-01 | Answered `/health/ready`, served the home page, proxied a live PowerShell Gallery listing, and wrote its SQLite database as that UID through group 0. 289 MB against 357 MB |
+| That one file still builds both | The same Dockerfile with and without `--build-arg RUNTIME_IMAGE` | 2026-10-01 | Chiseled by default with no shell; the full base on the argument, with one. Both ran and both answered ready, so the shell is an opt-in rather than a second Dockerfile to keep in step |
+| That the memory limit a cluster proposed is survivable | `--memory=256m` against the real gallery: five concurrent listings of large modules, then a 10 MB package fetched and indexed | 2026-10-01 | No kill: 85 MiB idle, 97 % under five concurrent listings, 93 % while indexing. It fits, with no headroom - .NET sizes its heap to the limit, which is why the same build settles at 465 MiB when given 1 GiB |
+
 ## What is running, and where
 
 | What was verified | How (client and version, command or request) | When | Result |

@@ -3,13 +3,22 @@
 # Build from the repository root:  docker build -f deploy/Dockerfile -t figet .
 #
 # The runtime image follows OpenShift's restricted security constraints, so it runs unchanged everywhere else:
-# non-root, works under an arbitrary UID in group 0, listens on 8080, writes only to /data and /tmp.
+# non-root, works under an arbitrary UID in group 0, listens on 8080, writes only to /data and /tmp. It has no shell and
+# no package manager: measured against a registry scanner on 2026-10-01, that removed every finding for util-linux and
+# PAM - packages a web server never calls - and left only glibc and OpenSSL, which it does.
 
 # Both stages pinned to exact patches, and to the same runtime: the SDK composes the static web assets the runtime serves, and
 # two floating tags that agree today need not agree tomorrow - a mismatch fails silently, with a healthy container and a 404
 # for a file a page asks for. Bump both together: the SDK patch whose bundled runtime is the aspnet tag below
 # (`docker run --rm --entrypoint dotnet mcr.microsoft.com/dotnet/sdk:<tag> --list-runtimes`). A runtime patch release can
 # carry security fixes FiGet needs without a code change, so check for one monthly.
+
+# Which runtime to sit on. Declared here because an argument used in a FROM must come before the first one.
+# The default ships: a chiseled rootfs with no shell, no package manager and none of the Ubuntu packages a web server
+# never calls - so a scanner has far less to report and an attacker far less to reach for. Build with
+# --build-arg RUNTIME_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0.12 when you want a shell to poke around in.
+ARG RUNTIME_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0.12-noble-chiseled-extra
+
 FROM mcr.microsoft.com/dotnet/sdk:10.0.401 AS build
 WORKDIR /src
 
@@ -28,6 +37,9 @@ COPY src/FiGet.Web/FiGet.Web.csproj src/FiGet.Web/
 RUN dotnet restore src/FiGet.Web/FiGet.Web.csproj
 
 COPY src/ src/
+
+# Made here because the runtime image below has no shell to make it with.
+RUN mkdir -p /figet-data
 
 # What this build is, stamped into the assembly so the server can say it: the pages show it, and a support question that
 # starts with "which version?" should not need the image tag the operator may no longer remember pulling.
@@ -50,7 +62,7 @@ RUN test -f /app/FiGet.Web.staticwebassets.endpoints.json && test -f /app/wwwroo
         && echo "--- /app/wwwroot ---" && ls -laR /app/wwwroot \
         && exit 1)
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0.12 AS runtime
+FROM ${RUNTIME_IMAGE} AS runtime
 WORKDIR /app
 
 ENV ASPNETCORE_HTTP_PORTS=8080 \
@@ -59,7 +71,7 @@ ENV ASPNETCORE_HTTP_PORTS=8080 \
     HOME=/tmp
 
 # Group 0 owns /data and the group has the owner's rights: OpenShift runs the container as a random UID in group 0.
-RUN mkdir -p /data && chown -R "$APP_UID":0 /data && chmod -R g=u /data
+COPY --from=build --chown=$APP_UID:0 --chmod=775 /figet-data /data
 
 COPY --from=build /app .
 

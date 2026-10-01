@@ -80,9 +80,23 @@ lives in the database, so every replica shares it.
 
 ## The image
 
-`ghcr.io/rousseauxy/figet:latest`, or a version tag such as `1.0.0`. One tag carries `linux/amd64` and `linux/arm64`,
+`ghcr.io/rousseauxy/figet:latest`, or a version tag such as `1.2.1`. One tag carries `linux/amd64` and `linux/arm64`,
 built on a runner of each architecture. It runs as a non-root, arbitrary UID in group 0, listens on 8080, and writes
 only to `/data` and `/tmp`.
+
+**There is no shell in it, and no package manager.** The runtime is a chiseled rootfs holding .NET, ICU, the time-zone
+database, glibc and OpenSSL — and not the Ubuntu packages a web server never calls. A registry scanner measured against
+it on 2026-10-01 reported nothing at all for util-linux (`mount`, `bsdutils`, `libsmartcols1`) or PAM, because they are
+not installed rather than patched; what remains is glibc and OpenSSL, which FiGet genuinely uses.
+
+So `docker exec … sh` and `oc rsh` do not work. Almost nothing needs them: the container's log is on stdout, the
+database and the package files are on the volume you mounted, and **Admin → System** answers how large the database is,
+how much room is left, which copies are running and when each job last ran. For the rest, `oc debug` with another image
+mounting the same claim, or build yourself a copy with a shell — the runtime base is a build argument:
+
+```
+docker build -f deploy/Dockerfile --build-arg RUNTIME_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0.12 -t figet:shell .
+```
 
 ## Backup and recovery
 
