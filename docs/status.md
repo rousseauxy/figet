@@ -169,6 +169,15 @@ project replaces and its command-line client.
 | That release notes really are read from a v2 gallery | Same instance: an older `Az.Accounts` cached through the feed, so its 5.5.3 became an upstream row | 2026-09-16 | The notes were fetched once by the scheduled run, stored, and are served to the page from the database afterwards. `PnP.PowerShell` shows none because the gallery answers `m:null="true"` for that version - the module publishes no notes, which is not the same as our failing to read them |
 | Job intervals as settings | `JobIntervalTests` and `JobsOffTests` | 2026-09-16 | Every default is what the job did before; a zero interval means the background service is never registered, asserted by asking the built host for it |
 
+## What a deployment has to let through
+
+| What was verified | How (client and version, command or request) | When | Result |
+|---|---|---|---|
+| Where a gallery's downloads actually come from | `curl -r 0-0 -L` on one package per gallery, following the redirects | 2026-10-06 | The API host and the download host differ on two of the three: the PowerShell Gallery redirects to `cdn.powershellgallery.com` and Chocolatey to `packages.chocolatey.org`, while nuget.org serves index, metadata and bytes from `api.nuget.org` with no redirect. A rule naming only the API host gives listings that work and downloads that fail |
+| That the server reaches nothing on its own behalf | Read of every absolute URL in the source, and a search for telemetry or update checks | 2026-10-06 | Three gallery addresses, offered in the UI as known upstreams and used only when a feed names one. No telemetry, no update check, no licence call |
+| That proxy variables are honoured | The released image run twice, once with `HTTPS_PROXY` pointing at a closed port | 2026-10-06 | The upstream listing fell from 462,757 bytes to 530, so the gallery calls go through the proxy. Asset fetch-by-URL is deliberately separate, under `FiGet:RemoteFetch:Proxy` |
+| What a blocked gallery looks like from outside | Same run | 2026-10-06 | Not an outage: `/health/ready` answered 200 throughout and the feed served what it already held. Shorter listings and a 404 for a version the gallery has are the symptoms; the health checks show nothing |
+
 ## The image
 
 | What was verified | How (client and version, command or request) | When | Result |

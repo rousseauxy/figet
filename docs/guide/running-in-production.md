@@ -158,4 +158,14 @@ finished.
 
 ## Health
 
-`/health/live` answers when the process runs; `/health/ready` when the database answers too.
+| URL | Answers 200 when | Point this at |
+|---|---|---|
+| `/health/live` | the process is running, nothing else checked | a liveness probe: restart the container when this fails |
+| `/health/ready` | the process **and** the database answering | a readiness probe, and whatever watches whether the server is usable |
+
+Both return the plain text `Healthy`, and a non-200 otherwise, so anything that checks a status code is enough. Neither
+needs a token, so a monitor outside the cluster can read them.
+
+**Watch `/health/ready`, not `/health/live`.** The live check stays green through a database outage, which is the one
+failure you most want to hear about. A gallery you cannot reach shows in neither: see
+[what to open in a firewall](firewall.md).

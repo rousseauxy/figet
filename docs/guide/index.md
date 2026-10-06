@@ -129,6 +129,8 @@ One container image, built for the strictest target and therefore fine everywher
   client behaviours worth knowing before they cost an afternoon.
 - [API access tokens](api-access-tokens.md): a token from your identity provider or CI system used as a FiGet key.
 - [Running in production](running-in-production.md): proxies, replicas, secrets and storage.
+- [What to open in a firewall](firewall.md): the one port in, the hosts out, and why a gallery's listings and its
+  downloads are not the same host.
 - [Sign-in with Microsoft Entra ID](sign-in-entra-id.md): app registration, app roles mapped to FiGet groups, and
   the provider settings in FiGet.
 - [Sign-in with Authentik](sign-in-authentik.md): application and provider, a group binding, Authentik groups mapped
