@@ -29,12 +29,16 @@ public sealed class EgressReportService(
     /// <summary>
     /// Galleries that serve their packages from somewhere other than the host their API is on. Allowing only the API
     /// host gives listings that work and downloads that fail, which is the mistake this whole section exists to stop.
-    /// Measured by following a download's redirects on 2026-10-06; a gallery not named here is assumed to serve its own.
+    ///
+    /// Each measured by following a download's redirects on 2026-10-06. A gallery not named here is reported by its API
+    /// host alone, which is why the page says so: every one of these redirects to a sibling under the same domain, so a
+    /// gallery nobody has measured is worth asking about rather than assuming.
     /// </summary>
     private static readonly Dictionary<string, string> DownloadHosts = new(StringComparer.OrdinalIgnoreCase)
     {
         ["www.powershellgallery.com"] = "cdn.powershellgallery.com",
         ["community.chocolatey.org"] = "packages.chocolatey.org",
+        ["www.poshtestgallery.com"] = "psg-int-centralus.poshtestgallery.com",
     };
 
     public async Task<IReadOnlyList<EgressHost>> ReadAsync(CancellationToken cancellationToken)

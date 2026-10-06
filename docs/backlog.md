@@ -106,6 +106,15 @@ Each is Low, and none is reachable without an account that already has rights; i
   hard part is not the sending but deciding what is worth waking someone for - so it waits until somebody has read the
   page for a while and can say.
 
+### Egress reporting (built 2026-10-06)
+
+- **Record the host a download actually came from**, rather than keeping a table of the galleries known to redirect.
+  Today **Admin → System** names the API host of every upstream and, for the four public galleries measured, the host
+  their downloads redirect to; a private gallery that redirects is reported by its API host alone and the page says so.
+  The honest version observes it: a delegating handler on the upstream client can read the final response's request URI
+  and record the host per upstream, so the list is what this server has genuinely connected to. Worth doing the first
+  time somebody proxies a gallery FiGet has never seen.
+
 ## Decided against
 
 - **Scanning uploads for malware** (designed 2026-09-14, dropped by the owner 2026-09-16). A ClamAV daemon beside FiGet,

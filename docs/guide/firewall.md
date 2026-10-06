@@ -42,6 +42,11 @@ Only what a feed is configured to use. A server with no proxy feeds needs no egr
 | Hosts in `FiGet:Assets:RemoteFetch:AllowedHosts` | 443/tcp | Fetching an asset by URL, which is refused for every host not on that list. | Someone uses "fetch by URL" on an asset directory. |
 | Your collector | as configured | Traces and metrics. | `OTEL_EXPORTER_OTLP_ENDPOINT` is set. |
 
+A private or third-party gallery is the case this table cannot answer for you. Every one measured so far — the
+PowerShell Gallery, Chocolatey, Posh Test Gallery — redirects its downloads to a **sibling host under the same domain**,
+and nuget.org serves both from one host. So when you proxy something else, either allow the whole domain or ask whoever
+runs it where its packages come from; allowing the API host alone is the failure described at the end of this page.
+
 Plus DNS and NTP, as for any container.
 
 **FiGet contacts nothing on its own behalf.** There is no telemetry, no update check and no licence call: every outbound
