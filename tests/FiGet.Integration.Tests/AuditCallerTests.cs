@@ -60,7 +60,12 @@ public sealed class AuditCallerBehindProxyTests(ForwardedHeadersServerFixture se
 
 internal static class AuditWait
 {
-    public static async Task<AuditEntry> ForAsync(FiGetServerFixture server, string action)
+    /// <summary>
+    /// Waits for an audit entry, and for <em>the caller's own</em> entry when it names a subject. Without that, a test
+    /// takes whichever entry is newest - and the classes sharing a server run in parallel, so on a busy run that is a
+    /// sibling's. It fails about one run in four otherwise, which is the worst frequency a test can have.
+    /// </summary>
+    public static async Task<AuditEntry> ForAsync(FiGetServerFixture server, string action, string? subject = null)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);
         while (true)
@@ -69,13 +74,16 @@ internal static class AuditWait
             {
                 var entries = await scope.ServiceProvider.GetRequiredService<IAuditStore>()
                     .QueryAsync(new AuditQuery(action, null, null, null, null, null, 50), CancellationToken.None);
-                if (entries.Count > 0)
+                var found = subject is null
+                    ? (entries.Count > 0 ? entries[0] : null)
+                    : entries.FirstOrDefault(e => string.Equals(e.Subject, subject, StringComparison.Ordinal));
+                if (found is not null)
                 {
-                    return entries[0];
+                    return found;
                 }
             }
 
-            Assert.True(DateTime.UtcNow < deadline, $"No audit entry '{action}' within ten seconds.");
+            Assert.True(DateTime.UtcNow < deadline, $"No audit entry '{action}'{(subject is null ? "" : $" for '{subject}'")} within ten seconds.");
             await Task.Delay(200);
         }
     }

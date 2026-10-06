@@ -84,7 +84,7 @@ public sealed partial class ShareFolderChoiceTests(SharesRootServerFixture serve
         HttpAssert.Status(HttpStatusCode.Forbidden, await withKey.PutAsync($"endpoints/{name}/content/new.txt", new StringContent("x")));
         Assert.False(File.Exists(Path.Combine(server.SharesRoot, "intune", "new.txt")));
 
-        var entry = await AuditWait.ForAsync(server, "feed.create");
+        var entry = await AuditWait.ForAsync(server, "feed.create", name);
         Assert.Equal(name, entry.Subject);
         Assert.Contains("folder=intune folderWrites=False", entry.Detail, StringComparison.Ordinal);
 
@@ -157,7 +157,7 @@ public sealed partial class ShareFolderChoiceTests(SharesRootServerFixture serve
         var feed = (await FindAsync(name))!;
         Assert.Equal(Path.Combine(Path.GetFullPath(server.SharesRoot), "crm"), feed.FolderRoot);
         Assert.True(feed.FolderWritable);
-        var entry = await AuditWait.ForAsync(server, "feed.folder");
+        var entry = await AuditWait.ForAsync(server, "feed.folder", name);
         Assert.Equal(name, entry.Subject);
         Assert.Contains("folder=crm folderWrites=True", entry.Detail, StringComparison.Ordinal);
 
