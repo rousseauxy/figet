@@ -4,6 +4,11 @@ Everything below was measured against the released image rather than read off a 
 listing is often not the host that serves the download — and allowing only the first gives you a server that finds
 packages and cannot fetch them.
 
+**Your own list is on the server.** **Admin → System** computes what *this* instance has to reach from its own
+configuration - the galleries its feeds proxy, the download hosts those redirect to, the database, any sign-in provider
+and any webhook - with nothing hypothetical in it. That is the list to paste into a request. This page is the general
+case, and the explanation.
+
 A standard install needs **one way in and one way out**: clients reach FiGet over HTTPS, and FiGet reaches the galleries
 you proxy. Everything else on this page applies only if you switched that feature on.
 
@@ -34,7 +39,7 @@ Only what a feed is configured to use. A server with no proxy feeds needs no egr
 | Your SQL Server | 1433/tcp | The database, when `FiGet:Database:Provider` is `SqlServer`. | Any deployment not on SQLite. |
 | Your identity provider | 443/tcp | Discovery, keys and the token exchange during sign-in. | A sign-in provider is configured. |
 | Your webhook receiver | 443/tcp | Posting the change report. | `FiGet:Changes:Webhook:Url` or a per-feed address is set. |
-| Hosts in `FiGet:RemoteFetch:AllowedHosts` | 443/tcp | Fetching an asset by URL, which is refused for every host not on that list. | Someone uses "fetch by URL" on an asset directory. |
+| Hosts in `FiGet:Assets:RemoteFetch:AllowedHosts` | 443/tcp | Fetching an asset by URL, which is refused for every host not on that list. | Someone uses "fetch by URL" on an asset directory. |
 | Your collector | as configured | Traces and metrics. | `OTEL_EXPORTER_OTLP_ENDPOINT` is set. |
 
 Plus DNS and NTP, as for any container.
@@ -47,7 +52,7 @@ connection in the table is one a feed, a provider or a setting of yours asked fo
 Set `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY` as environment variables and the gallery calls honour them — measured, by
 pointing `HTTPS_PROXY` at a dead address and watching a listing of 462,757 bytes become 530.
 
-Fetching an asset by URL is the exception: it has its own `FiGet:RemoteFetch:Proxy`, because that path is reached by
+Fetching an asset by URL is the exception: it has its own `FiGet:Assets:RemoteFetch:Proxy`, because that path is reached by
 people rather than by the server's own jobs and is deliberately configured apart.
 
 If the proxy inspects TLS, give the container the trust bundle — on OpenShift that is the usual

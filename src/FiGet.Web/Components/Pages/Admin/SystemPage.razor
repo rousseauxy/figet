@@ -10,6 +10,7 @@
 @inject IJobLeaseStore Leases
 @inject IStorageSpace Space
 @inject IServerInstanceStore Instances
+@inject EgressReportService Egress
 @inject IOptions<FiGetOptions> Options
 @inject KeyRingMasterKey MasterKey
 @inject TimeProvider Time
@@ -162,6 +163,52 @@
         here: that would mean walking every stored file, which the <a href="/admin/storage">storage check</a> does when
         you ask it to.
     </p>
+</section>
+
+<section class="fg-panel">
+    <h2>What this server reaches</h2>
+    <p class="fg-muted fg-small">
+        Read from this instance's own configuration, so it is the list to hand to whoever opens firewalls - not a general
+        one with "if you use this" beside every line. Hosts only: the path of a webhook address is its password.
+        <a href="https://docs.xact.cloud/package-server/firewall.html">What to open in a firewall</a> covers the general
+        case, including the one that catches people out: two of the three public galleries serve their packages from a
+        different host than their API, and both are below when you proxy them.
+    </p>
+    @if (egress.Count == 0)
+    {
+        <p>Nothing. No feed proxies an upstream, no sign-in provider is configured, and the database is local, so this
+        server needs no way out at all.</p>
+    }
+    else
+    {
+        <div class="fg-table-wrap">
+            <table class="fg-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Host</th>
+                        <th scope="col">Port</th>
+                        <th scope="col">What stops without it</th>
+                        <th scope="col">Asked for by</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var host in egress)
+                    {
+                        <tr>
+                            <td>@host.Host</td>
+                            <td class="fg-num">@host.Port</td>
+                            <td class="fg-muted">@host.Why</td>
+                            <td class="fg-muted fg-small">@host.Source</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <p class="fg-muted fg-small">
+            Plus DNS and NTP, as for any container. FiGet contacts nothing on its own behalf: there is no telemetry, no
+            update check and no licence call, so every row here is one your own configuration asked for.
+        </p>
+    }
 </section>
 
 @if (facts is null)
@@ -318,6 +365,7 @@
     private IReadOnlyList<string> versions = [];
     private string self = "";
     private VolumeSpace space = new("", 0, 0);
+    private IReadOnlyList<EgressHost> egress = [];
 
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
@@ -330,6 +378,7 @@
         leases = await Leases.ListAsync(HttpContext.RequestAborted);
         instances = await Instances.ListAsync(HttpContext.RequestAborted);
         space = Space.Read();
+        egress = await Egress.ReadAsync(HttpContext.RequestAborted);
 
         // "Running" is what is still speaking, which is the only honest basis for comparing against the replica count.
         var now = Time.GetUtcNow().UtcDateTime;
