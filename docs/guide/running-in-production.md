@@ -156,6 +156,38 @@ at will.
 Stray package, symbol and asset files are the [storage check](#storage). "Last started" means a run began, not that it
 finished.
 
+## One volume, two clusters
+
+A volume shared by instances on **different clusters** needs one thing understood: each cluster assigns its own user id
+range, so the same workload runs as a different user on each one. What they share is the group — every pod runs with
+group 0 and new files carry it.
+
+FiGet therefore sets its own umask to `0002` at start-up, before it can create anything: files are written `0664` and
+directories `0775`, so whichever instance wrote a file, an instance on the other cluster can replace or delete it. The
+start-up log says so once:
+
+```
+File mode: umask set to 0002 (was 0022), so files are created 0664 and directories 0775 …
+```
+
+It is not a setting. A mask that denies the group is wrong on a shared volume and harmless on a private one, so there is
+no deployment that wants the choice.
+
+Without it, anything that rewrites rather than appends fails depending on which cluster serves the request and which one
+wrote the file — deleting a version, retention and cache pruning, overwriting an asset — while the database row says the
+work was done. Intermittent and asymmetric, which is the worst way for it to present.
+
+**Files written by a version before 1.3.2 keep their old modes.** Fix them once, from a pod on **each** cluster — only
+the owner of a file may change its mode, so a pod on one cluster cannot repair what the other wrote:
+
+```bash
+oc -n <namespace> rsh deploy/<deployment> chmod -R g+rwX /data     # on each cluster
+```
+
+FiGet deliberately does not do this itself at start-up. It would run on every pod start, walk a whole package volume
+over NFS, and — worse — silently achieve nothing for the files the *other* cluster owns, which is exactly the half of
+them you need fixed.
+
 ## Health
 
 | URL | Answers 200 when | Point this at |

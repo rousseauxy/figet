@@ -553,6 +553,15 @@ public static class FiGetApp
                 Security.KeyRingMasterKey.Setting);
         }
 
+        // Said once, where somebody diagnosing a permission problem months from now will find it.
+        if (Security.ProcessUmask.Changed is { } umask)
+        {
+            logger.LogInformation(
+                "File mode: umask set to {Applied} (was {Previous}), so files are created 0664 and directories 0775 - writable by group 0, which is what lets a second cluster sharing this volume replace and remove them.",
+                Convert.ToString(umask.Applied, 8).PadLeft(4, '0'),
+                Convert.ToString(umask.Previous, 8).PadLeft(4, '0'));
+        }
+
         if (options.Database.Provider == DatabaseProvider.Sqlite)
         {
             // Write-ahead logging lets readers continue while a push is being written.
