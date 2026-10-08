@@ -177,6 +177,10 @@ File mode: umask set to 0002 (was 0022), so files are created 0664 and directori
 It is not a setting. A mask that denies the group is wrong on a shared volume and harmless on a private one, so there is
 no deployment that wants the choice.
 
+The **mount itself** is still yours to get right: a umask governs what a process creates, not what it is handed. The
+volume must be group-owned and group-writable before FiGet starts, which on OpenShift is what the namespace's `fsGroup`
+does automatically.
+
 Without it, anything that rewrites rather than appends fails depending on which cluster serves the request and which one
 wrote the file — deleting a version, retention and cache pruning, overwriting an asset — while the database row says the
 work was done. Intermittent and asymmetric, which is the worst way for it to present.

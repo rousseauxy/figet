@@ -41,7 +41,12 @@ public sealed class FileModeTests(SqliteServerFixture server) : IClassFixture<Sq
         Assert.True(mode.HasFlag(UnixFileMode.GroupRead), $"{file} is {mode}: the other cluster could not even read it.");
 
         // A directory needs the execute bit too, or the group can list it and not create or remove entries in it.
-        for (var directory = Path.GetDirectoryName(file!); directory is not null && directory.StartsWith(root, StringComparison.Ordinal); directory = Path.GetDirectoryName(directory))
+        //
+        // Only as far up as the folder FiGet makes for itself. The storage root above it is the deployment's: a volume
+        // mount, whose mode the platform sets (on OpenShift through the namespace's fsGroup), and here a temporary
+        // directory this test host made under its own umask. A umask cannot reach back and change what it was handed.
+        var ours = Path.Combine(root, "files");
+        for (var directory = Path.GetDirectoryName(file!); directory is not null && directory.StartsWith(ours, StringComparison.Ordinal); directory = Path.GetDirectoryName(directory))
         {
             var directoryMode = File.GetUnixFileMode(directory);
             Assert.True(
