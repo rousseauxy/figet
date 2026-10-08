@@ -92,6 +92,39 @@ jobs:
           curl -fsS http://localhost:8080/nuget/ci/v3/index.json | head -c 300
           docker logs figet 2>&1 | tail -20
 
+      # The image against the database a cluster actually uses. Added after a release shipped that could not open a
+      # SQL Server connection at all: every test passed, because the test host and the shipped container did not agree
+      # about globalization, and this job only ever ran SQLite. Opening the connection is what proves it - applying the
+      # migrations is the first thing the server does, so a refusal here is a crash loop rather than a missing feature.
+      - name: Start SQL Server
+        run: |
+          docker run -d --name sql \
+            -e ACCEPT_EULA=Y -e 'MSSQL_SA_PASSWORD=FiGet-Ci-Password-2026!' -e MSSQL_PID=Developer \
+            mcr.microsoft.com/mssql/server:2022-latest
+          for i in $(seq 1 60); do
+            if docker logs sql 2>&1 | grep -q "SQL Server is now ready for client connections"; then break; fi
+            sleep 2
+          done
+          docker logs sql 2>&1 | grep -q "ready for client connections"
+
+      - name: The image must migrate and serve against SQL Server
+        run: |
+          sql_ip=$(docker inspect sql --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+          docker run -d --name figet-sql --user 1000123456:0 -p 8081:8080 \
+            -e FiGet__Database__Provider=SqlServer \
+            -e "FiGet__Database__ConnectionString=Server=$sql_ip,1433;Initial Catalog=FiGet;User ID=sa;Password=FiGet-Ci-Password-2026!;Encrypt=True;TrustServerCertificate=True" \
+            -e FiGet__Feeds__0__Name=ci -e FiGet__Feeds__0__AnonymousRead=true \
+            figet:ci
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8081/health/ready > /dev/null; then break; fi
+            sleep 2
+          done
+          curl -fsS http://localhost:8081/health/ready
+          docker logs figet-sql 2>&1 | tail -20
+          # A container that died, or one that never opened the database, must fail the job rather than pass quietly.
+          test "$(docker inspect figet-sql --format '{{.State.Running}}')" = "true"
+          ! docker logs figet-sql 2>&1 | grep -q "Globalization Invariant Mode is not supported"
+
   # A tag publishes; main only validates. The visibility check is a guard, not a policy: an image of a
   # private repository must not reach a public registry even if someone tags it early.
   #

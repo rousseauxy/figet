@@ -1,7 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <UserSecretsId>figet-web</UserSecretsId>
-    <InvariantGlobalization>true</InvariantGlobalization>
+    <!--
+      Deliberately NOT InvariantGlobalization. Microsoft.Data.SqlClient refuses to open a connection under invariant
+      mode and throws NotSupportedException, which killed the first SQL Server deployment at start-up: applying
+      migrations is the first thing this server does, so an unsupported mode is a crash loop rather than a degraded
+      feature. The runtime images this ships on carry ICU, and the test host never set the flag - which is why every
+      test passed while the shipped container could not open a database.
+    -->
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="YamlDotNet" />
