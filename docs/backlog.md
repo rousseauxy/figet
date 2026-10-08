@@ -122,6 +122,13 @@ Against the editor feeds: this needs no reverse-engineering of a closed query AP
 is what makes Open VSX a project rather than a feature. If only one of the three gets built, this is the one with the
 clearest line from "somebody needs it" to "it works".
 
+**The question that could retire this entry, and it should be asked first: can a marketplace simply be a git
+repository?** If a client can be pointed at a git URL, then a team that wants to share skills internally already has
+somewhere to put them, and this server would add only access control, caching and an audit of who fetched what - worth
+something, but not worth a protocol. It could not be settled from the machine this was written on, which holds the
+client's synced state and no documentation of what a self-hosted marketplace serves. Read that before costing any of
+the work above.
+
 
 - **History tab** on a version: the audit log exists now (filter by feed on its page); a per-version view of it is not built.
 - **Usage per version.** Usage per feed is counted since 2026-09-14 (`FeedUsage`, the graph under the feed lists). What is
