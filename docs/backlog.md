@@ -100,8 +100,9 @@ modules were before any of this existed.
 What the artefacts actually look like, read off a machine that has them rather than from memory: a **skill** is a
 directory holding `SKILL.md`, whose YAML frontmatter carries a `name` and a `description` (and may carry more, such as
 `compatibility`), beside whatever scripts and references it needs. A **plugin** is a directory holding
-`.claude-plugin/plugin.json` with a `name`, a `version`, a `description` and an `author`, plus `skills/` and the
-commands, agents and MCP servers it ships. A client subscribes to a named **marketplace** and syncs from it.
+`.claude-plugin/plugin.json` with a `name`, a `version`, a `description` and an `author`, beside component directories
+at its root: `skills/`, `agents/*.md`, `hooks/hooks.json`, a `.mcp.json` of MCP server definitions, and a legacy
+`commands/*.md`. A client subscribes to a named **marketplace** and syncs from it.
 
 That maps onto this server better than the editor formats do. A plugin is already a named, versioned, described
 artefact with no dependency graph - which is most of what a package is here - and the content is just files, which
