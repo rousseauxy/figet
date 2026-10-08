@@ -98,6 +98,10 @@ mounting the same claim, or build yourself a copy with a shell — the runtime b
 docker build -f deploy/Dockerfile --build-arg RUNTIME_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0.12 -t figet:shell .
 ```
 
+Or pull one: every release also publishes **`ghcr.io/rousseauxy/figet:<version>-shell`**, the same build on the full
+base image, for a cluster team that would rather `oc rsh` than `oc debug`. It is a separate tag on purpose — what ships
+by default is the chiseled one, and that is what a scanner should be looking at.
+
 ## Backup and recovery
 
 Two things hold the state, and a restore needs both from the same moment:
@@ -177,16 +181,14 @@ Without it, anything that rewrites rather than appends fails depending on which 
 wrote the file — deleting a version, retention and cache pruning, overwriting an asset — while the database row says the
 work was done. Intermittent and asymmetric, which is the worst way for it to present.
 
-**Files written by a version before 1.3.2 keep their old modes.** Fix them once, from a pod on **each** cluster — only
-the owner of a file may change its mode, so a pod on one cluster cannot repair what the other wrote:
+**Files written by a version before 1.3.2 keep their old modes.** Fix them once from **Admin → Storage check** →
+*Repair file modes*, which adds the group's bits to what it finds and changes nothing else — never the owner, never the
+bits for everyone else. Run it **on each cluster**: only an owner may change a mode, so each instance repairs what it
+wrote, and the page tells you how many it had to leave alone and why.
 
-```bash
-oc -n <namespace> rsh deploy/<deployment> chmod -R g+rwX /data     # on each cluster
-```
-
-FiGet deliberately does not do this itself at start-up. It would run on every pod start, walk a whole package volume
-over NFS, and — worse — silently achieve nothing for the files the *other* cluster owns, which is exactly the half of
-them you need fixed.
+FiGet deliberately does not do this at start-up. It would walk a whole package volume over NFS on every pod start and,
+worse, silently achieve nothing for the files the *other* cluster owns — which is exactly the half you need fixed. Run
+it twice, once per cluster, and the second run on each reports nothing left to do.
 
 ## Health
 

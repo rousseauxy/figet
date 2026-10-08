@@ -62,6 +62,80 @@ public sealed class FileStorageAudit(FiGetDbContext db, string filesRoot, TimePr
         return removed;
     }
 
+    /// <summary>
+    /// Adds the group's read and write bits to every stored file, and read, write and execute to every folder holding
+    /// them - a folder without execute can be listed and not written into.
+    ///
+    /// It never asks who owns a file. Comparing user ids would be wrong on a volume two clusters share, where the same
+    /// workload legitimately runs as a different user on each: the question is not "is this mine" but "may I change
+    /// it", and the only honest way to ask that is to try. What is refused is counted and reported, because the answer
+    /// is to run this on the instance that wrote those files.
+    /// </summary>
+    public Task<StorageModeReport> RepairModesAsync(CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
+        {
+            return Task.FromResult(new StorageModeReport(0, 0, 0, [], Supported: false));
+        }
+
+        var root = new DirectoryInfo(FeedsRoot);
+        if (!root.Exists)
+        {
+            return Task.FromResult(new StorageModeReport(0, 0, 0, [], Supported: true));
+        }
+
+        const UnixFileMode FileBits = UnixFileMode.GroupRead | UnixFileMode.GroupWrite;
+        const UnixFileMode FolderBits = FileBits | UnixFileMode.GroupExecute;
+
+        var checkedCount = 0;
+        var changed = 0;
+        var refused = 0;
+        var examples = new List<string>();
+
+        foreach (var (path, wanted) in Everything(root))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            checkedCount++;
+            try
+            {
+                var mode = File.GetUnixFileMode(path);
+                if (mode.HasFlag(wanted))
+                {
+                    continue;
+                }
+
+                File.SetUnixFileMode(path, mode | wanted);
+                changed++;
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                // Someone else's to repair, or gone since the walk began. Neither is this run's problem.
+                refused++;
+                if (examples.Count < 5)
+                {
+                    examples.Add(Path.GetRelativePath(filesRoot, path).Replace(Path.DirectorySeparatorChar, '/'));
+                }
+            }
+        }
+
+        return Task.FromResult(new StorageModeReport(checkedCount, changed, refused, examples, Supported: true));
+
+        static IEnumerable<(string Path, UnixFileMode Wanted)> Everything(DirectoryInfo root)
+        {
+            var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint };
+            yield return (root.FullName, FolderBits);
+            foreach (var directory in root.EnumerateDirectories("*", options))
+            {
+                yield return (directory.FullName, FolderBits);
+            }
+
+            foreach (var file in root.EnumerateFiles("*", options))
+            {
+                yield return (file.FullName, FileBits);
+            }
+        }
+    }
+
     private IEnumerable<FileInfo> Files()
     {
         var root = new DirectoryInfo(FeedsRoot);

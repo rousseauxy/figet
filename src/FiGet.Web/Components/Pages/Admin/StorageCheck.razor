@@ -24,9 +24,45 @@
     <div class="fg-alert fg-alert-ok" role="status">Removed @removed.Count stray @(removed.Count == 1 ? "file" : "files") (@Size(removed.Sum(f => f.Size))).</div>
 }
 
-<EditForm Model="Scan!" FormName="storage-scan" OnSubmit="ScanAsync" method="post">
-    <button type="submit" class="fg-btn fg-btn-primary">Look for stray files</button>
-</EditForm>
+@if (modes is not null)
+{
+    <div class="fg-alert @(modes.Refused > 0 ? "fg-alert-warn" : "fg-alert-ok")" role="status">
+        @if (!modes.Supported)
+        {
+            <span>This server is not on a platform with file modes, so there was nothing to repair.</span>
+        }
+        else
+        {
+            <span>
+                Checked @Display.Count(modes.Checked); made @Display.Count(modes.Changed) readable and writable by the group.
+                @if (modes.Refused > 0)
+                {
+                    <strong>@Display.Count(modes.Refused) belong to another instance and were left alone</strong>
+                    <span>
+                        - only an owner may change a mode, so run this on the instance that wrote them, which on a shared
+                        volume is the one on the other cluster. For example: @string.Join(", ", modes.Examples)
+                    </span>
+                }
+            </span>
+        }
+    </div>
+}
+
+<div class="fg-form-actions">
+    <EditForm Model="Scan!" FormName="storage-scan" OnSubmit="ScanAsync" method="post">
+        <button type="submit" class="fg-btn fg-btn-primary">Look for stray files</button>
+    </EditForm>
+
+    <EditForm Model="Modes!" FormName="storage-modes" OnSubmit="RepairAsync" method="post">
+        <button type="submit" class="fg-btn" title="Add the group's read and write bits to stored files, and execute to the folders holding them">Repair file modes</button>
+    </EditForm>
+</div>
+
+<p class="fg-muted fg-small">
+    Repairing modes is for files written before this server set its own umask, or written by something else. It adds the
+    group's bits and changes nothing else - never the owner. New files already come out this way, so on a server that has
+    only ever run a recent version it will report nothing to do.
+</p>
 
 @if (report is not null)
 {
@@ -81,15 +117,21 @@
     [CascadingParameter]
     private HttpContext HttpContext { get; set; } = default!;
 
+    private StorageModeReport? modes;
+
     [SupplyParameterFromForm(FormName = "storage-scan")]
     private ScanInput? Scan { get; set; }
 
     [SupplyParameterFromForm(FormName = "storage-remove")]
     private RemoveInput? Remove { get; set; }
 
+    [SupplyParameterFromForm(FormName = "storage-modes")]
+    private ModesInput? Modes { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         Scan ??= new();
+        Modes ??= new();
         if (Remove?.Paths is { Count: > 0 } paths)
         {
             removed = await StorageAudit.RemoveStrayFilesAsync(paths, HttpContext.RequestAborted);
@@ -99,6 +141,12 @@
 
     private async Task ScanAsync() => report = await StorageAudit.FindStrayFilesAsync(HttpContext.RequestAborted);
 
+    private async Task RepairAsync()
+    {
+        modes = await StorageAudit.RepairModesAsync(HttpContext.RequestAborted);
+        Audit.Record(HttpContext, "storage.modes.repaired", $"{modes.Changed} files", $"checked={modes.Checked} changed={modes.Changed} refused={modes.Refused}");
+    }
+
     private static string Size(long bytes) => bytes switch
     {
         < 1024 => $"{bytes} B",
@@ -106,6 +154,8 @@
         < 1024L * 1024 * 1024 => $"{bytes / (1024.0 * 1024):0.#} MB",
         _ => $"{bytes / (1024.0 * 1024 * 1024):0.##} GB",
     };
+
+    private sealed class ModesInput;
 
     private sealed class ScanInput
     {
