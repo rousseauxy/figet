@@ -65,6 +65,63 @@ Each is Low, and none is reachable without an account that already has rights; i
 
 ## Later
 
+### Editor extensions: two different jobs under one heading
+
+Asked for on 2026-10-08, because the server being replaced serves both and the fleet installs extensions the same way
+it installs modules. They are not one feature and should not be quoted as one: the formats, the clients and the sizes
+differ by an order of magnitude.
+
+- **A private gallery of Visual Studio extensions (`.vsix`) — small, and worth doing first.** Visual Studio reads a
+  private gallery as an Atom feed of entries, each pointing at a `.vsix`, configured per machine under *Additional
+  Extension Galleries*. That is close to what an asset directory already does: a file, some metadata, a listing. The
+  work is an Atom view over stored files, the identity and version read out of the `.vsix` manifest at upload, and the
+  per-machine setting written on the feed's instructions page. No new protocol to reverse-engineer, and the result is
+  useful on its own.
+
+- **Open VSX, and the gallery protocol VS Code-family editors speak — a project, not a feature.** Clients do not fetch
+  a feed; they POST a query document to an `extensionquery` endpoint with filters, criteria and flags, and read back
+  assets by type. That shape comes from the Marketplace's own API, which Open VSX reimplements; it is not a published,
+  versioned specification anyone owes us stability on, so the only honest way to build it is the way the v2 and v3
+  surfaces here were built — from the requests real clients send, recorded and replayed. Add to that: the editor has to
+  be told where to look, which is a build-time setting in `product.json`, so this serves VSCodium, Theia, Gitpod and the
+  like, and not a stock Microsoft build of VS Code. Worth knowing before anyone promises it to a team running the
+  latter.
+
+Both would want a feed purpose of their own (`FeedPurpose` is `Any`, `PowerShell`, `NuGet`, `Chocolatey` today) so a
+feed refuses what does not belong in it, which is the pattern already in place for the others.
+
+### A feed of AI skills and agent plugins
+
+Raised in the same conversation, 2026-10-08, and probably worth more than either of the two above to the people asking
+for them. The things a team now wants to share internally - a skill that knows the house conventions, a plugin that
+bundles an MCP server with the commands around it - are distributed today by copying folders, which is where PowerShell
+modules were before any of this existed.
+
+What the artefacts actually look like, read off a machine that has them rather than from memory: a **skill** is a
+directory holding `SKILL.md`, whose YAML frontmatter carries a `name` and a `description` (and may carry more, such as
+`compatibility`), beside whatever scripts and references it needs. A **plugin** is a directory holding
+`.claude-plugin/plugin.json` with a `name`, a `version`, a `description` and an `author`, plus `skills/` and the
+commands, agents and MCP servers it ships. A client subscribes to a named **marketplace** and syncs from it.
+
+That maps onto this server better than the editor formats do. A plugin is already a named, versioned, described
+artefact with no dependency graph - which is most of what a package is here - and the content is just files, which
+asset directories already serve with ETag, Range and a listing. The likely shape is therefore a feed that stores the
+archives and serves one manifest over them, not a new protocol stack.
+
+Two things to settle before building, and neither is guesswork to be done at the keyboard:
+
+- **Read the current marketplace manifest format from the published documentation**, do not reconstruct it from a local
+  cache. What is on a machine here is the client's own synced state, which is not the same file a self-hosted
+  marketplace serves.
+- **Decide how fast it is moving.** This format is young. The cost of a server surface is not writing it but keeping it
+  right, and the honest question is whether it changes faster than a release of this server can follow. A feed that
+  serves archives and a manifest survives a format change far better than one that models every field.
+
+Against the editor feeds: this needs no reverse-engineering of a closed query API and no specially built editor, which
+is what makes Open VSX a project rather than a feature. If only one of the three gets built, this is the one with the
+clearest line from "somebody needs it" to "it works".
+
+
 - **History tab** on a version: the audit log exists now (filter by feed on its page); a per-version view of it is not built.
 - **Usage per version.** Usage per feed is counted since 2026-09-14 (`FeedUsage`, the graph under the feed lists). What is
   not: which versions are used, and whether a download came from the cache or the upstream. That needs per-version
