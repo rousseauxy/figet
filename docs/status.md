@@ -169,6 +169,16 @@ project replaces and its command-line client.
 | That release notes really are read from a v2 gallery | Same instance: an older `Az.Accounts` cached through the feed, so its 5.5.3 became an upstream row | 2026-09-16 | The notes were fetched once by the scheduled run, stored, and are served to the page from the database afterwards. `PnP.PowerShell` shows none because the gallery answers `m:null="true"` for that version - the module publishes no notes, which is not the same as our failing to read them |
 | Job intervals as settings | `JobIntervalTests` and `JobsOffTests` | 2026-09-16 | Every default is what the job did before; a zero interval means the background service is never registered, asserted by asking the built host for it |
 
+## A volume two clusters share
+
+| What was verified | How (client and version, command or request) | When | Result |
+|---|---|---|---|
+| That nothing applies the mode recorded inside an archive | Read of every extraction path, plus `ArchiveExtractionTests` over the source | 2026-10-09 | Both paths that unpack - the PDBs of a symbol package and a zip imported into an asset directory - read the entry's stream and write it through FiGet's own writers, so the umask governs them. `ExtractToFile` and `ExtractToDirectory` would not, and a test now fails the build if either appears |
+| That nothing creates a directory with a mode of its own | Same read | 2026-10-09 | Every directory comes from a plain `Directory.CreateDirectory`, and nothing anywhere sets a Unix mode explicitly. So the mask alone decides |
+| What the image actually writes | The built image run as `--user 1000760000:0` on a volume owned by group 0, then `stat` on every file and directory it created | 2026-10-09 | Pushed package `-rw-rw-r--`, package cached from a gallery `-rw-rw-r--`, every directory `drwxrwsr-x`. Nothing without group write, no directory without group execute |
+| The case a umask cannot fix by itself | A symbol package whose entries record `0644`, pushed to `/v3/symbolpublish` | 2026-10-09 | The extracted PDB landed `-rw-rw-r--`, not `0644`: the entry's bytes are written through the storage layer rather than extracted with its mode. This is the one that would have failed silently had anyone used a mode-preserving extraction API |
+| That the change is visible to whoever has to diagnose it later | The container's log | 2026-10-09 | `File mode: umask set to 0002 (was 0022) ...`, once, at start-up |
+
 ## What a deployment has to let through
 
 | What was verified | How (client and version, command or request) | When | Result |
