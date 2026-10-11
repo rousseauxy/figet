@@ -4,7 +4,10 @@ using FiGet.Application.Ports;
 using FiGet.Domain.Entities;
 using FiGet.Integration.Tests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
+using FiGet.Web.Configuration;
+using FiGet.Web.Connectors;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace FiGet.Integration.Tests;
 
@@ -135,6 +138,57 @@ public sealed class SystemPageTests(SqliteServerFixture server) : IClassFixture<
 
         Assert.Contains("not recorded", page, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// More copies than expected is a sentence, not an alarm, and it has to read as one. Written out of three spans it
+    /// rendered as "1 are expected.Both are what a rolling update looks like" - no space where two spans met, the wrong
+    /// verb for one replica, and "both" where only one of the two things had been said.
+    /// </summary>
+    [Theory]
+    [InlineData(false, "2 running where 1 is expected. That is what a rolling update looks like")]
+    [InlineData(true, "Two versions at once")]
+    public async Task More_copies_than_expected_reads_as_one_sentence(bool otherVersion, string expected)
+    {
+        var options = server.Services.GetRequiredService<IOptions<FiGetOptions>>().Value;
+        var mine = InstanceHeartbeatService.NameOf(options);
+        var version = ServerVersion.Resolve(options.Version);
+        var now = DateTime.UtcNow;
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            var instances = scope.ServiceProvider.GetRequiredService<IServerInstanceStore>();
+
+            // This instance heartbeats on a timer that may not have fired yet, so both rows are written here: one
+            // standing in for it, and one for the copy that makes the count exceed what the deployment expects.
+            foreach (var (id, running) in ((string, string)[])[(mine, version), (Other, otherVersion ? "9.9.9" : version)])
+            {
+                await instances.HeartbeatAsync(
+                    new ServerInstance { Id = id, Machine = id, Version = running, StartedUtc = now, LastSeenUtc = now },
+                    TestContext.Current.CancellationToken);
+            }
+        }
+
+        using var client = Browser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
+
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/system"));
+
+        Assert.Contains(expected, page, StringComparison.Ordinal);
+        Assert.DoesNotContain("expected.Both", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("1 are expected", page, StringComparison.Ordinal);
+
+        // "Both" belongs only to the page that said both things.
+        Assert.Contains(otherVersion ? "Both are what a rolling update" : "That is what a rolling update", page, StringComparison.Ordinal);
+
+        // Taken away again, so the sibling tests on this fixture see the one instance they expect.
+        await using (var cleanup = server.Services.CreateAsyncScope())
+        {
+            await cleanup.ServiceProvider.GetRequiredService<IServerInstanceStore>()
+                .ForgetAsync(Other, TestContext.Current.CancellationToken);
+        }
+    }
+
+    /// <summary>The stand-in replica, named once so the test and its cleanup cannot drift apart.</summary>
+    private const string Other = "other-replica";
 
     /// <summary>A client that keeps its cookies and follows nothing: pages authenticate by cookie, not by token.</summary>
     private HttpClient Browser() =>

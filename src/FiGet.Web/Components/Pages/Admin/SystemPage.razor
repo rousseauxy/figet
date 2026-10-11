@@ -85,17 +85,7 @@
     }
     else if (running.Count > Options.Value.Database.ExpectedReplicas || versions.Count > 1)
     {
-        <p class="fg-muted fg-small">
-            @if (running.Count > Options.Value.Database.ExpectedReplicas)
-            {
-                <span>@running.Count running where @Options.Value.Database.ExpectedReplicas are expected.</span>
-            }
-            @if (versions.Count > 1)
-            {
-                <span>Two versions at once: @string.Join(", ", versions).</span>
-            }
-            <span>Both are what a rolling update looks like while it lasts; if it lasts, the rollout is stuck.</span>
-        </p>
+        <p class="fg-muted fg-small">@RollingUpdateNote(running.Count, versions)</p>
     }
     <div class="fg-table-wrap">
         <table class="fg-table">
@@ -389,6 +379,30 @@
         var now = Time.GetUtcNow().UtcDateTime;
         running = [.. instances.Where(i => now - i.LastSeenUtc <= InstanceHeartbeatService.Quiet)];
         versions = [.. running.Select(i => i.Version).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// One sentence rather than a row of spans: adjacent elements render without the space between them, and the
+    /// closing clause has to say "both" only when both halves were actually said.
+    /// </summary>
+    private string RollingUpdateNote(int runningCount, IReadOnlyList<string> runningVersions)
+    {
+        var expected = Options.Value.Database.ExpectedReplicas;
+        var tooMany = runningCount > expected;
+        var mixed = runningVersions.Count > 1;
+        var said = new List<string>(2);
+        if (tooMany)
+        {
+            said.Add($"{runningCount} running where {(expected == 1 ? "1 is" : $"{expected} are")} expected.");
+        }
+
+        if (mixed)
+        {
+            said.Add($"Two versions at once: {string.Join(", ", runningVersions)}.");
+        }
+
+        said.Add($"{(said.Count > 1 ? "Both are" : "That is")} what a rolling update looks like while it lasts; if it lasts, the rollout is stuck.");
+        return string.Join(" ", said);
     }
 
     private static string Percent(long part, long whole) =>

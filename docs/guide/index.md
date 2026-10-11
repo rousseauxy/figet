@@ -5,8 +5,14 @@ tooling both work; proxy feeds that cache the PowerShell Gallery, nuget.org and 
 servers without internet access; asset
 directories for installers and scripts; and sign-in with the identity provider you already have.
 
-> **Status 2026-09-16:** released as 1.0.0, MIT licence. The image is `ghcr.io/rousseauxy/figet:1.0.0` (also
-> `:latest`), for `linux/amd64` and `linux/arm64`.
+> **Status 2026-10-11:** in use, in production. Release 1.3.2, MIT licence. The image is
+> `ghcr.io/rousseauxy/figet:1.3.2` (also `:latest`), for `linux/amd64` and `linux/arm64`, with a `-shell` variant of
+> each for the places that need a shell in the container.
+>
+> New since 1.0.0: a **What's new** report per feed, with a scheduled webhook to a chat channel; a **System** page with
+> what the server reaches, its database, and the jobs that keep it bounded; a page listing what to open in a firewall;
+> a runtime without a shell or a package manager; and a process umask that lets a second cluster write to a shared
+> volume.
 >
 > This is the user guide. [README.md](../../README.md) is the short version, `docs/` beside it holds the build plan,
 > the protocol notes and the configuration reference.
