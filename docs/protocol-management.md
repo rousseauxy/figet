@@ -111,7 +111,7 @@ question a scheduled report asks: *has anything we depend on moved?*
   only unlist, and this API has a separate call for listing, so a delete here is a delete.
 - **`status`** can list and unlist. A download override (`allow`) and deprecation have nothing in FiGet to act on;
   a request setting either is refused with 400 rather than accepted and ignored.
-- **Not implemented:** `metadata`, `audit`, `promote`, `repackage`. Promotion between feeds is on the backlog.
+- **Not implemented:** `metadata`, `audit`, `promote`, `repackage`. Promotion between feeds was decided against.
 - **An asset directory is not a package feed** here either: every route answers 404 for one.
 
 ## Verified with the reference client

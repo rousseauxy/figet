@@ -6,7 +6,7 @@ the statement of intent. The deployment assessed is the demanding one: two or mo
 a reverse proxy, SQL Server, shared or S3 storage. Nothing in production code was changed.
 
 **This review is closed.** Everything in section 5 was acted on or answered the same day, in section 6 below; what it
-left for a cluster deployment is in `docs/backlog.md`. It is kept as a record of what was looked at and decided, so a
+left for a cluster deployment is on the backlog, which is kept outside this repository. It is kept as a record of what was looked at and decided, so a
 later reader can see which risks were weighed and which were accepted.
 
 **Evidence.** Every item is marked **Confirmed** or **Plausible**. Confirmed means a test written for this
@@ -648,7 +648,7 @@ galleries); the email allow list was dropped by accident (restored, with an acco
 became regression tests next to the code they cover; items 1 to 14 of section 5 were done, except the parts the
 cluster operators' answers made unnecessary (S3 byte ranges, a secret-source port) and `KnownNetworks`, which belongs
 in the Helm chart. What was built, and what was deliberately left, is in section 6 below and in
-`docs/backlog.md` under phase 6 and the smaller review items. Two deviations from the proposals above:
+the backlog (kept outside this repository) under phase 6 and the smaller review items. Two deviations from the proposals above:
 
 - **S5.2**: no DNS resolution at save time and `http` stays allowed for admins; with URL edits admin-only, the save
   check refuses non-http schemes and link-local addresses only.

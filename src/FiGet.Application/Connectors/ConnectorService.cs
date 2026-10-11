@@ -38,7 +38,7 @@ public sealed class ConnectorService(
     /// For a caller that serves version numbers and nothing else - the v3 flat container. It never reads whether a
     /// version is listed or what it depends on, so the upstream need not describe anything for it: a v3 upstream is
     /// asked for versions alone, and stored descriptions are not loaded. Every other caller reads those facts and must
-    /// leave this false (docs/backlog.md has why it is not the default).
+    /// leave this false.
     /// </param>
     public async Task<UpstreamCandidates> UpstreamCandidatesAsync(Feed feed, string idLower, CancellationToken cancellationToken, bool versionsOnly = false)
     {

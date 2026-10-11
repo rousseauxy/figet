@@ -46,7 +46,7 @@ public sealed class SharedFolderServerFixture() : FiGetServerFixture(TestDatabas
 }
 
 /// <summary>
-/// Asset directories backed by a shared folder (docs/backlog.md, designed 2026-09-14): the folder is the content, with no
+/// Asset directories backed by a shared folder (designed 2026-09-14): the folder is the content, with no
 /// copy and no index; downloads and listings have separate anonymous switches; writes are off unless turned on; and
 /// cache modes per folder are kept in FiGet, since nothing can be written beside the files.
 /// </summary>

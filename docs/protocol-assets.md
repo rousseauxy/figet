@@ -213,7 +213,7 @@ since what it fetches is stored and then readable. So:
 - **A name resolving to one allowed and one refused address is refused**, rather than connecting to whichever
   answers first.
 - **No proxy is used**, because through a proxy the check would see the proxy's address. An instance that can
-  only reach the internet through a proxy cannot fetch by URL yet (backlog).
+  only reach the internet through a proxy cannot fetch by URL yet.
 - **The size limit applies while downloading**, and the whole fetch, body included, is bounded by
   `FiGet:Assets:RemoteFetch:Timeout` (30 minutes).
 - **The page's form reports a fixed code** (`?fetch=refused` and so on) mapped to text in the page, so nothing
