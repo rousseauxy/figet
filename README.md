@@ -4,7 +4,7 @@
 5.1 and the newest tooling both work; proxy feeds that cache the PowerShell Gallery and nuget.org for servers without
 internet access; asset directories for installers and scripts; and sign-in with the identity provider you already have.
 
-> **Status:** released and in use. Current release 1.3.2, as `ghcr.io/rousseauxy/figet:1.3.2` for `linux/amd64` and
+> **Status:** released and in use. Current release 1.3.3, as `ghcr.io/rousseauxy/figet:1.3.3` for `linux/amd64` and
 > `linux/arm64`. What was verified, and how, is in [docs/status.md](docs/status.md).
 
 ## Why it exists
