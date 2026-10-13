@@ -4,6 +4,10 @@ An asset directory holds files by path: installers, archives, scripts, anything 
 fetched with a plain `GET` on `/endpoints/{directory}/content/{path}`, with `Range` for a resumed download and `ETag`
 for a cache that already has it, so `curl`, `Invoke-WebRequest` or an Ansible `win_get_url` task is all a client needs.
 
+Every file downloads, whatever its type: a directory is a store of assets a machine fetches, not a viewer for
+documents or pictures. Opening one from the browse page saves it rather than showing it, and nothing uploaded can
+run as a page of this site.
+
 ## Two kinds of content
 
 | | FiGet's own storage | A folder on the server |

@@ -127,12 +127,14 @@ their write-side statuses were not recorded from the reference server either.
   `application/x-www-form-urlencoded` and `multipart/*`, where the file extension decides. curl labels
   `--data-binary` as a web form by default, so honouring it would serve an installer uploaded the documented
   way as a form.
-- **Nothing served runs as this site.** Every download carries `X-Content-Type-Options: nosniff` and
-  `Content-Security-Policy: default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox`, and only raster
-  images, `text/plain` and `application/json` open in a browser; every other type, HTML, SVG and PDF included, comes
-  with `Content-Disposition: attachment` under its own name. Files are served from the site's own origin with a
-  type the uploader chose, so an HTML upload would otherwise be a page that runs with the cookie of whoever opens
-  its link. Download clients ignore all three headers. (2026-09-14 review.)
+- **Nothing served runs as this site, and nothing opens in the browser.** Every download carries
+  `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; img-src 'self';
+  style-src 'unsafe-inline'; sandbox` and `Content-Disposition: attachment` under the file's own name - every
+  type, a picture and a text file included. Files are served from the site's own origin with a type the uploader
+  chose, so an HTML upload would otherwise be a page that runs with the cookie of whoever opens its link. A
+  directory is a store of assets a machine fetches rather than a viewer, so there is no list of types judged safe
+  to show, and nothing to get wrong the next time a browser learns to run one of them. Download clients ignore all
+  three headers. (2026-09-14 review; every type since 2026-10-13.)
 - **Hashes are computed while the upload is stored**, in one pass. MD5 and SHA-1 are reported because clients
   compare against them; nothing on the server trusts them.
 - **Cache header:** a `ttl` type with a whole number of seconds becomes `Cache-Control: public, max-age=N` on

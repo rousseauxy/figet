@@ -78,8 +78,9 @@ public static partial class AssetEndpoints
 
         // A file is served on this site's own origin, with a type its uploader chose. An HTML or SVG file opened from its link
         // would run as a page of this site, with the cookie of whoever opened it - an admin, from the browse page. So nothing
-        // served here runs, and only types a browser shows without running anything open in it; the rest download. Download
-        // clients (Invoke-WebRequest, curl, win_get_url) ignore all three headers.
+        // served here runs, and every file downloads under its own name: this is a store of assets a machine fetches, not a
+        // viewer, and the one type judged safe to show today is the one a browser learns to run tomorrow. Download clients
+        // (Invoke-WebRequest, curl, win_get_url) ignore all three headers.
         var contentType = file.ContentType ?? AssetContentTypes.Resolve(null, file.Name);
         http.Response.Headers.XContentTypeOptions = "nosniff";
         http.Response.Headers.ContentSecurityPolicy = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox";
@@ -89,7 +90,7 @@ public static partial class AssetEndpoints
         return Results.File(
             stream,
             contentType,
-            fileDownloadName: AssetContentTypes.OpensInline(contentType) ? null : file.Name,
+            fileDownloadName: file.Name,
             lastModified: new DateTimeOffset(file.ModifiedUtc),
             // The hash when FiGet stored the file; size and modified time when the file is a folder's, which is what a
             // web server's virtual folder sent and costs no read of the file.

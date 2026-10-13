@@ -60,7 +60,7 @@ public sealed partial class SharedFolderTests(SharedFolderServerFixture server) 
         HttpAssert.Status(HttpStatusCode.OK, readme);
         Assert.Equal("hello from the share", await readme.Content.ReadAsStringAsync());
         Assert.Equal("text/plain", readme.Content.Headers.ContentType?.MediaType);
-        Assert.Null(readme.Content.Headers.ContentDisposition);
+        Assert.Equal("attachment", readme.Content.Headers.ContentDisposition?.DispositionType);
 
         // Size and modified time stand in for a hash nobody computed: a second request with the tag is a 304.
         var etag = readme.Headers.ETag;
@@ -69,7 +69,7 @@ public sealed partial class SharedFolderTests(SharedFolderServerFixture server) 
         conditional.Headers.IfNoneMatch.Add(etag);
         HttpAssert.Status(HttpStatusCode.NotModified, await anonymous.SendAsync(conditional));
 
-        // An installer downloads rather than opens, like every non-inert type, and takes its type from its extension.
+        // An installer downloads like everything else here, and takes its type from its extension.
         var installer = await anonymous.GetAsync("endpoints/share/content/tools/setup.exe");
         HttpAssert.Status(HttpStatusCode.OK, installer);
         Assert.Equal("attachment", installer.Content.Headers.ContentDisposition?.DispositionType);

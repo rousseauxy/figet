@@ -77,16 +77,16 @@ public abstract partial class AssetDirectoryTests
     /// <summary>
     /// Found by the 2026-09-14 review: an HTML file came back inline as text/html, so anyone who could upload to a directory
     /// had a page on this site's origin that ran with the cookie of whoever opened its link. Nothing served runs now, and
-    /// only raster images and plain text open in the browser; the rest download under their own name.
+    /// every file downloads under its own name - a directory is a store of assets a machine fetches, not a viewer.
     /// </summary>
     [Theory]
-    [InlineData("page.html", "text/html", false)]
-    [InlineData("drawing.svg", "image/svg+xml", false)]
-    [InlineData("manual.pdf", "application/pdf", false)]
-    [InlineData("setup.exe", "application/octet-stream", false)]
-    [InlineData("logo.png", "image/png", true)]
-    [InlineData("notes.txt", "text/plain", true)]
-    public async Task A_file_is_served_so_nothing_in_it_runs_as_this_site(string name, string type, bool inline)
+    [InlineData("page.html", "text/html")]
+    [InlineData("drawing.svg", "image/svg+xml")]
+    [InlineData("manual.pdf", "application/pdf")]
+    [InlineData("setup.exe", "application/octet-stream")]
+    [InlineData("logo.png", "image/png")]
+    [InlineData("notes.txt", "text/plain")]
+    public async Task A_file_is_served_so_nothing_in_it_runs_as_this_site(string name, string type)
     {
         var path = $"endpoints/files/content/{Unique()}/{name}";
         using var admin = server.CreateClient(FiGetServerFixture.AdminToken);
@@ -100,15 +100,9 @@ public abstract partial class AssetDirectoryTests
         Assert.Equal("nosniff", response.Headers.GetValues("X-Content-Type-Options").Single());
         Assert.Contains("sandbox", response.Headers.GetValues("Content-Security-Policy").Single(), StringComparison.Ordinal);
         Assert.Contains("default-src 'none'", response.Headers.GetValues("Content-Security-Policy").Single(), StringComparison.Ordinal);
-        if (inline)
-        {
-            Assert.Null(response.Content.Headers.ContentDisposition);
-        }
-        else
-        {
-            Assert.Equal("attachment", response.Content.Headers.ContentDisposition?.DispositionType);
-            Assert.Equal(name, response.Content.Headers.ContentDisposition?.FileNameStar ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
-        }
+        // Every type, including the two a browser would happily show: a picture and a text file download like the rest.
+        Assert.Equal("attachment", response.Content.Headers.ContentDisposition?.DispositionType);
+        Assert.Equal(name, response.Content.Headers.ContentDisposition?.FileNameStar ?? response.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
 
         // A type set afterwards through the metadata call is served the same way.
         using var metadata = new StringContent("{\"type\":\"text/html\"}", Encoding.UTF8, "application/json");
