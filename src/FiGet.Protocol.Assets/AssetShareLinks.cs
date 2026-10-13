@@ -63,8 +63,12 @@ public sealed class AssetShareLinks(IDataProtectionProvider protection, IOptions
     }
 
     /// <summary>What a token points at, or null when it is not one of this server's, was altered, or has expired.</summary>
-    public ShareLinkTarget? Read(string? token)
+    public ShareLinkTarget? Read(string? token) => Read(token, out _);
+
+    /// <summary>The same, with when the link ends: what a page shows beside a link it just made.</summary>
+    public ShareLinkTarget? Read(string? token, out DateTimeOffset expiresUtc)
     {
+        expiresUtc = default;
         if (string.IsNullOrWhiteSpace(token) || !Enabled)
         {
             return null;
@@ -72,7 +76,7 @@ public sealed class AssetShareLinks(IDataProtectionProvider protection, IOptions
 
         try
         {
-            return JsonSerializer.Deserialize<ShareLinkTarget>(protector.Unprotect(token, out _));
+            return JsonSerializer.Deserialize<ShareLinkTarget>(protector.Unprotect(token, out expiresUtc));
         }
         catch (Exception ex) when (ex is CryptographicException or FormatException or JsonException)
         {

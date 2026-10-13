@@ -1135,6 +1135,28 @@ public static class FiGetApp
             return Back(form["returnUrl"].ToString(), $"/assets/{Uri.EscapeDataString(directory)}");
         });
 
+        publishFeed.MapPost("/assets/{directory}/link", async (
+            string directory,
+            HttpContext http,
+            IFeedStore feeds,
+            AssetService assets,
+            AssetShareLinks links,
+            AuditLog audit,
+            CancellationToken cancellationToken) =>
+        {
+            var form = await http.Request.ReadFormAsync(cancellationToken);
+            var back = ReturnUrls.LocalOr(form["returnUrl"].ToString(), $"/assets/{Uri.EscapeDataString(directory)}");
+            if (await feeds.FindAsync(directory, cancellationToken) is not { Kind: FeedKind.Assets } target)
+            {
+                return Results.Redirect(back);
+            }
+
+            // The link the API makes, by the same code. It goes back to the page in the address: the page reads what a link
+            // is for out of the link itself, so nothing about it has to be kept anywhere in between.
+            var (link, _) = await AssetEndpoints.MakeLinkAsync(http, target, form["path"].ToString(), form["hours"].ToString(), assets, links, audit, cancellationToken);
+            return Results.Redirect(WithParameter(back, "link", link is null ? "refused" : link.Url[(link.Url.LastIndexOf('/') + 1)..]));
+        });
+
         manageFeed.MapPost("/feeds/{feed}/upstreams/remove", async (
             string feed,
             HttpContext http,
@@ -1696,7 +1718,10 @@ public static class FiGetApp
     }
 
     /// <summary>A return address with the outcome of a fetch added, replacing one left by an earlier fetch.</summary>
-    private static string WithResult(string returnUrl, string code)
+    private static string WithResult(string returnUrl, string code) => WithParameter(returnUrl, "fetch", code);
+
+    /// <summary>A return address with one parameter set, replacing a value an earlier round left there.</summary>
+    private static string WithParameter(string returnUrl, string name, string value)
     {
         if (string.IsNullOrWhiteSpace(returnUrl))
         {
@@ -1707,8 +1732,8 @@ public static class FiGetApp
         var path = query < 0 ? returnUrl : returnUrl[..query];
         var pairs = query < 0
             ? []
-            : returnUrl[(query + 1)..].Split('&', StringSplitOptions.RemoveEmptyEntries).Where(p => !p.StartsWith("fetch=", StringComparison.Ordinal)).ToList();
-        pairs.Add("fetch=" + code);
+            : returnUrl[(query + 1)..].Split('&', StringSplitOptions.RemoveEmptyEntries).Where(p => !p.StartsWith(name + "=", StringComparison.Ordinal)).ToList();
+        pairs.Add(name + "=" + Uri.EscapeDataString(value));
         return path + "?" + string.Join('&', pairs);
     }
 

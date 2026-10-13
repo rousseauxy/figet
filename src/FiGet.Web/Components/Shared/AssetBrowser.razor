@@ -3,6 +3,7 @@
 @using FiGet.Protocol.Assets
 @inject AssetService AssetFiles
 @inject IAssetCachePolicyStore CachePolicies
+@inject AssetShareLinks ShareLinks
 
 @* The browse page of an asset directory. Statically rendered like the rest of the public pages: a folder
    is a link, a file is a download, and the one piece of script is the upload drop zone an admin sees. *@
@@ -50,6 +51,24 @@
 @if (FetchMessage is { } notice)
 {
     <div class="@(notice.Ok ? "fg-alert fg-alert-ok" : "fg-alert fg-alert-danger")">@notice.Text</div>
+}
+
+@if (MadeLink is { } made)
+{
+    <div class="fg-alert fg-alert-ok">
+        <p>
+            A download link for <code>@made.Path</code>. It works without signing in and without a key until
+            @Display.Date(made.ExpiresUtc.UtcDateTime), or until the file is replaced or deleted. Whoever has it has the file.
+        </p>
+        <p class="fg-share-link">
+            <code>@made.Url</code>
+            <button type="button" class="fg-copy" data-copy="@made.Url" title="Copy this link" aria-label="Copy the download link">Copy</button>
+        </p>
+    </div>
+}
+else if (LinkToken is not null && Level >= FeedAccessLevel.Publish)
+{
+    <div class="fg-alert fg-alert-danger">No download link was made: the file is not there any more, or download links are switched off on this server.</div>
 }
 
 <p class="fg-url">
@@ -122,6 +141,15 @@ else
                             @if (!item.IsDirectory)
                             {
                                 <button type="button" class="fg-copy" data-copy="@ContentUrl(item)" title="Copy the download URL" aria-label="Copy the download URL of @item.Name">Copy URL</button>
+                                @if (Level >= FeedAccessLevel.Publish && ShareLinks.Enabled)
+                                {
+                                    <form method="post" action="/admin/assets/@Uri.EscapeDataString(Feed.Name)/link">
+                                        <AntiforgeryToken />
+                                        <input type="hidden" name="path" value="@item.Path" />
+                                        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+                                        <button type="submit" class="fg-btn fg-btn-sm" title="@LinkTitle" aria-label="Make a download link for @item.Name">Link</button>
+                                    </form>
+                                }
                             }
                             @if (Level >= FeedAccessLevel.Publish && AssetService.AcceptsWrites(Feed))
                             {
@@ -342,6 +370,24 @@ else
 
     [SupplyParameterFromQuery(Name = "fetch")]
     private string? FetchResult { get; set; }
+
+    /// <summary>The link the button just made, as it came back in the address; anything else here shows nothing.</summary>
+    [SupplyParameterFromQuery(Name = "link")]
+    private string? LinkToken { get; set; }
+
+    private string LinkTitle =>
+        $"Make a download link that works without signing in for {(ShareLinks.DefaultHours == 1 ? "an hour" : ShareLinks.DefaultHours + " hours")}";
+
+    /// <summary>
+    /// What the link in the address is for, read out of the link itself, and only for someone who could have made it and
+    /// only when it is this directory's: a link pasted into the address of another directory's page says nothing there.
+    /// </summary>
+    private (string Path, string Url, DateTimeOffset ExpiresUtc)? MadeLink =>
+        Level >= FeedAccessLevel.Publish
+        && ShareLinks.Read(LinkToken, out var expires) is { } target
+        && target.FeedKey == Feed.Key
+            ? (target.Path, AssetEndpoints.ShareUrl(HttpContext, LinkToken!), expires)
+            : null;
 
     /// <summary>What the last fetch did, from a fixed set of codes, so nothing from the address bar is shown as text.</summary>
     private (bool Ok, string Text)? FetchMessage => FetchResult switch

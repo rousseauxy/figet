@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using FiGet.Application.Assets;
 using FiGet.Application.Ports;
 using FiGet.Application.Tokens;
@@ -21,7 +22,7 @@ public sealed class SqlServerAssetShareLinkTests(SqlServerAssetServerFixture fix
 /// Download links that expire. <c>vault</c> asks for a token for everything, so a file that arrives without one arrived
 /// through its link and nothing else.
 /// </summary>
-public abstract class AssetShareLinkTests
+public abstract partial class AssetShareLinkTests
 {
     private readonly FiGetServerFixture server;
 
@@ -220,6 +221,70 @@ public abstract class AssetShareLinkTests
         var token = Relative(link)["share/".Length..];
         Assert.DoesNotContain(token, made.Detail + used.Detail, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task The_browse_page_makes_a_link_and_shows_it_once_made()
+    {
+        var folder = Unique();
+        var bytes = Encoding.UTF8.GetBytes("made from the page");
+        await StoreAsync($"{folder}/from-the-page.txt", bytes);
+
+        using var browser = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { BaseAddress = server.BaseAddress };
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(browser));
+        var page = await HttpAssert.SuccessBodyAsync(await browser.GetAsync($"assets/vault?path={folder}"));
+
+        var form = FormElement().Matches(page).Single(f => f.Value.Contains("/link\"", StringComparison.Ordinal)).Value;
+        var fields = HiddenInput().Matches(form).ToDictionary(m => WebUtility.HtmlDecode(m.Groups["name"].Value), m => WebUtility.HtmlDecode(m.Groups["value"].Value));
+        using var posted = await browser.PostAsync("admin/assets/vault/link", new FormUrlEncodedContent(fields));
+        HttpAssert.Status(HttpStatusCode.Redirect, posted);
+        var back = posted.Headers.Location!.ToString();
+        Assert.Contains($"path={folder}", back, StringComparison.Ordinal);
+
+        var after = await HttpAssert.SuccessBodyAsync(await browser.GetAsync(back));
+        Assert.Contains($"A download link for <code>{folder}/from-the-page.txt</code>", after, StringComparison.Ordinal);
+        var url = new Uri(WebUtility.HtmlDecode(ShownLink().Match(after).Groups["url"].Value));
+
+        using var anonymous = server.CreateClient();
+        using var download = await anonymous.GetAsync(url.AbsolutePath.TrimStart('/'));
+        HttpAssert.Status(HttpStatusCode.OK, download);
+        Assert.Equal(bytes, await download.Content.ReadAsByteArrayAsync());
+
+        // A file that went away between the page and the button: told so, and no link.
+        fields["path"] = $"{folder}/not-there.txt";
+        using var refused = await browser.PostAsync("admin/assets/vault/link", new FormUrlEncodedContent(fields));
+        Assert.Contains("link=refused", refused.Headers.Location!.ToString(), StringComparison.Ordinal);
+        Assert.Contains("No download link was made", await HttpAssert.SuccessBodyAsync(await browser.GetAsync(refused.Headers.Location!.ToString())), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_visitor_who_may_only_read_is_offered_no_link_and_shown_none()
+    {
+        var folder = Unique();
+        using var admin = server.CreateClient(FiGetServerFixture.AdminToken);
+        using var body = new ByteArrayContent("readable by anyone"u8.ToArray());
+        HttpAssert.Status(HttpStatusCode.Created, await admin.PutAsync($"endpoints/files/content/{folder}/open.txt", body));
+        using var made = await admin.PostAsync($"endpoints/files/link/{folder}/open.txt", content: null);
+        var token = new Uri(JsonNode.Parse(await HttpAssert.SuccessBodyAsync(made))!["url"]!.GetValue<string>()).AbsolutePath["/share/".Length..];
+
+        using var visitor = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { BaseAddress = server.BaseAddress };
+        var page = await HttpAssert.SuccessBodyAsync(await visitor.GetAsync($"assets/files?path={folder}"));
+        Assert.Contains("open.txt", page, StringComparison.Ordinal);
+        Assert.DoesNotContain("/link\"", page, StringComparison.Ordinal);
+
+        // A link put into the address by hand tells a reader nothing either, real as it is.
+        var withLink = await HttpAssert.SuccessBodyAsync(await visitor.GetAsync($"assets/files?path={folder}&link={token}"));
+        Assert.DoesNotContain("A download link for", withLink, StringComparison.Ordinal);
+        Assert.DoesNotContain("No download link was made", withLink, StringComparison.Ordinal);
+    }
+
+    [GeneratedRegex("""<form\b[^>]*>.*?</form>""", RegexOptions.Singleline)]
+    private static partial Regex FormElement();
+
+    [GeneratedRegex("""<input type="hidden" name="(?<name>[^"]*)" value="(?<value>[^"]*)"\s*/?>""")]
+    private static partial Regex HiddenInput();
+
+    [GeneratedRegex("""<code>(?<url>https?://[^<]*/share/[^<]+)</code>""")]
+    private static partial Regex ShownLink();
 
     private async Task StoreAsync(string path, byte[] bytes)
     {

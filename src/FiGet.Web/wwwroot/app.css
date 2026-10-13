@@ -561,6 +561,10 @@ pre code { padding: 0; background: none; }
 /* A cell whose text is followed by a badge: Razor drops the whitespace between them, so the gap is set here. Not on
    .fg-badge itself, which would indent the badges that stand alone in a cell of their own. */
 .fg-badge-trail .fg-badge { margin-left: 0.4rem; }
+
+/* A download link is one long word: let it wrap anywhere rather than push the page sideways. */
+.fg-share-link { display: flex; gap: 0.6rem; align-items: flex-start; margin-bottom: 0; }
+.fg-share-link code { overflow-wrap: anywhere; }
 .fg-badge-lead .fg-badge { margin-right: 0.4rem; }
 .fg-change-notes { max-width: 34rem; white-space: pre-wrap; }
 .fg-badge-danger { background: var(--danger-soft); color: var(--danger); }
