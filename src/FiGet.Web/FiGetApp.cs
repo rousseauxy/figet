@@ -146,6 +146,11 @@ public static class FiGetApp
             services.AddHostedService<AssetUploadCleanupService>();
         }
         services.AddScoped<AccessTokenService>();
+        services.AddScoped<TokenExpiryWatch>();
+        if (RunsJob(builder.Configuration, nameof(JobsOptions.TokenExpiryWatch), defaults.Jobs.TokenExpiryWatch))
+        {
+            services.AddHostedService<Connectors.TokenExpiryWatchService>();
+        }
         services.AddScoped<AccountService>();
         services.AddScoped<FeedAccessService>();
         services.AddScoped<ExternalAccountService>();

@@ -257,7 +257,8 @@ public static class TokenManagementEndpoints
         Utc(token.ExpiresUtc),
         Utc(token.LastUsedUtc),
         Utc(token.RevokedUtc),
-        token.RevokedUtc is null && (token.ExpiresUtc is null || token.ExpiresUtc > now));
+        token.RevokedUtc is null && (token.ExpiresUtc is null || token.ExpiresUtc > now),
+        TokenExpiry.DaysLeft(token, now));
 
     /// <summary>Times are stored as UTC and read back without saying so; said here, so the JSON carries its Z.</summary>
     private static DateTime Utc(DateTime value) => DateTime.SpecifyKind(value, DateTimeKind.Utc);
@@ -292,7 +293,8 @@ public static class TokenManagementEndpoints
 
     /// <summary>
     /// A service token as the API shows it. <see cref="Token"/> is the secret, present once: in the answer that made it.
-    /// <see cref="Feed"/> is absent for a token that applies to every feed.
+    /// <see cref="Feed"/> is absent for a token that applies to every feed, and <see cref="DaysLeft"/> for one that does
+    /// not end or no longer works: what a script reads to replace a key before it stops.
     /// </summary>
     private sealed record TokenJson(
         int Id,
@@ -305,5 +307,6 @@ public static class TokenManagementEndpoints
         DateTime? LastUsedUtc,
         DateTime? RevokedUtc,
         bool Active,
+        int? DaysLeft,
         string? Token = null);
 }

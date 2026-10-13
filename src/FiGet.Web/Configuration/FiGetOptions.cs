@@ -270,6 +270,9 @@ public sealed class JobsOptions
     /// <summary>Posting each feed's change report to the webhook, when one is configured.</summary>
     public TimeSpan ChangeReport { get; set; } = TimeSpan.FromDays(1);
 
+    /// <summary>Saying in the audit log and the server's log which tokens end within two weeks, and again within three days.</summary>
+    public TimeSpan TokenExpiryWatch { get; set; } = TimeSpan.FromDays(1);
+
     public static bool Runs(TimeSpan interval) => interval > TimeSpan.Zero;
 }
 

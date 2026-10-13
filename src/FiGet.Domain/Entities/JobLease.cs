@@ -39,4 +39,7 @@ public static class JobLeaseNames
     public const string UploadSweep = "upload-sweep";
 
     public const string UsagePrune = "usage-prune";
+
+    /// <summary>Saying which tokens end soon.</summary>
+    public const string TokenExpiryWatch = "token-expiry-watch";
 }

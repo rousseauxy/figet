@@ -73,6 +73,10 @@ else
                             else
                             {
                                 <span class="fg-num">@Display.Date(token.ExpiresUtc, "Never")</span>
+                                @if (active && TokenExpiry.DaysLeft(token, now) is { } daysLeft && daysLeft <= TokenExpiry.Thresholds[0])
+                                {
+                                    <span class="fg-badge-trail"><span class="fg-badge fg-badge-warn" title="Whatever uses this token is refused once it ends. Make its replacement first.">@(daysLeft == 1 ? "ends within a day" : $"ends in {daysLeft} days")</span></span>
+                                }
                             }
                         </td>
                         <td class="fg-cell-actions">
@@ -129,6 +133,10 @@ else
                             else
                             {
                                 <span class="fg-num">@Display.Date(token.ExpiresUtc, "Never")</span>
+                                @if (active && TokenExpiry.DaysLeft(token, now) is { } daysLeft && daysLeft <= TokenExpiry.Thresholds[0])
+                                {
+                                    <span class="fg-badge-trail"><span class="fg-badge fg-badge-warn" title="Whatever uses this token is refused once it ends. Make its replacement first.">@(daysLeft == 1 ? "ends within a day" : $"ends in {daysLeft} days")</span></span>
+                                }
                             }
                         </td>
                         <td class="fg-cell-actions">
