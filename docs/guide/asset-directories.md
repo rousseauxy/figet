@@ -127,6 +127,5 @@ rather than free-form headers, so no setting can switch off the protective heade
 ## What a download carries
 
 Every download is served so that nothing in it can run as part of the site: `X-Content-Type-Options: nosniff`, a
-sandboxing content security policy, and `Content-Disposition: attachment` for every type except raster images, plain
-text and JSON. Download clients ignore these headers. The one visible difference is that a browser saves an HTML or
-PDF file instead of opening it.
+sandboxing content security policy, and `Content-Disposition: attachment` on every file, under its own name. Download
+clients ignore these headers. The one visible difference is that a browser saves a file instead of opening it.
