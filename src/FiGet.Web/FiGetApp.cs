@@ -489,6 +489,7 @@ public static class FiGetApp
         app.MapNuGetV3();
         app.MapAssetEndpoints();
         app.MapPackageManagement();
+        app.MapTokenManagement();
         app.MapAccountEndpoints();
         app.MapExternalSignIn();
         app.MapAdminEndpoints();
