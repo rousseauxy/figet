@@ -345,6 +345,21 @@ public sealed class AssetOptions
     public string? SharesRoot { get; set; }
 
     public RemoteFetchOptions RemoteFetch { get; set; } = new();
+
+    public ShareLinkSettings ShareLinks { get; set; } = new();
+}
+
+/// <summary>
+/// Download links that expire: one file from a directory, for whoever holds the link, until the link ends. Made by an
+/// account or a key that may publish to the directory.
+/// </summary>
+public sealed class ShareLinkSettings
+{
+    /// <summary>The longest a link may live, in hours. 0 switches links off: none is made and none already handed out works.</summary>
+    public int MaxHours { get; set; } = 168;
+
+    /// <summary>How long a link lives when its maker names no lifetime, in hours.</summary>
+    public int DefaultHours { get; set; } = 24;
 }
 
 public sealed class RemoteFetchOptions

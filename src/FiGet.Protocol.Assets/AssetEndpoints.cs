@@ -47,6 +47,10 @@ public static partial class AssetEndpoints
         group.MapPost("/metadata/{**path}", SetMetadataAsync).DisableAntiforgery();
         group.MapPost("/import/{**path}", ImportEndpointAsync).DisableAntiforgery();
         group.MapGet("/export/{**path}", ExportEndpointAsync);
+        group.MapPost("/link/{**path}", CreateLinkAsync).DisableAntiforgery();
+
+        // Outside the directory's own addresses on purpose: a link names no directory, so the address gives nothing away.
+        app.MapMethods("/share/{token}", [HttpMethods.Get, HttpMethods.Head], SharedDownloadAsync);
         return app;
     }
 
@@ -75,7 +79,12 @@ public static partial class AssetEndpoints
         }
 
         await ApplyCacheHeadersAsync(http, request.Feed, file, policies, cancellationToken);
+        return FileResult(http, file, stream);
+    }
 
+    /// <summary>The response that sends a stored file. One place, so a download link serves a file exactly as its own address does.</summary>
+    private static IResult FileResult(HttpContext http, AssetItem file, Stream stream)
+    {
         // A file is served on this site's own origin, with a type its uploader chose. An HTML or SVG file opened from its link
         // would run as a page of this site, with the cookie of whoever opened it - an admin, from the browse page. So nothing
         // served here runs, and every file downloads under its own name: this is a store of assets a machine fetches, not a

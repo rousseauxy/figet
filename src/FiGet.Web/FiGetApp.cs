@@ -87,6 +87,12 @@ public static class FiGetApp
             upload.TempPath = figet.Value.Storage.TempPath;
         });
         services.AddSingleton<StoragePaths>();
+        services.AddOptions<FiGet.Protocol.Assets.ShareLinkOptions>().Configure<IOptions<FiGetOptions>>((links, figet) =>
+        {
+            links.MaxHours = figet.Value.Assets.ShareLinks.MaxHours;
+            links.DefaultHours = figet.Value.Assets.ShareLinks.DefaultHours;
+        });
+        services.AddSingleton<FiGet.Protocol.Assets.AssetShareLinks>();
 
         services.AddDbContext<FiGetDbContext>((provider, db) =>
         {
