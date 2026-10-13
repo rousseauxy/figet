@@ -32,6 +32,29 @@ FiGet.
 Credentials as everywhere else: `X-ApiKey` (what the scripts send), `X-NuGet-ApiKey`, Basic or Bearer. Reads
 follow the feed's anonymous-read setting.
 
+### Service tokens
+
+**FiGet's own**, under `/api/management/tokens`; nothing of the reference API is mirrored. The caller is a service
+token with the admin scope, treated as an administrator and not a super administrator.
+
+| Method | Path | Answer |
+|---|---|---|
+| GET | `` | Every service token: `id`, `name`, `prefix`, `scopes`, `feed` (absent for all feeds), `createdUtc`, `expiresUtc`, `lastUsedUtc`, `revokedUtc`, `active`, and `daysLeft` for one that ends. Never a secret. Personal keys are not listed. |
+| POST | `` | Body `{"name", "scopes": ["read"\|"push"\|"delete"], "feed"?, "expiresInDays"?}`. 201 with the token and its secret in `token`, once. 400 with `{"error"}` naming what is wrong; 403 for the `admin` scope. |
+| DELETE | `/{id}` | 204, also when it was already revoked. 404 for an id that is not a service token; 403 for a token with the admin scope. |
+
+Decisions:
+
+- **The API never makes or revokes an admin token.** A key that can make admin keys can make more of itself. The
+  ceiling rule that stops an administrator on the page making one stops the API the same way, by the same code.
+- **A body is read after the caller is checked.** A stranger who posts garbage learns that credentials are required,
+  not what a valid body looks like.
+- **Refusals follow the feeds.** No key: 401 with a Basic challenge. A key that is not one, sent as an API key
+  header: 403. A valid key that may not do this: 403. Requests without a valid key count against the anonymous
+  rate limit.
+- **The audit line is the page's.** `token.create` and `token.revoke` read the same whoever made the token; who did
+  is the actor, `token:<name>` here.
+
 ## A version
 
 ```json

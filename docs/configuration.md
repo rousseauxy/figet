@@ -182,6 +182,8 @@ not get around the limit: a request is counted as anonymous after its key has be
 | `RemoteFetch:AllowPrivateNetworks` | `false` | Whether a fetched URL may point at a private network, loopback or carrier-grade NAT address. Off, because an upload token could otherwise read internal addresses through the server. Link-local (cloud metadata) addresses stay refused either way. Applies without a proxy. |
 | `RemoteFetch:Proxy` | empty | An HTTP proxy to fetch through (`http://proxy.example:8080`; credentials in the URL, from a secret, when it needs them). Requires `AllowedHosts`: through a proxy the server cannot see the address it reaches, so the host name is what is checked. |
 | `RemoteFetch:AllowedHosts` | empty | Hosts a fetch may go to, every redirect hop included: an exact name or `*.example.com` for names below it. Empty allows any host, which only works without a proxy. With it set and no proxy, both the host and the connected address are checked. |
+| `ShareLinks:MaxHours` | `168` | The longest a download link for one file may live, in hours. A link is made by an account or a key that may publish to the directory and downloads that file without credentials until it ends. `0` switches links off: none is made, and none already handed out works. Links are sealed with the key ring (`FiGet:DataProtection`), so every replica honours a link any of them made, and a key ring that is lost ends them all. |
+| `ShareLinks:DefaultHours` | `24` | How long a link lives when its maker names no lifetime: the **Link** button on the browse page, and the API without `hours`. Never more than `MaxHours`. |
 
 ## FiGet:Logging
 
@@ -268,6 +270,7 @@ replica owns it.
 | `FiGet:Jobs:UsagePrune` | `1.00:00:00` | Deleting usage counts past ninety days. |
 | `FiGet:Jobs:CatalogueSweep` | `1.00:00:00` | Refreshing the stored upstream catalogue of every id a proxy feed holds, so a package nobody browsed is still known to have moved. This interval is also what counts as fresh: a catalogue fetched more recently than this is left alone, so on a feed people actually browse a run queues nothing and records nothing. Silence from this job means there was nothing to do. |
 | `FiGet:Jobs:ChangeReport` | `1.00:00:00` | Posting each feed's change report, and keeping release notes current for the feeds' own pages. |
+| `FiGet:Jobs:TokenExpiryWatch` | `1.00:00:00` | Saying which tokens end soon: a `token.expiring` entry in the audit log and a warning in the server's log, once fourteen days and once three days before a token's end. What was already said is kept in the database, so a restart or another replica does not repeat it. Switched off, the tokens page still marks such a token; only the entries stop. |
 
 Two schedules are deliberately not settings. Usage counts are flushed from memory to the database every minute: that
 is the write path rather than a schedule, and switching it off would lose counts instead of deferring them. And every

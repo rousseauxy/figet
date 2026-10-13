@@ -40,6 +40,12 @@ is marked as FiGet's own.
 | PUT, POST, PATCH | `/content/{path}` with `X-Source-Url: {url}` | Push | The server fetches the URL and stores it, with the verb's usual rule about existing files. 201; 400 when refused; 502 when the remote fails. **FiGet's own**, not in the reference API. |
 | POST | `/import/{path}?format=zip\|tgz&overwrite=` | Push | Unpacks an archive into the folder. 200 with `{"imported", "skipped", "failed": [...]}`; 413 past the import limit. |
 | GET | `/export/{path}?format=zip\|tgz&recursive=` | Read | The folder as an archive, entries named relative to it. Without `recursive`, only the files directly inside. |
+| POST | `/link/{path}?hours=` | Push | Makes a download link for one file. 200 with `{"url", "path", "expiresUtc", "hours"}`; 400 for a lifetime outside 1 to the configured maximum; 404 for a folder, a missing file, or when links are switched off. **FiGet's own**, not in the reference API. |
+
+One route sits outside the directory's own: `GET, HEAD /share/{token}` serves the file a link was made for, without
+credentials, as `/content/{path}` would. Every link that does not open a file - expired, altered, made by another
+server, or for a file since replaced or deleted - answers the same 404 `This download link is not valid, or it has
+expired.` as plain text. See *Download links* under Decisions.
 
 Folders above an uploaded file are created on the way. Something above the path being a file is a 400, and
 so is uploading to a path where a folder is.
@@ -172,6 +178,28 @@ their write-side statuses were not recorded from the reference server either.
   are far larger than packages. The request body limit is raised per request, so Kestrel's 30 MB default
   does not refuse the upload before the handler runs. A multipart upload is held to the same limit on its
   announced total, refused on the first part rather than on completion.
+
+### Download links
+
+FiGet's own; the reference server has nothing like it, so no script depends on a shape.
+
+- **A link is a sealed statement, not a row.** "This file, this content, until then", sealed with the key ring that
+  protects the sign-in cookies. Nothing is stored: every replica honours a link any of them made, and there is no
+  table of links to clean. The price is that one link cannot be withdrawn on its own.
+- **It names the content, not only the path.** The file's SHA-256 (size and modified time for a folder-backed
+  directory) is in the link, so replacing the file ends it. A link is given for a file; whoever holds it was never
+  given what is put at that path later. Putting the same bytes back makes it the same file again.
+- **Making one takes Push, not Read.** A link hands the file to someone the directory does not know. A key that may
+  read a file may not decide that.
+- **The address names nothing.** `/share/{token}`, outside `/endpoints/{directory}`, so a link in a mail or a ticket
+  says nothing about which directory or path is behind it.
+- **A directory's allowed networks still apply.** A link is a credential for one file, not a way around where the
+  directory may be reached from: 403 from anywhere else.
+- **The link is a credential in an address.** Its download carries `Cache-Control: private, no-store`,
+  `Referrer-Policy: no-referrer` and `X-Robots-Tag: noindex, nofollow`, and the audit log names a link by the first
+  twelve characters of its SHA-256, never by the link.
+- **Uses are audited once an hour per link and address** (`asset.link.use`), as other repeated reads are; making one
+  always is (`asset.link.create`).
 
 ### Multipart uploads
 

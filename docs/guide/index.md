@@ -128,12 +128,14 @@ One container image, built for the strictest target and therefore fine everywher
 ## Guides
 
 - [Asset directories](asset-directories.md): FiGet's own storage or a folder on the server, who may download and list,
-  allowed networks and cache modes.
+  allowed networks, cache modes, and a download link that expires for one file.
 - [What's new](whats-new.md): what each feed gained and what its upstreams now offer for the packages it holds, on a
   page, as JSON, or posted to a webhook on a schedule.
 - [PowerShell clients](powershell-clients.md): registering PowerShellGet and PSResourceGet, credentials, and the
   client behaviours worth knowing before they cost an afternoon.
 - [API access tokens](api-access-tokens.md): a token from your identity provider or CI system used as a FiGet key.
+- [Service tokens from a script](service-tokens.md): making, listing and revoking keys over the API, replacing one
+  without a gap, and the warning before a token ends.
 - [Running in production](running-in-production.md): proxies, replicas, secrets and storage.
 - [What to open in a firewall](firewall.md): the one port in, the hosts out, and why a gallery's listings and its
   downloads are not the same host.

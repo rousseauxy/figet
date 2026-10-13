@@ -74,6 +74,43 @@ A directory's settings page takes a list of addresses and ranges (`10.0.0.0/8`, 
 else is refused with 403, whatever key or account it carries. Behind a reverse proxy the address is the one the proxy
 forwards (see [Running in production](running-in-production.md)).
 
+## A download link that expires
+
+Sometimes one file has to reach a machine or a person that has no key and no account, and opening the directory to
+everyone for it is too much. A download link does that for one file: an address that downloads it without credentials,
+until the link ends.
+
+**Who makes one.** An account or a key that may *publish* to the directory. Reading is not enough: a link hands the
+file to someone the directory does not know, and that is a decision about what the directory gives out.
+
+**On the browse page**, a file's row has a **Link** button. It makes a link that lives for the default time and shows it
+with a copy button.
+
+**From a script**, with the lifetime in hours:
+
+```powershell
+$link = Invoke-RestMethod -Method Post "https://packages.example/endpoints/installers/link/agents/setup.msi?hours=4" `
+    -Headers @{ 'X-ApiKey' = $key }
+$link.url          # https://packages.example/share/CfDJ8...
+$link.expiresUtc   # when it stops working
+```
+
+Whoever has the link has the file, so treat it like the file itself. What limits it:
+
+- **It ends.** After the lifetime it was made with, at most a week unless the server is configured otherwise.
+- **It is for the file as it was.** Replace the file and the link stops working; it was given for the old content, not
+  for whatever is at that path later. Delete the file, or the directory, and it stops too.
+- **Allowed networks still apply.** A link does not move where a directory may be reached from.
+- **It says nothing by itself.** The address names no directory and no path, and every link that does not open a file
+  gives the same answer, whether it expired, was mistyped or never existed.
+
+One link cannot be taken back on its own: nothing is stored per link, which is also why every replica honours a link
+any of them made. To end one early, replace or delete the file. To end all of them, an operator sets
+`FiGet:Assets:ShareLinks:MaxHours` to `0`, which also switches the feature off.
+
+Making a link and each use of one are in the audit log (`asset.link.create`, `asset.link.use`), the use with the
+address it came from. The log names a link by a short fingerprint and never holds the link itself.
+
 ## Cache modes per folder
 
 Set on the browse page, per folder:
