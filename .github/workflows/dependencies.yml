@@ -8,7 +8,9 @@ name: Dependencies
 #            and the .NET runtime read out of the image (no scanner sees it). Only a finding with a
 #            fix available fails the run; on Monday the rest is counted
 #
-# A failed scheduled run is the signal: GitHub sends it by mail. The scripts in tools/ci are shared
+# Findings are posted to the alert room as on the forge, with ALERT_RELAY_TOKEN stored here: a copy that can only
+# post to that room, so this check does not depend on the vault at home. A failed scheduled run also comes by mail.
+# The scripts in tools/ci are shared
 # with sibling projects and kept identical to theirs.
 on:
   schedule:
@@ -40,6 +42,8 @@ jobs:
       - name: Report
         env:
           EVENT: ${{ github.event_name }}
+          ALERT_RELAY_URL: https://alerts.xact.cloud/grafana
+          ALERT_RELAY_TOKEN: ${{ secrets.ALERT_RELAY_TOKEN }}
         run: |
           if [ "$EVENT" != "schedule" ] || [ "$(date -u +%u)" = "1" ]; then
             node tools/ci/dependency-report.mjs --vulnerable vulnerable.json --outdated outdated.json --images deploy/Dockerfile
@@ -67,6 +71,8 @@ jobs:
       - name: Scan the published image and report
         env:
           EVENT: ${{ github.event_name }}
+          ALERT_RELAY_URL: https://alerts.xact.cloud/grafana
+          ALERT_RELAY_TOKEN: ${{ secrets.ALERT_RELAY_TOKEN }}
         run: |
           images=$(sh tools/ci/image-scan.sh figet=ghcr.io/rousseauxy/figet:latest)
           weekly=""
