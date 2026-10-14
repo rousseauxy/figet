@@ -16,7 +16,7 @@
 // So the runtime is asked about by name and version, read from the image itself.
 //
 // What fails the run (and is sent as "firing"): a finding somebody can act on today. An operating-
-// system vulnerability of severity 7 or more with a fixed package, or a runtime advisory fixed in a
+// system or library vulnerability of severity 7 or more (or of no stated severity) with a fix, or a runtime advisory fixed in a
 // runtime whose base image already exists. Everything else is counted, and said once a week
 // (--weekly, or a run by hand) as a notice: an image of Ubuntu always carries known vulnerabilities
 // with no fix yet, and a message a day about them would be read by nobody.
@@ -130,7 +130,8 @@ for (const spec of values('--image')) {
 if (unread.length)
   console.log(`No shared .NET runtime read from: ${unread.join(', ')} (self-contained or not .NET; its runtime is not checked here).`);
 
-const osActionable = os.filter((f) => f.fixed && f.severity >= actionableSeverity);
+// No score is not a low score: most Go standard-library advisories carry none, and each has a fix.
+const osActionable = os.filter((f) => f.fixed && (f.severity >= actionableSeverity || f.severity === 0));
 const runtimeActionable = runtime.filter((a) => a.fixedIn && !newer(a.fixedIn, a.latest));
 const firing = [
   ...runtimeActionable.map((a) => `${a.image}: ${a.framework} ${a.version}: ${a.id} ${a.cve} (${a.severity}) ${a.summary}; fixed in ${a.fixedIn}, base image ${a.latest} exists`),
@@ -140,7 +141,7 @@ const firing = [
 for (const a of runtime) console.log(`  ${a.image} ${a.framework} ${a.version}: ${a.id} ${a.cve} ${a.severity}: ${a.summary} (fixed in ${a.fixedIn ?? '?'})`);
 for (const image of new Set(os.map((f) => f.image))) {
   const mine = os.filter((f) => f.image === image);
-  console.log(`${image}: ${mine.length} operating-system findings, ${mine.filter((f) => f.fixed).length} with a fixed package, `
+  console.log(`${image}: ${mine.length} findings (system packages and libraries), ${mine.filter((f) => f.fixed).length} with a fixed package, `
     + `${mine.filter((f) => f.severity >= actionableSeverity).length} of severity ${actionableSeverity} or more.`);
 }
 
@@ -162,7 +163,7 @@ if (weekly) {
   for (const image of new Set(os.map((f) => f.image))) {
     const mine = os.filter((f) => f.image === image && !osActionable.includes(f));
     if (mine.length)
-      lines.push(`${image}: ${mine.length} known operating-system vulnerabilities without a fix to take `
+      lines.push(`${image}: ${mine.length} known vulnerabilities without a fix to take `
         + `(${mine.filter((f) => f.severity >= 9).length} critical, ${mine.filter((f) => f.severity >= 7 && f.severity < 9).length} high)`);
   }
   if (lines.length) {
