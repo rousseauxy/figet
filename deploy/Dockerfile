@@ -16,10 +16,10 @@
 # Which runtime to sit on. Declared here because an argument used in a FROM must come before the first one.
 # The default ships: a chiseled rootfs with no shell, no package manager and none of the Ubuntu packages a web server
 # never calls - so a scanner has far less to report and an attacker far less to reach for. Build with
-# --build-arg RUNTIME_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0.12 when you want a shell to poke around in.
-ARG RUNTIME_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0.12-noble-chiseled-extra
+# --build-arg RUNTIME_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0.13 when you want a shell to poke around in.
+ARG RUNTIME_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0.13-noble-chiseled-extra
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0.401 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.402 AS build
 WORKDIR /src
 
 COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./

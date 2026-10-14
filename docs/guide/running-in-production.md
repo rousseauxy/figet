@@ -95,7 +95,7 @@ how much room is left, which copies are running and when each job last ran. For 
 mounting the same claim, or build yourself a copy with a shell — the runtime base is a build argument:
 
 ```
-docker build -f deploy/Dockerfile --build-arg RUNTIME_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0.12 -t figet:shell .
+docker build -f deploy/Dockerfile --build-arg RUNTIME_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0.13 -t figet:shell .
 ```
 
 Or pull one: every release also publishes **`ghcr.io/rousseauxy/figet:<version>-shell`**, the same build on the full
