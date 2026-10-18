@@ -229,7 +229,7 @@ pre code { padding: 0; background: none; }
   white-space: nowrap;
   margin-right: auto;
 }
-.fg-navbar-brand:hover { color: #fff; text-decoration: none; }
+.fg-navbar-brand:hover { color: var(--chrome-text); text-decoration: none; }
 .fg-navbar-brand { display: inline-flex; align-items: center; gap: 0.55rem; }
 .fg-brand-logo { display: block; height: 26px; width: auto; max-width: 180px; }
 

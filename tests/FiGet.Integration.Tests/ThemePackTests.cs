@@ -16,6 +16,7 @@ public sealed class ThemePackTests(SqliteServerFixture server) : IClassFixture<S
     [Theory]
     [InlineData("graphite")]
     [InlineData("cobalt")]
+    [InlineData("zinc")]
     public async Task A_shipped_pack_compiles_to_guarded_css(string name)
     {
         using var client = server.CreateClient();
@@ -34,6 +35,7 @@ public sealed class ThemePackTests(SqliteServerFixture server) : IClassFixture<S
     [Theory]
     [InlineData("graphite")]
     [InlineData("cobalt")]
+    [InlineData("zinc")]
     public async Task A_shipped_pack_serves_its_logo_safely(string name)
     {
         using var client = server.CreateClient();
