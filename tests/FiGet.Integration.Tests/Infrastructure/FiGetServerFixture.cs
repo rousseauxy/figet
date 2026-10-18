@@ -82,6 +82,14 @@ public abstract class FiGetServerFixture : IAsyncLifetime
         factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Testing");
+            // The checks Development makes and Production does not: a singleton that holds a scoped service (a database
+            // context kept for the life of the process) fails the build here, as it did only on a developer's machine
+            // before (ChangeReportJobService held ChangeWebhookFactory, found 2026-10-19).
+            builder.UseDefaultServiceProvider(services =>
+            {
+                services.ValidateScopes = true;
+                services.ValidateOnBuild = true;
+            });
             var settings = new Dictionary<string, string>
             {
                 ["FiGet:Storage:Root"] = root,

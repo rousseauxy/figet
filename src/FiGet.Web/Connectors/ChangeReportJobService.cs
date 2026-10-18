@@ -18,7 +18,6 @@ namespace FiGet.Web.Connectors;
 /// </summary>
 public sealed class ChangeReportJobService(
     IServiceScopeFactory scopes,
-    ChangeWebhookFactory webhooks,
     AuditLog audit,
     IOptions<FiGetOptions> options,
     TimeProvider time,
@@ -83,6 +82,11 @@ public sealed class ChangeReportJobService(
         await using var scope = scopes.CreateAsyncScope();
         var settings = scope.ServiceProvider.GetRequiredService<ISettingStore>();
         var reports = scope.ServiceProvider.GetRequiredService<ChangeReportService>();
+
+        // From this run's scope, like the settings: the factory reads the stored addresses through the database, and a
+        // singleton that held one would keep a single database context for the life of the process, shared by the
+        // nightly run and an administrator's "send now" at the same moment.
+        var webhooks = scope.ServiceProvider.GetRequiredService<ChangeWebhookFactory>();
 
         var now = time.GetUtcNow().UtcDateTime;
         var from = await ReportedThroughAsync(settings, feed, now, cancellationToken);
