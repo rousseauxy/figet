@@ -289,7 +289,7 @@ public sealed partial class AdminUiTests(SqliteServerFixture server) : IClassFix
 
         // The feed list shows the feed with its dot in that colour.
         var home = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/"));
-        Assert.Contains($"--fg-series-6)\" aria-hidden=\"true\"></span><a href=\"/feeds/{feed}\"", home, StringComparison.Ordinal);
+        Assert.Contains($"fg-series-dot fg-series-6\" aria-hidden=\"true\"></span><a href=\"/feeds/{feed}\"", home, StringComparison.Ordinal);
     }
 
     /// <summary>

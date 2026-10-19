@@ -1377,6 +1377,15 @@ textarea.fg-mono { font-family: var(--font-mono); font-size: 0.8rem; }
   flex: none;
   vertical-align: baseline;
 }
+/* A feed's colour as a class, not a style attribute: the content policy allows no inline styles. */
+.fg-series-1 { --series: var(--fg-series-1); }
+.fg-series-2 { --series: var(--fg-series-2); }
+.fg-series-3 { --series: var(--fg-series-3); }
+.fg-series-4 { --series: var(--fg-series-4); }
+.fg-series-5 { --series: var(--fg-series-5); }
+.fg-series-6 { --series: var(--fg-series-6); }
+.fg-series-7 { --series: var(--fg-series-7); }
+.fg-series-8 { --series: var(--fg-series-8); }
 .fg-feed-name { display: inline-flex; align-items: center; gap: 0.45rem; }
 .fg-usage { margin-top: 1.6rem; }
 .fg-usage-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1rem; margin-bottom: 0.8rem; }

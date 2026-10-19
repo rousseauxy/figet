@@ -36,7 +36,7 @@ else
                 {
                     var url = SourceUrl(feed);
                     <tr>
-                        <td><span class="fg-feed-name"><span class="fg-series-dot" style="--series: var(--fg-series-@FeedColors.Of(feed))" aria-hidden="true"></span><a href="/feeds/@feed.Name">@feed.Name</a></span></td>
+                        <td><span class="fg-feed-name"><span class="fg-series-dot fg-series-@FeedColors.Of(feed)" aria-hidden="true"></span><a href="/feeds/@feed.Name">@feed.Name</a></span></td>
                         <td><span class="fg-badge">@Display.Kind(feed.Kind)</span></td>
                         <td>@(feed.AnonymousRead ? "Anonymous" : "Token")</td>
                         <td>@(feed.Kind == FeedKind.Assets ? Display.None : feed.AllowOverwrite ? "Overwrite" : "Reject (409)")</td>

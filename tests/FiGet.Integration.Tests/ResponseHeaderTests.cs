@@ -1,5 +1,6 @@
 using System.Net;
 using FiGet.Integration.Tests.Infrastructure;
+using FiGet.Web;
 using FiGet.Web.SignIn;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
@@ -21,7 +22,7 @@ public sealed class ResponseHeaderTests(SqliteServerFixture server) : IClassFixt
             using var page = await client.GetAsync(path);
             HttpAssert.Status(HttpStatusCode.OK, page);
             Assert.Equal("DENY", page.Headers.GetValues("X-Frame-Options").Single());
-            Assert.Equal("frame-ancestors 'none'", page.Headers.GetValues("Content-Security-Policy").Single());
+            Assert.Equal(FiGetApp.PageContentPolicy, page.Headers.GetValues("Content-Security-Policy").Single());
             Assert.Equal("nosniff", page.Headers.GetValues("X-Content-Type-Options").Single());
             Assert.Equal("strict-origin-when-cross-origin", page.Headers.GetValues("Referrer-Policy").Single());
         }

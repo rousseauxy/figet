@@ -12,24 +12,8 @@
         <link rel="stylesheet" href="@($"/themes/{theme}.css")" />
     }
     <HeadOutlet />
-    @*
-        Applied before the first paint, and deliberately inline rather than in app.js: a deferred script
-        runs after the page has already been drawn, so every navigation would flash the other theme.
-        Only an explicit choice is recorded here — with nothing stored, the stylesheet's media query
-        answers the operating system on its own.
-    *@
-    <script>
-        (function () {
-            try {
-                var chosen = localStorage.getItem("figet-theme");
-                if (chosen === "light" || chosen === "dark") {
-                    document.documentElement.setAttribute("data-theme", chosen);
-                }
-            } catch (error) {
-                // A browser that refuses storage simply follows the system preference.
-            }
-        })();
-    </script>
+    @* Blocking, in <head>: it applies a recorded light or dark choice before the first paint (theme-init.js says why). *@
+    <script src="@Assets["theme-init.js"]"></script>
 </head>
 <body>
     @* The brand reaches the top bar through a cascading value: the layout cannot take it from the page it wraps. *@

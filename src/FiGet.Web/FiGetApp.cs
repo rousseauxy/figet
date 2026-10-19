@@ -54,6 +54,17 @@ public static class FiGetApp
     public const string UserKeyClaim = AccountClaims.UserKey;
     public const string StampClaim = AccountClaims.Stamp;
     public const string AdminRole = AccountClaims.AdminRole;
+
+    /// <summary>
+    /// What a page may load: its own scripts, styles and requests, nothing inline. The pages are static and their two
+    /// scripts are files (theme-init.js, app.js), so no hash or nonce is needed; a feed's colour is a class, not a style
+    /// attribute. Images may come from anywhere, because a package icon is whatever URL its publisher chose. No
+    /// form-action: signing in through a provider posts here and is redirected to the provider, whose address is
+    /// configured at run time, and browsers apply form-action to that redirect.
+    /// </summary>
+    public const string PageContentPolicy =
+        "default-src 'self'; script-src 'self'; style-src 'self'; img-src * data:; connect-src 'self'; "
+        + "object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
     public const string SuperAdminRole = AccountClaims.SuperAdminRole;
     public const string UserRoleClaim = AccountClaims.UserRole;
 
@@ -298,7 +309,7 @@ public static class FiGetApp
         // small, and the interactive runtime's own traffic is not HTTP bodies.
         // Pages may not be framed by another site, and nothing on them is sniffed into another type. Protocol answers and
         // theme files are left out: clients ignore these headers, and the asset and theme routes set a stricter policy of
-        // their own. A full content policy would need a nonce for the inline theme script; framing is the one that matters.
+        // their own. PageContentPolicy says what the pages may load.
         app.Use((context, next) =>
         {
             if (!IsProtocolPath(context.Request.Path))
@@ -306,7 +317,7 @@ public static class FiGetApp
                 var headers = context.Response.Headers;
                 headers.XContentTypeOptions = "nosniff";
                 headers.XFrameOptions = "DENY";
-                headers.ContentSecurityPolicy = "frame-ancestors 'none'";
+                headers.ContentSecurityPolicy = PageContentPolicy;
                 headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
             }
 
