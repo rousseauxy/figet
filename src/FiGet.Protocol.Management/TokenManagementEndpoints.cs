@@ -188,62 +188,8 @@ public static class TokenManagementEndpoints
     /// Lets a service token with the admin scope through; null then. Anything else gets its answer here: 403 for a key
     /// that is valid and may not do this, 401 for no key, and for a key that is not one the same answers a feed gives.
     /// </summary>
-    private static async Task<IResult?> AdminAsync(HttpContext http, CancellationToken cancellationToken)
-    {
-        var tokens = http.RequestServices.GetRequiredService<AccessTokenService>();
-        ValidatedToken? valid = null;
-        string? refused = null;
-        foreach (var secret in RequestCredentials.Candidates(http.Request))
-        {
-            if (await tokens.ValidateAsync(secret, cancellationToken) is not { } token)
-            {
-                refused ??= secret;
-                continue;
-            }
-
-            valid ??= token;
-
-            // A key of FiGet's own that belongs to nobody. A personal key never carries the admin scope, and an access token
-            // from a trusted issuer reads and publishes at most.
-            if (token is { IsAdmin: true, Owner: null, External: null })
-            {
-                http.Items[FeedAccess.TokenNameItem] = token.LogName;
-                return null;
-            }
-        }
-
-        if (valid is not null)
-        {
-            http.Items[FeedAccess.TokenNameItem] = valid.LogName;
-            return Refuse(StatusCodes.Status403Forbidden, "Managing tokens takes a service token with the admin scope.");
-        }
-
-        // No valid key: an anonymous request, whatever it sent, and counted as one.
-        if (http.RequestServices.GetService<RequestRateLimits>() is { } limits && !limits.TryAcquire(http, RequestRateLimits.Anonymous))
-        {
-            return Results.Text("Too many requests from this address without credentials. Try again shortly.", "text/plain", statusCode: StatusCodes.Status429TooManyRequests);
-        }
-
-        if (refused is not null && (await tokens.DescribeRefusedAsync(refused, cancellationToken) is var known) && (known is not null || RequestCredentials.HasApiKeyHeader(http.Request)))
-        {
-            var subject = known?.Name ?? "unknown key";
-            http.RequestServices.GetRequiredService<AuditLog>().RecordThrottled(
-                http,
-                $"token.refused|{subject}|{RequestActor.Caller(http)}|management",
-                TimeSpan.FromMinutes(10),
-                "token.refused",
-                subject,
-                $"feed=(token management) reason={known?.Reason ?? "not a key"}");
-        }
-
-        if (RequestCredentials.HasApiKeyHeader(http.Request))
-        {
-            return Refuse(StatusCodes.Status403Forbidden, "The API key or access token is invalid, expired or revoked.");
-        }
-
-        http.Response.Headers.WWWAuthenticate = $"Basic realm=\"{FeedAccess.Realm}\"";
-        return Refuse(StatusCodes.Status401Unauthorized, "Credentials are required.");
-    }
+    private static Task<IResult?> AdminAsync(HttpContext http, CancellationToken cancellationToken) =>
+        ManagementAccess.AdminAsync(http, "token management", "Managing tokens takes a service token with the admin scope.", cancellationToken);
 
     private static IResult Refuse(int status, string message) => Results.Json(new { error = message }, statusCode: status);
 
