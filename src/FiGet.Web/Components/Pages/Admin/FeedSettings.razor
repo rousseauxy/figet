@@ -5,7 +5,7 @@
 @inherits FeedAdminPage
 @using FiGet.Domain.Feeds
 @inject IShareFolders Shares
-@inject Microsoft.Extensions.Options.IOptions<FiGet.Web.Configuration.FiGetOptions> Options
+@inject FiGet.Application.Feeds.FeedAdminService FeedAdmin
 @inject FiGet.Http.AuditLog Audit
 
 <PageTitle>@Name settings · FiGet</PageTitle>
@@ -303,14 +303,12 @@
     private bool folderSaved;
     private IReadOnlyList<ShareFolder> shares = [];
 
-    /// <summary>Named in FiGet:Feeds with a Folder: the start re-applies it, so a choice made here would not survive.</summary>
+    /// <summary>Named in FiGet:Feeds with a Folder, by its name or the one it was reached by: the start re-applies it.</summary>
     private bool FolderFromConfiguration =>
-        Options.Value.Feeds.Any(seed =>
-            !string.IsNullOrWhiteSpace(seed.Folder)
-            && (string.Equals(seed.Name, Target?.Name, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(seed.Name, Name, StringComparison.OrdinalIgnoreCase)));
+        (Target is { } feed && FeedAdmin.IsFolderConfigured(feed.Name)) || FeedAdmin.IsFolderConfigured(Name);
 
-    private bool ShowsFolderForm => IsAssets && IsAdmin && !FolderFromConfiguration;
+    /// <summary>A manager sees the content; an administrator chooses it, unless configuration does.</summary>
+    private bool ShowsFolderForm => IsAdmin && !FolderFromConfiguration && Target is { } feed && FeedAdmin.CanChooseFolder(feed);
 
     /// <summary>The share the directory is on now and the folder inside it; null on FiGet's own storage or a folder outside the mount.</summary>
     private (string Share, string Inside)? Current => Shares.Describe(Target?.FolderRoot);
@@ -359,36 +357,29 @@
         }
 
         // The form is not shown to a manager or for a configured directory, but a form can be posted by hand.
-        if (!ShowsFolderForm || !Shares.IsConfigured)
+        if (!IsAdmin || FolderFromConfiguration)
         {
             folderError = "The content of this directory is not chosen here.";
             return;
         }
 
-        var name = (Folder!.Share ?? "").Trim();
-        var inside = (Folder.Inside ?? "").Trim().Trim('/', '\\');
-        var chosen = inside.Length == 0 ? name : name + "/" + inside;
-        string? root = null;
-        if (name.Length > 0 && (root = Shares.Resolve(name, inside)) is null)
+        var outcome = await FeedAdmin.SetFolderAsync(feed.Key, Folder!.Share, Folder.Inside, Folder.Writes, HttpContext.RequestAborted);
+        if (outcome.Status is FiGet.Application.Feeds.FeedChangeStatus.FolderNotFound or FiGet.Application.Feeds.FeedChangeStatus.FolderNotChosenHere)
         {
-            folderError = $"'{chosen}' is not a folder on the shares mount.";
+            folderError = outcome.Detail;
             return;
         }
 
-        var writes = root is not null && Folder.Writes;
-
-        // False means nothing changed, not that the directory is gone: that is what the reload below says.
-        var changed = await Feeds.UpdateFolderAsync(feed.Key, root, writes, HttpContext.RequestAborted);
-        if (changed)
+        if (outcome.Status == FiGet.Application.Feeds.FeedChangeStatus.Saved)
         {
-            Audit.Record(HttpContext, "feed.folder", feed.Name, $"folder={(root is null ? "none" : chosen)} folderWrites={writes}");
+            Audit.Record(HttpContext, "feed.folder", feed.Name, outcome.Detail);
         }
 
         await LoadAsync();
         folderSaved = Target is not null;
         (message, messageIsError) = Target is null
             ? ($"This {Noun} no longer exists.", true)
-            : (changed ? "Content saved." : "Content unchanged.", false);
+            : (outcome.Status == FiGet.Application.Feeds.FeedChangeStatus.Saved ? "Content saved." : "Content unchanged.", false);
     }
 
     private async Task SaveNetworksAsync()
@@ -398,24 +389,18 @@
             return;
         }
 
-        if ((Networks!.Text ?? "").Length > FeedNetworks.MaxLength)
+        var outcome = await FeedAdmin.UpdateNetworksAsync(feed.Key, Networks!.Text, HttpContext.RequestAborted);
+        if (outcome.Status == FiGet.Application.Feeds.FeedChangeStatus.InvalidNetworks)
         {
-            networksError = $"The list is longer than {FeedNetworks.MaxLength} characters.";
+            networksError = outcome.Detail;
             return;
         }
 
-        if (!FeedNetworks.TryParse(Networks.Text, out _, out var invalid))
-        {
-            networksError = $"'{invalid}' is not an address or a range in CIDR notation (10.0.0.0/8; a range starts at its own boundary).";
-            return;
-        }
-
-        var normalised = FeedNetworks.Normalise(Networks.Text);
-        networksSaved = await Feeds.UpdateAllowedNetworksAsync(feed.Key, normalised, HttpContext.RequestAborted);
+        networksSaved = outcome.Succeeded;
         if (networksSaved)
         {
             // The list itself: "who opened this feed to that network" is what the audit log is asked.
-            Audit.Record(HttpContext, "feed.networks", feed.Name, $"networks={(normalised is null ? "any" : normalised.Replace('\n', ' '))}");
+            Audit.Record(HttpContext, "feed.networks", feed.Name, outcome.Detail);
         }
 
         (message, messageIsError) = networksSaved ? ("Allowed networks saved.", false) : ($"This {Noun} no longer exists.", true);
@@ -439,21 +424,26 @@
             return;
         }
 
-        var saved = await Feeds.UpdateSettingsAsync(
-            feed.Key, Settings!.AnonymousRead, Settings!.AnonymousList, Settings!.AllowOverwrite, Settings!.DeletionBehavior, Settings!.MergePushedIdsWithUpstreams, Settings!.ChartColor is 0 ? null : Settings!.ChartColor, Settings!.Purpose, HttpContext.RequestAborted);
+        var outcome = await FeedAdmin.UpdateSettingsAsync(
+            feed.Key,
+            new FiGet.Application.Feeds.FeedSettingsChange
+            {
+                AnonymousRead = Settings!.AnonymousRead,
+                AnonymousList = Settings.AnonymousList,
+                AllowOverwrite = Settings.AllowOverwrite,
+                DeletionBehavior = Settings.DeletionBehavior,
+                MergePushedIdsWithUpstreams = Settings.MergePushedIdsWithUpstreams,
+                Purpose = Settings.Purpose,
+                ChartColor = Settings.ChartColor,
+            },
+            HttpContext.RequestAborted);
 
-        if (saved)
+        if (outcome.Succeeded)
         {
-            // The values, not just that something changed: "who loosened this feed" is the question a
-            // settings audit is asked, and it cannot be answered by a bare "settings saved".
-            Audit.Record(
-                HttpContext,
-                "feed.settings",
-                feed.Name,
-                $"anonymousRead={Settings!.AnonymousRead} anonymousList={Settings!.AnonymousList} allowOverwrite={Settings!.AllowOverwrite} onDelete={Settings!.DeletionBehavior} mergePushedIds={Settings!.MergePushedIdsWithUpstreams} purpose={(IsAssets ? FeedPurpose.Any : Settings!.Purpose)} chartColor={(Settings!.ChartColor is 0 ? "automatic" : Settings!.ChartColor.ToString(CultureInfo.InvariantCulture))}");
+            Audit.Record(HttpContext, "feed.settings", feed.Name, outcome.Detail);
         }
 
-        (message, messageIsError) = saved ? ("Settings saved.", false) : ("This feed no longer exists.", true);
+        (message, messageIsError) = outcome.Succeeded ? ("Settings saved.", false) : ("This feed no longer exists.", true);
         await LoadAsync();
     }
 

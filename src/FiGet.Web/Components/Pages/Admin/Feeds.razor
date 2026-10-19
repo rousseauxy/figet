@@ -7,7 +7,7 @@
 @inject IFeedStore FeedStore
 @inject IShareFolders Shares
 @inject FiGet.Http.AuditLog Audit
-@inject TimeProvider Time
+@inject FiGet.Application.Feeds.FeedAdminService FeedAdmin
 
 @*
     Two tabs from one page: package feeds under /admin/feeds, asset directories under /admin/assets. They were one
@@ -214,73 +214,39 @@ else
 
     private async Task CreateAsync()
     {
-        if (!FeedNames.IsValid(NewFeed!.Name))
-        {
-            (message, messageIsError) = ("Use letters, digits, dot, dash or underscore, starting with a letter or digit (at most 64).", true);
-            return;
-        }
-
-        // The posted value is a name, and the resolver is the only way from it to a path: anything that is not on the
-        // list right now - a path, a name with a separator, a folder that is gone - creates nothing.
-        string? folderRoot = null;
-        var folderName = (NewFeed!.Folder ?? "").Trim();
-        var folderInside = (NewFeed!.FolderInside ?? "").Trim().Trim('/', '\\');
-        var chosen = folderInside.Length == 0 ? folderName : folderName + "/" + folderInside;
-        if (IsAssets && folderName.Length > 0)
-        {
-            folderRoot = Shares.Resolve(folderName, folderInside);
-            if (folderRoot is null)
-            {
-                (message, messageIsError) = ($"'{chosen}' is not a folder on the shares mount.", true);
-                return;
-            }
-        }
-
-        var folderWrites = folderRoot is not null && NewFeed!.FolderWrites;
-        var purpose = IsAssets || !Enum.IsDefined(NewFeed!.Purpose) ? FeedPurpose.Any : NewFeed!.Purpose;
-
-        // The gallery is added with the feed rather than on the upstreams page afterwards, so a feed meant to proxy
-        // one is never, even for a moment, an empty curated feed its clients were already pointed at.
-        var gallery = !IsAssets && NewFeed!.AddGallery ? FeedUpstream.KnownFor(purpose) : null;
-
-        // Only the two a person chooses between, one per tab: a proxy feed is what a package feed becomes when it
-        // gains an upstream - here the gallery - not something created as such. The package-only settings mean nothing
-        // to a directory.
-        var created = await FeedStore.CreateAsync(
-            new Feed
+        var outcome = await FeedAdmin.CreateAsync(
+            new FiGet.Application.Feeds.FeedDraft
             {
                 Name = NewFeed!.Name,
-                NameLower = NewFeed!.Name.ToLowerInvariant(),
-                Kind = gallery is null ? Kind : FeedKind.Proxy,
-                Purpose = purpose,
-                AnonymousRead = NewFeed!.AnonymousRead,
-                AnonymousList = IsAssets && NewFeed!.AnonymousList,
-                FolderRoot = folderRoot,
-                FolderWritable = folderWrites,
-                AllowOverwrite = !IsAssets && NewFeed!.AllowOverwrite,
-                DeletionBehavior = IsAssets ? PackageDeletionBehavior.Unlist : NewFeed!.DeletionBehavior,
-                CreatedUtc = Time.GetUtcNow().UtcDateTime,
-                Upstreams = gallery is null ? [] : [new FeedUpstream { Name = gallery.Name, Url = gallery.Url, Kind = gallery.Kind }],
+                IsDirectory = IsAssets,
+                Purpose = NewFeed.Purpose,
+                AddGallery = NewFeed.AddGallery,
+                AnonymousRead = NewFeed.AnonymousRead,
+                AnonymousList = NewFeed.AnonymousList,
+                AllowOverwrite = NewFeed.AllowOverwrite,
+                DeletionBehavior = NewFeed.DeletionBehavior,
+                Share = NewFeed.Folder,
+                Inside = NewFeed.FolderInside,
+                FolderWrites = NewFeed.FolderWrites,
             },
             HttpContext.RequestAborted);
 
-        if (created)
+        if (outcome.Status == FiGet.Application.Feeds.FeedCreateStatus.Created)
         {
-            Audit.Record(
-                HttpContext,
-                "feed.create",
-                NewFeed!.Name,
-                $"kind={(gallery is null ? Kind : FeedKind.Proxy)} purpose={purpose} upstream={gallery?.Name ?? "none"} anonymousRead={NewFeed!.AnonymousRead} anonymousList={IsAssets && NewFeed!.AnonymousList} allowOverwrite={NewFeed!.AllowOverwrite} onDelete={NewFeed!.DeletionBehavior}"
-                + (IsAssets ? $" folder={(folderRoot is null ? "none" : chosen)} folderWrites={folderWrites}" : ""));
+            Audit.Record(HttpContext, "feed.create", outcome.Feed!.Name, outcome.Detail);
         }
 
         // Feeds and directories share one set of names, so the refusal cannot say which of the two holds it
         // without looking; it names both rather than send someone to the wrong tab.
-        (message, messageIsError) = created
-            ? ($"{(IsAssets ? "Asset directory" : "Feed")} '{NewFeed!.Name}' created.", false)
-            : ($"The name '{NewFeed!.Name}' is already taken by a feed or an asset directory, or is an alternate name of one.", true);
+        (message, messageIsError) = outcome.Status switch
+        {
+            FiGet.Application.Feeds.FeedCreateStatus.Created => ($"{(IsAssets ? "Asset directory" : "Feed")} '{outcome.Feed!.Name}' created.", false),
+            FiGet.Application.Feeds.FeedCreateStatus.InvalidName => (FiGet.Application.Feeds.FeedAdminService.NameRule, true),
+            FiGet.Application.Feeds.FeedCreateStatus.FolderNotFound => ($"'{outcome.Detail}' is not a folder on the shares mount.", true),
+            _ => ($"The name '{NewFeed!.Name}' is already taken by a feed or an asset directory, or is an alternate name of one.", true),
+        };
         await LoadAsync();
-        if (created)
+        if (outcome.Status == FiGet.Application.Feeds.FeedCreateStatus.Created)
         {
             NewFeed = new();
         }

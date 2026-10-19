@@ -142,6 +142,16 @@ public static class FiGetApp
         services.AddSingleton<IAssetStorage>(provider => new FileSystemAssetStorage(Path.Combine(provider.GetRequiredService<StoragePaths>().Root, "files")));
         services.AddSingleton(provider => new TempFileSettings { Root = provider.GetRequiredService<IOptions<FiGetOptions>>().Value.Storage.TempPath });
         services.AddSingleton(provider => new ShareFolderSettings { Root = provider.GetRequiredService<IOptions<FiGetOptions>>().Value.Assets.SharesRoot });
+        services.AddSingleton(provider =>
+        {
+            var seeds = provider.GetRequiredService<IOptions<FiGetOptions>>().Value.Feeds;
+            return new FiGet.Application.Feeds.ConfiguredFeedSettings
+            {
+                Names = seeds.Select(seed => seed.Name).ToHashSet(StringComparer.OrdinalIgnoreCase),
+                WithFolder = seeds.Where(seed => !string.IsNullOrWhiteSpace(seed.Folder)).Select(seed => seed.Name).ToHashSet(StringComparer.OrdinalIgnoreCase),
+            };
+        });
+        services.AddScoped<FiGet.Application.Feeds.FeedAdminService>();
         services.AddScoped<PackageIngestionService>();
         services.AddScoped<RetentionService>();
         if (RunsJob(builder.Configuration, nameof(JobsOptions.Retention), defaults.Jobs.Retention))
@@ -1474,8 +1484,8 @@ public static class FiGetApp
             string feed,
             HttpContext http,
             IFeedStore feeds,
+            FiGet.Application.Feeds.FeedAdminService feedAdmin,
             AuditLog audit,
-            TimeProvider time,
             CancellationToken cancellationToken) =>
         {
             var form = await http.Request.ReadFormAsync(cancellationToken);
@@ -1487,9 +1497,7 @@ public static class FiGetApp
 
             var name = form["name"].ToString().Trim();
             var keepOldName = form["keepOldName"].ToString() == "true";
-            var outcome = FeedNames.IsValid(name)
-                ? await feeds.RenameAsync(target.Key, name, keepOldName, time.GetUtcNow().UtcDateTime, cancellationToken)
-                : FeedNameChange.Invalid;
+            var outcome = await feedAdmin.RenameAsync(target.Key, name, keepOldName, cancellationToken);
 
             if (outcome == FeedNameChange.Done)
             {
