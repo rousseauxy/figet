@@ -4,11 +4,9 @@
 @layout AdminLayout
 @inherits FeedAdminPage
 @using System.ComponentModel.DataAnnotations
-@inject IPackageStorage Storage
-@inject IAssetStorage AssetStorage
+@inject FiGet.Application.Feeds.FeedAdminService FeedAdmin
 @inject NavigationManager Navigation
 @inject FiGet.Http.AuditLog Audit
-@inject Microsoft.Extensions.Options.IOptions<FiGet.Web.Configuration.FiGetOptions> Options
 
 <PageTitle>Name and deletion · @Name · FiGet</PageTitle>
 
@@ -140,8 +138,7 @@
         : PublicUrls.Feed(HttpContext, Target!.Name) + "/";
 
     /// <summary>Whether FiGet:Feeds names this, which recreates a feed of that name on start when no feed or alternate name has it.</summary>
-    private bool IsConfigured(string name) =>
-        Options.Value.Feeds.Any(seed => string.Equals(seed.Name, name, StringComparison.OrdinalIgnoreCase));
+    private bool IsConfigured(string name) => FeedAdmin.IsConfigured(name);
 
     protected override async Task OnInitializedAsync()
     {
@@ -168,11 +165,8 @@
             return;
         }
 
-        // Files first: a row without files is visible and fixable, an orphaned file is neither.
         Audit.Record(HttpContext, "feed.delete", feed.Name);
-        await Storage.DeleteFeedAsync(feed.Key, HttpContext.RequestAborted);
-        await AssetStorage.DeleteFeedAsync(feed.Key, HttpContext.RequestAborted);
-        await Feeds.DeleteAsync(feed.Key, HttpContext.RequestAborted);
+        await FeedAdmin.DeleteAsync(feed.Key, HttpContext.RequestAborted);
         Navigation.NavigateTo(IsAssets ? "/admin/assets" : "/admin/feeds", forceLoad: false);
     }
 
