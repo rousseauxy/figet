@@ -206,6 +206,20 @@ pre code { padding: 0; background: none; }
 /* ── Shell and topbar ───────────────────────────────────────────── */
 .fg-shell { display: flex; flex-direction: column; min-height: 100vh; }
 
+/* Off screen until a keyboard reaches it, then over the top bar's corner. */
+.fg-skip {
+  position: absolute;
+  left: 0.75rem;
+  top: -3rem;
+  z-index: 100;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--r-2);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+}
+.fg-skip:focus { top: 0.5rem; }
+.fg-main:focus { outline: none; }
 .fg-navbar { background-color: var(--chrome); padding: 0 1.5rem; }
 
 .fg-navbar-inner {

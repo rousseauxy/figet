@@ -263,6 +263,13 @@ project replaces and its command-line client.
 | What a full `Find-Module` of a huge module costs | The live feed, paging as PowerShellGet does with `$top=40`, then the same pages requested in shuffled order | 2026-09-13 | First run 53 pages in 44.3 s, first pages about 200 ms and the last about 1,400 ms; shuffled with everything described, skip=0 about 1,100 ms and skip=2080 about 1,150 ms — so cost follows response size, not offset. Tags are 92–96 % of each response; the heaviest page is 2,541 KB of which 2,447 KB is the tag element; one call moves about 80 MB |
 | Whether compression fixes that | The same page requested with and without `Accept-Encoding: gzip` | 2026-09-13 | 331 KB against 2,541 KB on the wire (offline gzip 313 KB, 88 % smaller), but about 1,430 ms against about 1,480 ms. Transfer is not where the time goes |
 
+## The pages in a browser
+
+| What was verified | How (client and version, command or request) | When | Result |
+|---|---|---|---|
+| That the pages work under a content policy with nothing inline (`script-src 'self'; style-src 'self'`) | A published build on SQLite, driven in headless Edge over the DevTools protocol: first administrator signed in and its password replaced, a feed and an asset directory made through their forms, then 24 pages loaded with every console entry collected | 2026-10-19 | No policy violation and no script error. The light/dark toggle flips and survives a reload (the choice now applied by `theme-init.js` in `<head>`); a feed's dot takes its colour from its class; the skip link is the first Tab stop, shows when focused and moves focus to `<main>`; a tooltip shows and is placed; a file uploads through the drop zone's request; the confirm dialog opens. Control: an inline `<style>` added to the same page was reported as a `style-src` violation, so the collector does see them |
+| That no page brings inline markup back | `AdminUiTests.No_page_carries_inline_script_or_style`, reading 4 public and 16 signed-in pages for an inline script, a `<style>` element, a `style` attribute or an `on…` handler | 2026-10-19 | Passes. Falsified: with one `style` attribute put back on the feed list, it fails naming `/` |
+
 ## Known gaps
 
 The diary is explicit that the following were **not** verified. They are listed here so that no row above is
