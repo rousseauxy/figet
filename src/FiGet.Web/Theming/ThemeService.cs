@@ -35,6 +35,12 @@ public interface IThemeService
     /// </summary>
     (string Path, string ContentType)? GetAsset(string name, string file);
 
+    /// <summary>
+    /// The sites the loaded packs import fonts from (<see cref="ThemeFonts.FontUrl"/>), as origins. The pages' content
+    /// policy lets their stylesheets in; without them a pack's font import is blocked and the page falls back silently.
+    /// </summary>
+    IReadOnlyList<string> FontOrigins { get; }
+
     /// <summary>Re-reads the themes directory, so a pack can be added or edited without a restart.</summary>
     void Reload();
 }
@@ -86,6 +92,18 @@ public sealed class ThemeService : IThemeService
         packs.TryGetValue(name, out var entry) ? (entry.Css, entry.ETag) : null;
 
     public ThemePack? GetPack(string name) => packs.TryGetValue(name, out var entry) ? entry.Pack : null;
+
+    /// <summary>
+    /// Every loaded pack counts, not only the chosen one: an administrator can switch packs on the Appearance page at any
+    /// moment. A value that is not an absolute http(s) URL is left out; the import it would make fails either way.
+    /// </summary>
+    public IReadOnlyList<string> FontOrigins =>
+        [.. packs.Values
+            .Select(entry => entry.Pack.Fonts?.FontUrl)
+            .Select(url => Uri.TryCreate(url, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp) ? uri.GetLeftPart(UriPartial.Authority) : null)
+            .OfType<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Order(StringComparer.OrdinalIgnoreCase)];
 
     /// <summary>The largest logo served. A logo is kilobytes; anything near this is a mistake worth refusing.</summary>
     public const long MaxAssetBytes = 1024 * 1024;
