@@ -45,8 +45,8 @@ public sealed class FeedUsageTests(FeedUsageServerFixture server) : IClassFixtur
         using var client = server.CreateClient();
         var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/?usage=24h&metric=searches"));
         var color = FeedColors.Of(feed);
-        Assert.Contains($"class=\"fg-usage-line\" style=\"--series: var(--fg-series-{color})\"", page, StringComparison.Ordinal);
-        Assert.Matches($"--fg-series-{color}\\)\" aria-hidden=\"true\"></span>\\s*<span>public</span>\\s*<span class=\"fg-num fg-muted\">\\d", page);
+        Assert.Contains($"class=\"fg-usage-line fg-series-{color}\"", page, StringComparison.Ordinal);
+        Assert.Matches($"fg-series-dot fg-series-{color}\" aria-hidden=\"true\"></span>\\s*<span>public</span>\\s*<span class=\"fg-num fg-muted\">\\d", page);
         Assert.Contains("class=\"fg-pill active\" href=\"/?usage=24h&amp;metric=searches#usage-title\"", page, StringComparison.Ordinal);
 
         // A feed the reader may not read is neither listed nor drawn.

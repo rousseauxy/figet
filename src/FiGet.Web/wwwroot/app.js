@@ -275,12 +275,7 @@
     // ── Light and dark ───────────────────────────────────────────────────────────────────────────
     // The stylesheet already answers the operating system's preference on its own; this only records an
     // explicit choice, which has to beat it. The matching attribute is applied in <head> before first
-    // paint, or the page would flash the other theme on every navigation.
-    //
-    // It has to be re-applied after an enhanced navigation too. For a signed-in reader the framework is
-    // loaded, so following a link patches the DOM instead of loading a page: the <head> script never runs
-    // again and the attribute it set does not survive the patch. That is why a chosen theme used to last
-    // exactly one page, and why an anonymous reader - who gets no framework at all - never saw it happen.
+    // paint (theme-init.js), or the page would flash the other theme on every navigation.
 
     function storedTheme() {
         try {
@@ -343,14 +338,6 @@
     });
 
     applyTheme();
-
-    // The framework script is loaded after this one, so the hook is registered once it exists. Absent
-    // for an anonymous reader, which is correct: without the framework there is no enhanced navigation.
-    document.addEventListener("DOMContentLoaded", function () {
-        if (window.Blazor && typeof window.Blazor.addEventListener === "function") {
-            window.Blazor.addEventListener("enhancedload", applyTheme);
-        }
-    });
 
     // ── The signed-in menu ───────────────────────────────────────────────────────────────────────
     // Opening the menu is the browser's job - it is a <details> so that it works with no script at all.
@@ -937,10 +924,5 @@
 
     document.addEventListener("DOMContentLoaded", function () {
         localTimes(document);
-        if (window.Blazor && typeof window.Blazor.addEventListener === "function") {
-            window.Blazor.addEventListener("enhancedload", function () {
-                localTimes(document);
-            });
-        }
     });
 })();

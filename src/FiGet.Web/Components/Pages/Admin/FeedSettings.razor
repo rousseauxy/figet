@@ -76,13 +76,13 @@
                 <InputRadioGroup @bind-Value="Settings!.ChartColor">
                 <div class="fg-swatch-row">
                     <label class="fg-swatch" title="Picked for this @Noun, the same every time">
-                        <InputRadio Value="0" /><span class="fg-series-dot" style="--series: var(--fg-series-@AutomaticColor)"></span><span>Automatic</span>
+                        <InputRadio Value="0" /><span class="fg-series-dot fg-series-@AutomaticColor"></span><span>Automatic</span>
                     </label>
                     @for (var color = 1; color <= FeedColors.Count; color++)
                     {
                         var value = color;
                         <label class="fg-swatch" title="Colour @value">
-                            <InputRadio Value="value" /><span class="fg-series-dot" style="--series: var(--fg-series-@value)"></span><span class="fg-sr-only">Colour @value</span>
+                            <InputRadio Value="value" /><span class="fg-series-dot fg-series-@value"></span><span class="fg-sr-only">Colour @value</span>
                         </label>
                     }
                 </div>

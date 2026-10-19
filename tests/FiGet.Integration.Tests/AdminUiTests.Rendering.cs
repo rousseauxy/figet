@@ -84,6 +84,40 @@ public sealed partial class AdminUiTests
     }
 
     /// <summary>
+    /// The content policy allows no inline script, style attribute or event handler (FiGetApp.PageContentPolicy). A page
+    /// that adds one still renders and passes every other test; only a browser notices, by quietly ignoring it. So the
+    /// markup is read for them here, on the public pages and on every admin page that takes no parameter.
+    /// </summary>
+    [Fact]
+    public async Task No_page_carries_inline_script_or_style()
+    {
+        var inline = new System.Text.RegularExpressions.Regex(
+            "<script(?![^>]*\\bsrc=)[^>]*>|<style[\\s>]|\\sstyle=\"|\\son[a-z]+=\"",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        using var client = CreateBrowser();
+        string[] anonymous = ["/", "/assets", "/feeds/public", "/account/login/local"];
+        foreach (var path in anonymous)
+        {
+            var match = inline.Match(await HttpAssert.SuccessBodyAsync(await client.GetAsync(path)));
+            Assert.False(match.Success, $"{path} carries '{match.Value}', which the content policy blocks.");
+        }
+
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
+        string[] signedIn =
+        [
+            .. anonymous[..3], "/account/profile", "/admin/feeds", "/admin/assets", "/admin/feeds/public", "/admin/users",
+            "/admin/groups", "/admin/providers", "/admin/tokens", "/admin/changes", "/admin/audit", "/admin/storage",
+            "/admin/system", "/admin/appearance",
+        ];
+        foreach (var path in signedIn)
+        {
+            var match = inline.Match(await HttpAssert.SuccessBodyAsync(await client.GetAsync(path)));
+            Assert.False(match.Success, $"{path} (signed in) carries '{match.Value}', which the content policy blocks.");
+        }
+    }
+
+    /// <summary>
     /// The admin area keeps the site chrome. AdminLayout nests inside MainLayout rather than replacing it,
     /// which is easy to lose: a layout that forgets its own @@layout silently drops the header, the theme
     /// toggle and the way back out, and every admin page loses them at once.

@@ -42,7 +42,7 @@
                 <line x1="0" y1="199" x2="1000" y2="199" class="fg-usage-grid" />
                 @foreach (var line in series.Lines.Where(l => l.Total > 0))
                 {
-                    <polyline points="@UsageSeries.PolylinePoints(line, top)" class="fg-usage-line" style="--series: var(--fg-series-@line.Color)">
+                    <polyline points="@UsageSeries.PolylinePoints(line, top)" class="fg-usage-line fg-series-@line.Color">
                         <title>@line.Feed.Name: @line.Total.ToString("N0", CultureInfo.InvariantCulture)</title>
                     </polyline>
                 }
@@ -58,7 +58,7 @@
             @foreach (var line in series.Lines.OrderByDescending(l => l.Total).ThenBy(l => l.Feed.Name, StringComparer.OrdinalIgnoreCase))
             {
                 <li>
-                    <span class="fg-series-dot" style="--series: var(--fg-series-@line.Color)" aria-hidden="true"></span>
+                    <span class="fg-series-dot fg-series-@line.Color" aria-hidden="true"></span>
                     <span>@line.Feed.Name</span>
                     <span class="fg-num fg-muted">@line.Total.ToString("N0", CultureInfo.InvariantCulture)</span>
                 </li>
