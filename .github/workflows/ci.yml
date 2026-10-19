@@ -92,6 +92,20 @@ jobs:
           curl -fsS http://localhost:8080/nuget/ci/v3/index.json | head -c 300
           docker logs figet 2>&1 | tail -20
 
+      # The pages in a real browser, against the image just started: what the integration tests cannot see because they
+      # read HTML - the content policy applied, app.js running, the layout at phone width. Node 24 for its built-in
+      # WebSocket; the runner's own Chrome. Needs the instance fresh: it signs in with the start password.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: The pages work in a browser
+        run: node tools/ci/ui-check.mjs http://localhost:8080 "$(command -v google-chrome)"
+
+      - name: Server log after the browser check
+        if: failure()
+        run: docker logs figet 2>&1 | tail -60
+
       # The image against the database a cluster actually uses. Added after a release shipped that could not open a
       # SQL Server connection at all: every test passed, because the test host and the shipped container did not agree
       # about globalization, and this job only ever ran SQLite. Opening the connection is what proves it - applying the
