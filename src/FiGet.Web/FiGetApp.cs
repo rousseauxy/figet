@@ -525,6 +525,7 @@ public static class FiGetApp
         app.MapAssetEndpoints();
         app.MapPackageManagement();
         app.MapTokenManagement();
+        app.MapFeedManagement();
         app.MapAccountEndpoints();
         app.MapExternalSignIn();
         app.MapAdminEndpoints();

@@ -100,6 +100,7 @@ feeding FiGet groups. Personal API keys never do more than their owner may.
 - Browse and search in the web UI, download any version, per-feed install instructions you can edit
 - A usage graph per feed; download counts and last use per version
 - A management API for listing versions, finding the latest and deleting, in the shape existing scripts call
+- Feeds, asset directories and service tokens made and changed from a script, under the same rules as the pages
 - An audit log with an admin page; health endpoints; OpenTelemetry metrics and traces
 - The same URL shapes a fleet already points at: `/nuget/{feed}/`, `/nuget/{feed}/v3/index.json`,
   `/endpoints/{directory}/content/{path}`
@@ -136,6 +137,8 @@ One container image, built for the strictest target and therefore fine everywher
 - [API access tokens](api-access-tokens.md): a token from your identity provider or CI system used as a FiGet key.
 - [Service tokens from a script](service-tokens.md): making, listing and revoking keys over the API, replacing one
   without a gap, and the warning before a token ends.
+- [Feeds and directories from a script](feed-management.md): making, changing, renaming and deleting feeds and asset
+  directories over the API.
 - [Running in production](running-in-production.md): proxies, replicas, secrets and storage.
 - [What to open in a firewall](firewall.md): the one port in, the hosts out, and why a gallery's listings and its
   downloads are not the same host.

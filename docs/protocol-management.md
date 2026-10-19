@@ -55,6 +55,39 @@ Decisions:
 - **The audit line is the page's.** `token.create` and `token.revoke` read the same whoever made the token; who did
   is the actor, `token:<name>` here.
 
+### Feeds and asset directories
+
+**FiGet's own**, under `/api/management/feeds`, behind the same gate as the tokens (a service token with the admin
+scope). The rules are `FeedAdminService`'s, the code the admin pages call, so the API cannot make a feed the pages
+would refuse, or the other way round. `{name}` may be an alternate name a rename left behind.
+
+| Method | Path | Answer |
+|---|---|---|
+| GET | `` | Every feed and directory, by name. |
+| GET | `/{name}` | One, with its `aliases`. |
+| POST | `` | Body `{"name", "kind": "package"\|"directory", "purpose"?, "gallery"?, "anonymousRead"?, "anonymousList"?, "allowOverwrite"?, "onDelete": "unlist"\|"delete"?, "folder": {"share", "inside"?, "writes"?}?}`. 201 with the feed. 400 for a bad name, kind, purpose, `onDelete`, a folder on a package feed, or a share not on the mount; 409 for a name already taken. |
+| PATCH | `/{name}` | Any of `anonymousRead`, `anonymousList`, `allowOverwrite`, `onDelete`, `mergePushedIds`, `purpose`, `chartColor` (0 automatic, 1 to 8), `allowedNetworks` (a list; `[]` for any address). What is left out keeps its value. 200 with the feed. |
+| PUT | `/{name}/folder` | Body `{"share", "inside"?, "writes"?}`; an empty `share` moves the directory back to FiGet's own storage. 409 when there is no shares mount, the configuration sets the folder, or it is a package feed. |
+| POST | `/{name}/rename` | Body `{"name", "keepOldName"?}`. 200 with the feed under its new name; 409 when taken. |
+| DELETE | `/{name}?confirm={name}` | 204. Everything it holds goes with it. 400 without the name repeated. |
+
+A feed is `name`, `kind`, `proxy`, `purpose`, `anonymousRead`, `chartColor`, `allowedNetworks` (absent for any),
+`upstreams` (names), `url` (the v3 index, or a directory's content root) and `created`; a package feed adds
+`allowOverwrite`, `onDelete` and `mergePushedIds`, a directory `anonymousList` and `folder`.
+
+Decisions:
+
+- **A folder is a share's name, never a path.** The same resolver as the pages: anything not on the mount right now
+  is refused, and the answer never contains a path on the server. A directory whose folder the configuration sets
+  says `fromConfiguration` and cannot be moved here.
+- **A refused network list changes nothing.** A PATCH applies its network list first and stops there if it is
+  refused, so a request that also loosens `anonymousRead` does not half-apply.
+- **A delete repeats the name.** As it is typed on the page: a script whose variable came out empty or wrong
+  deletes nothing.
+- **Not here yet:** upstreams, grants, retention and instructions. They are set on the pages.
+- **The audit lines are the pages'.** `feed.create`, `feed.settings`, `feed.networks`, `feed.folder`,
+  `feed.rename`, `feed.delete`, with the same detail, because the same code writes it.
+
 ## A version
 
 ```json
