@@ -3,6 +3,8 @@
 @using FiGet.Web.Configuration
 
 <div class="fg-shell">
+    @* The first thing a keyboard reaches: past the top bar, straight to the page. Hidden until focused. *@
+    <a class="fg-skip" href="#main">Skip to content</a>
     <nav class="fg-navbar">
         <div class="fg-navbar-inner">
             <a class="fg-navbar-brand" href="/" aria-label="@(Brand.HideTitle ? Brand.Title : null)">
@@ -65,7 +67,7 @@
         </div>
     </nav>
 
-    <main class="fg-main">
+    <main class="fg-main" id="main" tabindex="-1">
         @Body
     </main>
 </div>
