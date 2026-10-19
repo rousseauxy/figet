@@ -155,6 +155,32 @@ public sealed class ThemeServiceTests : IDisposable
         Assert.Equal(shown, brand.HideTitle);
     }
 
+    /// <summary>
+    /// The origins the page policy lets stylesheets in from. Every loaded pack counts, because the chosen one can change
+    /// without a restart; anything but an absolute http(s) address is left out.
+    /// </summary>
+    [Fact]
+    public void Font_origins_are_the_sites_packs_import_fonts_from()
+    {
+        WriteFontPack("a", "https://Fonts.Example.test/css2?family=Inter");
+        WriteFontPack("b", "https://fonts.example.test/css2?family=Geist");
+        WriteFontPack("c", "http://cdn.example.test:8443/fonts.css");
+        WriteFontPack("d", "fonts/local.css");
+        WriteFontPack("e", "javascript:alert(1)");
+        File.WriteAllText(Path.Combine(root, "f.yaml"), Pack);
+
+        var origins = Service(path: root, webRoot: Path.Combine(root, "unused")).FontOrigins;
+
+        Assert.Equal(["http://cdn.example.test:8443", "https://fonts.example.test"], origins);
+    }
+
+    private void WriteFontPack(string name, string fontUrl) =>
+        File.WriteAllText(Path.Combine(root, name + ".yaml"), $"""
+            name: {name}
+            fonts:
+              fontUrl: "{fontUrl}"
+            """);
+
     private static ThemeService Service(string? path, string webRoot) =>
         new(new StubEnvironment(webRoot),
             new ConfigurationBuilder()

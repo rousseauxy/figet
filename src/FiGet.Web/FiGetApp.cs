@@ -61,10 +61,19 @@ public static class FiGetApp
     /// attribute. Images may come from anywhere, because a package icon is whatever URL its publisher chose. No
     /// form-action: signing in through a provider posts here and is redirected to the provider, whose address is
     /// configured at run time, and browsers apply form-action to that redirect.
+    ///
+    /// A theme pack that imports its fonts from another site (<c>fonts.fontUrl</c>) adds that site to style-src, and font
+    /// files from any https address: the imported stylesheet names where they come from, which for a font service is
+    /// another host again. Without such a pack the policy is the strict one.
     /// </summary>
-    public const string PageContentPolicy =
-        "default-src 'self'; script-src 'self'; style-src 'self'; img-src * data:; connect-src 'self'; "
-        + "object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+    public static string PageContentPolicy(IReadOnlyList<string> fontOrigins)
+    {
+        ArgumentNullException.ThrowIfNull(fontOrigins);
+        var styles = fontOrigins.Count == 0 ? "style-src 'self'" : "style-src 'self' " + string.Join(' ', fontOrigins) + "; font-src 'self' https:";
+        return $"default-src 'self'; script-src 'self'; {styles}; img-src * data:; connect-src 'self'; "
+            + "object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+    }
+
     public const string SuperAdminRole = AccountClaims.SuperAdminRole;
     public const string UserRoleClaim = AccountClaims.UserRole;
 
@@ -317,7 +326,7 @@ public static class FiGetApp
                 var headers = context.Response.Headers;
                 headers.XContentTypeOptions = "nosniff";
                 headers.XFrameOptions = "DENY";
-                headers.ContentSecurityPolicy = PageContentPolicy;
+                headers.ContentSecurityPolicy = PageContentPolicy(context.RequestServices.GetRequiredService<IThemeService>().FontOrigins);
                 headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
             }
 
