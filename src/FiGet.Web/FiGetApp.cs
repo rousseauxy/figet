@@ -152,6 +152,7 @@ public static class FiGetApp
             };
         });
         services.AddScoped<FiGet.Application.Feeds.FeedAdminService>();
+        services.AddScoped<FiGet.Application.Feeds.UpstreamAdminService>();
         services.AddScoped<PackageIngestionService>();
         services.AddScoped<RetentionService>();
         if (RunsJob(builder.Configuration, nameof(JobsOptions.Retention), defaults.Jobs.Retention))
@@ -840,6 +841,7 @@ public static class FiGetApp
             string feed,
             HttpContext http,
             IFeedStore feeds,
+            FiGet.Application.Feeds.UpstreamAdminService upstreams,
             AuditLog audit,
             CancellationToken cancellationToken) =>
         {
@@ -850,19 +852,14 @@ public static class FiGetApp
                 return Results.NotFound();
             }
 
-            var upstream = UpstreamFromForm(form);
-            if ((upstream is null ? "invalid" : SourceRefusal(http, upstream, before: null)) is { } refusal)
+            var outcome = await upstreams.AddAsync(target.Key, UpstreamFromForm(form), http.User.IsInRole(AdminRole), cancellationToken);
+            if (!outcome.Succeeded)
             {
                 // Back into the open add form, with what was wrong said inside it.
-                return Results.Redirect($"/admin/feeds/{Uri.EscapeDataString(target.Name)}/upstreams?upstream={refusal}&open=add-upstream");
+                return Results.Redirect($"/admin/feeds/{Uri.EscapeDataString(target.Name)}/upstreams?upstream={UpstreamCode(outcome.Status)}&open=add-upstream");
             }
 
-            await feeds.AddUpstreamAsync(target.Key, upstream!, cancellationToken);
-
-            // The url as well as the name: pointing a feed at a different gallery is the change worth
-            // being able to find afterwards.
-            audit.Record(http, "upstream.add", upstream!.Name, $"feed={feed} url={upstream.Url} kind={upstream.Kind} credentialRef={upstream.CredentialRef ?? "-"}");
-
+            audit.Record(http, "upstream.add", outcome.Upstream!.Name, outcome.AuditDetail);
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}/upstreams");
         });
 
@@ -1192,17 +1189,17 @@ public static class FiGetApp
             string feed,
             HttpContext http,
             IFeedStore feeds,
+            FiGet.Application.Feeds.UpstreamAdminService upstreams,
             AuditLog audit,
             CancellationToken cancellationToken) =>
         {
             var form = await http.Request.ReadFormAsync(cancellationToken);
             var target = await feeds.FindAsync(feed, cancellationToken);
-            if (target is not null && int.TryParse(form["key"].ToString(), out var upstreamKey))
+            if (target is not null
+                && int.TryParse(form["key"].ToString(), out var upstreamKey)
+                && await upstreams.RemoveAsync(target.Key, upstreamKey, cancellationToken) is { Succeeded: true } removed)
             {
-                // Named before it goes: an audit entry reading "upstream 3 removed" says nothing to whoever reads it.
-                var removed = target.Upstreams.FirstOrDefault(u => u.Key == upstreamKey);
-                await feeds.RemoveUpstreamAsync(target.Key, upstreamKey, cancellationToken);
-                audit.Record(http, "upstream.remove", removed?.Name ?? $"upstream #{upstreamKey}", $"feed={feed}{(removed is null ? "" : " url=" + removed.Url)}");
+                audit.Record(http, "upstream.remove", removed.Upstream!.Name, removed.AuditDetail);
             }
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}/upstreams");
@@ -1541,7 +1538,7 @@ public static class FiGetApp
             string feed,
             HttpContext http,
             IFeedStore feeds,
-            UpstreamMetadataCache metadata,
+            FiGet.Application.Feeds.UpstreamAdminService upstreams,
             AuditLog audit,
             CancellationToken cancellationToken) =>
         {
@@ -1552,55 +1549,27 @@ public static class FiGetApp
                 return Results.NotFound();
             }
 
-            var before = int.TryParse(form["key"].ToString(), out var upstreamKey) ? target.Upstreams.FirstOrDefault(u => u.Key == upstreamKey) : null;
-            var changed = UpstreamFromForm(form);
-            string code;
-            if (before is null)
+            var upstreamKey = int.TryParse(form["key"].ToString(), out var key) ? key : 0;
+            var draft = UpstreamFromForm(form) with { Enabled = form["enabled"].ToString() == "true" };
+            var outcome = await upstreams.UpdateAsync(target.Key, upstreamKey, draft, http.User.IsInRole(AdminRole), cancellationToken);
+            if (outcome.Succeeded)
             {
-                code = "gone";
-            }
-            else if (changed is null)
-            {
-                code = "invalid";
-            }
-            else if (SourceRefusal(http, changed, before) is { } refusal)
-            {
-                code = refusal;
-            }
-            else
-            {
-                changed.Key = before.Key;
-                changed.Enabled = form["enabled"].ToString() == "true";
-                var outcome = await feeds.UpdateUpstreamAsync(target.Key, changed, cancellationToken);
-                code = outcome switch { UpstreamChange.Done => "saved", UpstreamChange.NameTaken => "taken", _ => "gone" };
-                if (outcome == UpstreamChange.Done)
-                {
-                    if (changed.SourceDiffersFrom(before))
-                    {
-                        metadata.ForgetUpstream(before.Key);
-                    }
-
-                    // Every value, and what the name was: "who pointed this feed somewhere else" is the question, and an
-                    // entry under the new name alone would not be found by someone looking for the old one.
-                    audit.Record(
-                        http,
-                        "upstream.update",
-                        changed.Name,
-                        $"feed={target.Name} was={before.Name} url={changed.Url} kind={changed.Kind} enabled={changed.Enabled} credentialRef={changed.CredentialRef ?? "-"}");
-                }
+                audit.Record(http, "upstream.update", outcome.Upstream!.Name, outcome.AuditDetail);
             }
 
             // A refused edit reopens its form, so what was typed is corrected where it was typed.
-            var upstreams = $"/admin/feeds/{Uri.EscapeDataString(target.Name)}/upstreams";
+            var code = UpstreamCode(outcome.Status);
+            var page = $"/admin/feeds/{Uri.EscapeDataString(target.Name)}/upstreams";
             return Results.Redirect(code is "taken" or "invalid" or "credential" or "url" or "admin-only"
-                ? $"{upstreams}?edit={before!.Key}&upstream={code}#upstream-{before.Key}"
-                : $"{upstreams}?upstream={code}");
+                ? $"{page}?edit={upstreamKey}&upstream={code}#upstream-{upstreamKey}"
+                : $"{page}?upstream={code}");
         });
 
         manageFeed.MapPost("/feeds/{feed}/upstreams/move", async (
             string feed,
             HttpContext http,
             IFeedStore feeds,
+            FiGet.Application.Feeds.UpstreamAdminService upstreams,
             AuditLog audit,
             CancellationToken cancellationToken) =>
         {
@@ -1610,92 +1579,38 @@ public static class FiGetApp
             if (target is not null
                 && int.TryParse(form["key"].ToString(), out var upstreamKey)
                 && direction is "up" or "down"
-                && await feeds.MoveUpstreamAsync(target.Key, upstreamKey, direction == "up", cancellationToken))
+                && await upstreams.MoveAsync(target.Key, upstreamKey, direction == "up", cancellationToken) is { Succeeded: true } moved)
             {
-                var moved = target.Upstreams.FirstOrDefault(u => u.Key == upstreamKey);
-                audit.Record(http, "upstream.move", moved?.Name ?? $"upstream #{upstreamKey}", $"feed={feed} direction={direction}");
+                audit.Record(http, "upstream.move", moved.Upstream!.Name, moved.AuditDetail);
             }
 
             return Back(form["returnUrl"].ToString(), $"/admin/feeds/{Uri.EscapeDataString(feed)}");
         });
     }
 
-    /// <summary>
-    /// An upstream as the add and edit forms send it, or null without a name or a URL. The patterns are stored as the browser
-    /// sent them: the pattern reader splits on the separator and trims each line, so the carriage returns a textarea adds are
-    /// already harmless.
-    /// </summary>
-    private static FeedUpstream? UpstreamFromForm(IFormCollection form)
+    /// <summary>The upstream form as posted. What it may say is decided by <c>UpstreamAdminService</c>.</summary>
+    private static FiGet.Application.Feeds.UpstreamDraft UpstreamFromForm(IFormCollection form) => new()
     {
-        var name = form["name"].ToString().Trim();
-        var url = form["url"].ToString().Trim();
-        var kind = form["kind"].ToString().Equals("V2", StringComparison.OrdinalIgnoreCase) ? UpstreamKind.V2 : UpstreamKind.V3;
+        Name = form["name"].ToString(),
+        Known = form["known"].ToString(),
+        Url = form["url"].ToString(),
+        Kind = form["kind"].ToString().Equals("V2", StringComparison.OrdinalIgnoreCase) ? UpstreamKind.V2 : UpstreamKind.V3,
+        Allow = form["allow"].ToString(),
+        Deny = form["deny"].ToString(),
+        CredentialRef = form["credentialRef"].ToString(),
+    };
 
-        // The form a feed manager gets names one of the known galleries instead of a URL and a protocol.
-        if (form["known"].ToString() is { Length: > 0 } knownName)
-        {
-            if (FeedUpstream.Known.FirstOrDefault(k => k.Name == knownName) is not { } known)
-            {
-                return null;
-            }
-
-            url = known.Url;
-            kind = known.Kind;
-        }
-
-        if (name.Length == 0 || url.Length == 0)
-        {
-            return null;
-        }
-
-        return new FeedUpstream
-        {
-            Name = name,
-            Url = url,
-            Kind = kind,
-            Allow = form["allow"].ToString().Trim(),
-            Deny = form["deny"].ToString().Trim(),
-            CredentialRef = form["credentialRef"].ToString().Trim() is { Length: > 0 } reference ? reference : null,
-        };
-    }
-
-    /// <summary>
-    /// Null when the account may save this upstream's source, otherwise the code the upstreams page explains. Manage on a feed
-    /// covers its upstreams' names, order, patterns and switching them off, and adding one of the known public galleries.
-    /// Where an upstream points and with which credential is an admin's: the server makes that request from inside its own
-    /// network, and sends the credential along.
-    /// </summary>
-    private static string? SourceRefusal(HttpContext http, FeedUpstream upstream, FeedUpstream? before)
+    /// <summary>What the upstreams page is told, in the codes its messages are keyed by.</summary>
+    private static string UpstreamCode(FiGet.Application.Feeds.UpstreamChangeStatus status) => status switch
     {
-        if (!FeedUpstream.IsAllowedCredentialRef(upstream.CredentialRef))
-        {
-            return "credential";
-        }
-
-        // For an admin too: a gallery is an absolute http or https address, and never on the link-local block, where cloud
-        // metadata services answer. A host name is not resolved here; the name an admin typed is theirs to vouch for.
-        if (!Uri.TryCreate(upstream.Url, UriKind.Absolute, out var address)
-            || address.Scheme is not ("http" or "https")
-            || (address.HostNameType is UriHostNameType.IPv4 or UriHostNameType.IPv6
-                && !Infrastructure.Assets.HttpRemoteFileSource.IsAllowed(System.Net.IPAddress.Parse(address.IdnHost.Trim('[', ']')), allowPrivateNetworks: true)))
-        {
-            return "url";
-        }
-
-        if (http.User.IsInRole(AdminRole))
-        {
-            return null;
-        }
-
-        if (before is not null)
-        {
-            return upstream.SourceDiffersFrom(before) ? "admin-only" : null;
-        }
-
-        return upstream.CredentialRef is null && FeedUpstream.Known.Any(k => k.Url == upstream.Url && k.Kind == upstream.Kind)
-            ? null
-            : "admin-only";
-    }
+        FiGet.Application.Feeds.UpstreamChangeStatus.Saved => "saved",
+        FiGet.Application.Feeds.UpstreamChangeStatus.Invalid => "invalid",
+        FiGet.Application.Feeds.UpstreamChangeStatus.CredentialNotAllowed => "credential",
+        FiGet.Application.Feeds.UpstreamChangeStatus.UrlNotAllowed => "url",
+        FiGet.Application.Feeds.UpstreamChangeStatus.AdminOnly => "admin-only",
+        FiGet.Application.Feeds.UpstreamChangeStatus.NameTaken => "taken",
+        _ => "gone",
+    };
 
     /// <summary>Back to the feed's name and deletion page - by its current name - with a code saying what happened.</summary>
     private static IResult NamingResult(Feed feed, string name, FeedNameChange outcome, string done)
