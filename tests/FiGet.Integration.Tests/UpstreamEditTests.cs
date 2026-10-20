@@ -181,6 +181,25 @@ public sealed partial class UpstreamEditTests(ProxyServerFixture server) : IClas
         Assert.Equal(FeedUpstream.CredentialPrefix + "GALLERY_2", Assert.Single((await FindAsync(feed))!.Upstreams).CredentialRef);
     }
 
+    /// <summary>
+    /// An add under a name another upstream of the feed has. It used to redirect as if saved and write an
+    /// <c>upstream.add</c> line for an upstream that was never added; now it reopens the add form saying the name is taken.
+    /// </summary>
+    [Fact]
+    public async Task An_upstream_added_under_a_name_the_feed_already_has_is_refused_and_not_recorded()
+    {
+        var feed = await CreateProxyFeedAsync(("stub", "https://stub.invalid/v3/index.json"));
+        using var admin = await AdminAsync();
+
+        using var refused = await PostAsync(admin, feed, "add", ("name", "STUB"), ("known", "nuget.org"));
+        Assert.Equal($"/admin/feeds/{feed}/upstreams?upstream=taken&open=add-upstream", refused.Headers.Location?.OriginalString);
+        Assert.Equal("https://stub.invalid/v3/index.json", Assert.Single((await FindAsync(feed))!.Upstreams).Url);
+
+        await using var scope = server.Services.CreateAsyncScope();
+        var added = await scope.ServiceProvider.GetRequiredService<IAuditStore>().QueryAsync(new AuditQuery(Action: "upstream.add", Take: 500), CancellationToken.None);
+        Assert.DoesNotContain(added, e => e.Detail.Contains($"feed={feed} ", StringComparison.Ordinal));
+    }
+
     private const string ManagerPassword = "upstream-manager-pass-01";
 
     private async Task<HttpClient> ManagerAsync(string feed)
