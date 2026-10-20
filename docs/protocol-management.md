@@ -84,9 +84,32 @@ Decisions:
   refused, so a request that also loosens `anonymousRead` does not half-apply.
 - **A delete repeats the name.** As it is typed on the page: a script whose variable came out empty or wrong
   deletes nothing.
-- **Not here yet:** upstreams, grants, retention and instructions. They are set on the pages.
+- **Not here yet:** grants, retention and instructions. They are set on the pages.
 - **The audit lines are the pages'.** `feed.create`, `feed.settings`, `feed.networks`, `feed.folder`,
   `feed.rename`, `feed.delete`, with the same detail, because the same code writes it.
+
+### Upstreams
+
+Under `/api/management/feeds/{name}/upstreams`, same gate. The rules are `UpstreamAdminService`'s, the code the
+upstreams page uses. An upstream is addressed by its `id`, because its name can change.
+
+| Method | Path | Answer |
+|---|---|---|
+| GET | `` | The feed's upstreams in the order they are asked: `id`, `name`, `url`, `protocol` (`v2`\|`v3`), `enabled`, `allow`, `deny`, `credentialRef`. |
+| POST | `` | Body `{"name", "gallery"?, "url"?, "protocol"?, "allow"?, "deny"?, "credentialRef"?}`: either `gallery` (`nuget.org`, `PowerShell Gallery`, `Chocolatey community`) or `url` with `protocol` (v3 by default). 201 with the upstream; a curated feed becomes a proxy. 400 for a missing name or address, an unknown gallery or protocol, a credential reference outside `FIGET_UPSTREAM_*`, or an address that is not http(s) or is on a block the server never fetches from; 409 for a name the feed already has, or an asset directory. |
+| PATCH | `/{id}` | Any of the same fields and `enabled`; what is left out keeps its value, `credentialRef: ""` removes the credential. A different address, protocol or credential drops what was cached from the old source. 200 with the upstream. |
+| POST | `/{id}/move` | Body `{"direction": "up"\|"down"}`. 200 with the new order; already first or last is not an error. |
+| DELETE | `/{id}` | 204. The listings cached from it go; packages already cached stay. A feed that loses its last upstream is curated again. |
+
+Decisions:
+
+- **The address is checked for an administrator too.** http or https only, and an address literal on the
+  link-local or reserved blocks is refused (`FetchAddresses`, the rule the asset fetcher and the webhook use).
+  A host name is not resolved, then or later: unlike a URL anyone may hand the asset fetcher, an upstream is an
+  administrator's choice of server, and private networks are allowed because internal galleries live there.
+- **A token is an administrator here.** The page lets a feed manager add only the known galleries without a
+  credential; the API has no feed managers, so it never needs that narrower rule.
+- **Audit lines are the page's:** `upstream.add`, `upstream.update`, `upstream.move`, `upstream.remove`.
 
 ## A version
 

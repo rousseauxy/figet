@@ -527,6 +527,7 @@ public static class FiGetApp
         app.MapPackageManagement();
         app.MapTokenManagement();
         app.MapFeedManagement();
+        app.MapUpstreamManagement();
         app.MapAccountEndpoints();
         app.MapExternalSignIn();
         app.MapAdminEndpoints();

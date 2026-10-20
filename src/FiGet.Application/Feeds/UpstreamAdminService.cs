@@ -51,6 +51,9 @@ public enum UpstreamChangeStatus
 
     /// <summary>Another upstream of the same feed has the name.</summary>
     NameTaken,
+
+    /// <summary>The feed is an asset directory, which fetches nothing from anywhere.</summary>
+    NotAPackageFeed,
 }
 
 /// <summary>The outcome of a change to an upstream, with the upstream as it now is and the line the audit log records.</summary>
@@ -75,6 +78,11 @@ public sealed class UpstreamAdminService(IFeedStore feeds, UpstreamMetadataCache
         if (await FindFeedAsync(feedKey, cancellationToken) is not { } feed)
         {
             return new UpstreamResult(UpstreamChangeStatus.NotFound);
+        }
+
+        if (feed.Kind == FeedKind.Assets)
+        {
+            return new UpstreamResult(UpstreamChangeStatus.NotAPackageFeed);
         }
 
         if (Build(draft) is not { } upstream)

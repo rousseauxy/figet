@@ -80,9 +80,47 @@ holds, files included.
 
 `GET .../feeds` lists them all and `GET .../feeds/{name}` shows one with its alternate names.
 
+## Upstreams
+
+A package feed asks its upstreams, in order, for what it does not hold. Adding the first one makes it a proxy feed.
+
+```powershell
+$upstreams = "https://packages.example/api/management/feeds/modules/upstreams"
+
+# A public gallery by name: it supplies the address and the protocol.
+Invoke-RestMethod -Method Post $upstreams -Headers $admin -ContentType 'application/json' `
+    -Body (@{ name = 'gallery'; gallery = 'PowerShell Gallery' } | ConvertTo-Json)
+
+# A server of your own, asked only for your own packages, with a password from the environment.
+$internal = Invoke-RestMethod -Method Post $upstreams -Headers $admin -ContentType 'application/json' -Body (@{
+        name          = 'internal'
+        url           = 'https://nuget.internal.example/v3/index.json'
+        allow         = '^Contoso\.'
+        credentialRef = 'FIGET_UPSTREAM_INTERNAL'
+    } | ConvertTo-Json)
+
+# Ask it first, then switch it off for a while.
+Invoke-RestMethod -Method Post "$upstreams/$($internal.id)/move" -Headers $admin -ContentType 'application/json' `
+    -Body (@{ direction = 'up' } | ConvertTo-Json)
+Invoke-RestMethod -Method Patch "$upstreams/$($internal.id)" -Headers $admin -ContentType 'application/json' `
+    -Body (@{ enabled = $false } | ConvertTo-Json)
+```
+
+| Field | Meaning |
+|---|---|
+| `name` | Unique within the feed. Required. |
+| `gallery` | `nuget.org`, `PowerShell Gallery` or `Chocolatey community`, instead of `url` and `protocol`. |
+| `url`, `protocol` | Where the upstream is, and `v3` (the default) or `v2`. An http or https address; an address written as an IP on the link-local or reserved blocks is refused. A host name is yours to vouch for: it is not checked. |
+| `allow`, `deny` | Regular expressions, one per line, matched anywhere in the package id and ignoring case: only ids that match, or never these. Anchor with `^` and `$` for a prefix or a whole id. |
+| `credentialRef` | The name of an environment variable holding the password, starting with `FIGET_UPSTREAM_`. The password itself is never sent to FiGet's API. `""` removes it. |
+| `enabled` | Off: the upstream stays configured but is not asked. |
+
+An upstream is addressed by its `id`, from the list or from the answer that made it. `DELETE .../upstreams/{id}`
+removes it with the listings cached from it; the packages already cached stay in the feed.
+
 ## Not here yet
 
-Upstreams, who may do what on a feed, retention and the install instructions are still set on the pages.
+Who may do what on a feed, retention and the install instructions are still set on the pages.
 
 ## What is refused, and how
 
@@ -92,4 +130,4 @@ Upstreams, who may do what on a feed, retention and the install instructions are
 | `403` | A key that is not valid sent as `X-ApiKey`; a valid key that is not a service token with the admin scope. |
 | `400` | The body is not JSON of the shape above, a value is not one of those listed, a share is not on the mount, or a delete without `?confirm=`. The `error` field says which. |
 | `404` | No feed or directory has that name, or alternate name. |
-| `409` | The name is taken by a feed, a directory or an alternate name; a folder that cannot be chosen here. |
+| `409` | The name is taken by a feed, a directory, an alternate name, or another upstream of the feed; a folder that cannot be chosen here; an upstream on an asset directory. |
