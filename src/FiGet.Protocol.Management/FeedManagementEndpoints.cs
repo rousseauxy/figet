@@ -1,6 +1,3 @@
-using System.Text.Encodings.Web;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using FiGet.Application.Feeds;
 using FiGet.Application.Ports;
 using FiGet.Domain.Entities;
@@ -22,12 +19,6 @@ namespace FiGet.Protocol.Management;
 /// </summary>
 public static class FeedManagementEndpoints
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-    };
-
     public static IEndpointRouteBuilder MapFeedManagement(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/management/feeds");
@@ -97,7 +88,7 @@ public static class FeedManagementEndpoints
         }
 
         var all = await feeds.ListAsync(cancellationToken);
-        return Results.Json(all.OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase).Select(f => Describe(http, f, shares, admin, aliases: null)).ToList(), Json);
+        return Results.Json(all.OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase).Select(f => Describe(http, f, shares, admin, aliases: null)).ToList(), ManagementAccess.Json);
     }
 
     private static async Task<IResult> GetAsync(HttpContext http, string name, IFeedStore feeds, IShareFolders shares, FeedAdminService admin, CancellationToken cancellationToken)
@@ -108,7 +99,7 @@ public static class FeedManagementEndpoints
         }
 
         return await feeds.FindAsync(name, cancellationToken) is { } feed
-            ? Results.Json(await DescribeFullAsync(http, feed, feeds, shares, admin, cancellationToken), Json)
+            ? Results.Json(await DescribeFullAsync(http, feed, feeds, shares, admin, cancellationToken), ManagementAccess.Json)
             : NotFound(name);
     }
 
@@ -119,7 +110,7 @@ public static class FeedManagementEndpoints
             return error;
         }
 
-        if (await ReadAsync<CreateRequest>(http, cancellationToken) is not { } request)
+        if (await ManagementAccess.ReadAsync<CreateRequest>(http, cancellationToken) is not { } request)
         {
             return Refuse(StatusCodes.Status400BadRequest, "Send a JSON object with at least a name; kind is \"package\" (the default) or \"directory\".");
         }
@@ -176,7 +167,7 @@ public static class FeedManagementEndpoints
 
         audit.Record(http, "feed.create", outcome.Feed!.Name, outcome.Detail);
         var created = await DescribeFullAsync(http, outcome.Feed, feeds, shares, admin, cancellationToken);
-        return Results.Json(created, Json, statusCode: StatusCodes.Status201Created);
+        return Results.Json(created, ManagementAccess.Json, statusCode: StatusCodes.Status201Created);
     }
 
     private static async Task<IResult> UpdateAsync(HttpContext http, string name, IFeedStore feeds, IShareFolders shares, FeedAdminService admin, AuditLog audit, CancellationToken cancellationToken)
@@ -191,7 +182,7 @@ public static class FeedManagementEndpoints
             return NotFound(name);
         }
 
-        if (await ReadAsync<UpdateRequest>(http, cancellationToken) is not { } request)
+        if (await ManagementAccess.ReadAsync<UpdateRequest>(http, cancellationToken) is not { } request)
         {
             return Refuse(StatusCodes.Status400BadRequest, "Send a JSON object with the settings to change.");
         }
@@ -261,7 +252,7 @@ public static class FeedManagementEndpoints
             return NotFound(name);
         }
 
-        if (await ReadAsync<FolderRequest>(http, cancellationToken) is not { } request)
+        if (await ManagementAccess.ReadAsync<FolderRequest>(http, cancellationToken) is not { } request)
         {
             return Refuse(StatusCodes.Status400BadRequest, "Send a JSON object: share (empty for FiGet's own storage), and optionally inside and writes.");
         }
@@ -297,7 +288,7 @@ public static class FeedManagementEndpoints
             return NotFound(name);
         }
 
-        if (await ReadAsync<RenameRequest>(http, cancellationToken) is not { Name: not null } request)
+        if (await ManagementAccess.ReadAsync<RenameRequest>(http, cancellationToken) is not { Name: not null } request)
         {
             return Refuse(StatusCodes.Status400BadRequest, "Send a JSON object: name, and optionally keepOldName (true keeps the old name working).");
         }
@@ -355,31 +346,9 @@ public static class FeedManagementEndpoints
     private static IResult NotFound(string name) =>
         Refuse(StatusCodes.Status404NotFound, $"There is no feed or asset directory named '{name}'.");
 
-    /// <summary>
-    /// The body as the record, or null when it is not JSON of that shape. Read here and not bound by the framework: a body
-    /// that cannot be read is then refused after the caller was checked, so a stranger learns nothing about it.
-    /// </summary>
-    private static async Task<T?> ReadAsync<T>(HttpContext http, CancellationToken cancellationToken)
-        where T : class
-    {
-        if (!http.Request.HasJsonContentType())
-        {
-            return null;
-        }
-
-        try
-        {
-            return await http.Request.ReadFromJsonAsync<T>(Json, cancellationToken);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
-
     private static async Task<IResult> RefreshedAsync(HttpContext http, string name, IFeedStore feeds, IShareFolders shares, FeedAdminService admin, CancellationToken cancellationToken) =>
         await feeds.FindAsync(name, cancellationToken) is { } feed
-            ? Results.Json(await DescribeFullAsync(http, feed, feeds, shares, admin, cancellationToken), Json)
+            ? Results.Json(await DescribeFullAsync(http, feed, feeds, shares, admin, cancellationToken), ManagementAccess.Json)
             : NotFound(name);
 
     private static async Task<FeedJson> DescribeFullAsync(HttpContext http, Feed feed, IFeedStore feeds, IShareFolders shares, FeedAdminService admin, CancellationToken cancellationToken) =>
