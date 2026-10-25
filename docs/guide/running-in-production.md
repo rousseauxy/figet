@@ -98,9 +98,7 @@ mounting the same claim, or build yourself a copy with a shell — the runtime b
 docker build -f deploy/Dockerfile --build-arg RUNTIME_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0.13 -t figet:shell .
 ```
 
-Or pull one: every release also publishes **`ghcr.io/rousseauxy/figet:<version>-shell`**, the same build on the full
-base image, for a cluster team that would rather `oc rsh` than `oc debug`. It is a separate tag on purpose — what ships
-by default is the chiseled one, and that is what a scanner should be looking at.
+Releases up to 1.7.0 also published a `-shell` tag built this way; from 1.7.1 only the chiseled image is published.
 
 ## Backup and recovery
 

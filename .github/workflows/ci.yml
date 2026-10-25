@@ -165,14 +165,6 @@ jobs:
             runner: ubuntu-24.04-arm
             variant: chiseled
             runtime: mcr.microsoft.com/dotnet/aspnet:10.0.13-noble-chiseled-extra
-          - platform: linux/amd64
-            runner: ubuntu-latest
-            variant: shell
-            runtime: mcr.microsoft.com/dotnet/aspnet:10.0.13
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-            variant: shell
-            runtime: mcr.microsoft.com/dotnet/aspnet:10.0.13
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -228,13 +220,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # What everyone pulls: no shell, no package manager, the smaller attack surface.
+          # What everyone pulls: no shell, no package manager, the smaller attack surface. The -shell variant on the
+          # full base was dropped in 1.7.1: nobody pulled it, and the daily image check never looked at it, so its
+          # Ubuntu packages went unpatched unseen. A shell copy is a build argument away (deploy/Dockerfile).
           - variant: chiseled
             suffix: ""
-          # The same build on the full base, for a cluster team that needs to look around the volume with a shell.
-          # Deliberately a separate tag: a scanner looking at what ships should see the chiseled one.
-          - variant: shell
-            suffix: "-shell"
     permissions:
       contents: read
       packages: write
