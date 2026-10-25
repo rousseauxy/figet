@@ -5,9 +5,8 @@ tooling both work; proxy feeds that cache the PowerShell Gallery, nuget.org and 
 servers without internet access; asset
 directories for installers and scripts; and sign-in with the identity provider you already have.
 
-> **Status 2026-10-14:** in use, in production. Release 1.4.1, MIT licence. The image is
-> `ghcr.io/rousseauxy/figet:1.4.1` (also `:latest`), for `linux/amd64` and `linux/arm64`, with a `-shell` variant of
-> each for the places that need a shell in the container.
+> **Status 2026-10-25:** in use, in production. Release 1.7.1, MIT licence. The image is
+> `ghcr.io/rousseauxy/figet:1.7.1` (also `:latest`), for `linux/amd64` and `linux/arm64`.
 >
 > New since 1.0.0: a **What's new** report per feed, with a scheduled webhook to a chat channel; a **System** page with
 > what the server reaches, its database, and the jobs that keep it bounded; a page listing what to open in a firewall;
