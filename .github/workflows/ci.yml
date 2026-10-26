@@ -160,11 +160,11 @@ jobs:
           - platform: linux/amd64
             runner: ubuntu-latest
             variant: chiseled
-            runtime: mcr.microsoft.com/dotnet/aspnet:10.0.13-noble-chiseled-extra
+            runtime: mcr.microsoft.com/dotnet/aspnet:10.0.14-noble-chiseled-extra
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
             variant: chiseled
-            runtime: mcr.microsoft.com/dotnet/aspnet:10.0.13-noble-chiseled-extra
+            runtime: mcr.microsoft.com/dotnet/aspnet:10.0.14-noble-chiseled-extra
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
