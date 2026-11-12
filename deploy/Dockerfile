@@ -19,7 +19,7 @@
 # --build-arg RUNTIME_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0.15 when you want a shell to poke around in.
 ARG RUNTIME_IMAGE=mcr.microsoft.com/dotnet/aspnet:10.0.15-noble-chiseled-extra
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0.404 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0.100 AS build
 WORKDIR /src
 
 COPY global.json Directory.Build.props Directory.Packages.props .editorconfig ./
