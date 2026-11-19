@@ -57,6 +57,38 @@ public sealed class EgressReportTests(EgressServerFixture server) : IClassFixtur
         Assert.DoesNotContain("SECRET", webhook.Source, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Found on an instance behind a firewall: the guide said only "your identity provider", the request named the issuer
+    /// host, and the sign-in still could not finish - Entra ID serves the user info from Microsoft Graph. Both are listed.
+    /// </summary>
+    [Fact]
+    public async Task An_entra_provider_lists_its_issuer_and_microsoft_graph()
+    {
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            var store = scope.ServiceProvider.GetRequiredService<IOidcProviderStore>();
+            if (await store.FindBySlugAsync("egress-entra", TestContext.Current.CancellationToken) is null)
+            {
+                await store.AddAsync(
+                    new FiGet.Domain.Entities.OidcProvider
+                    {
+                        Slug = "egress-entra",
+                        DisplayName = "Entra",
+                        Authority = "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0",
+                        ClientId = "client",
+                    },
+                    TestContext.Current.CancellationToken);
+            }
+        }
+
+        var hosts = await ReadAsync();
+
+        Assert.Single(hosts, h => h.Host == "https://login.microsoftonline.com" && h.Source.Contains("Entra", StringComparison.Ordinal));
+        var graph = Assert.Single(hosts, h => h.Host == "https://graph.microsoft.com");
+        Assert.Equal("443", graph.Port);
+        Assert.Contains("user info", graph.Why, StringComparison.Ordinal);
+    }
+
     /// <summary>One row per destination, carrying every reason: a rule is removed when the last cause for it is gone.</summary>
     [Fact]
     public async Task One_row_per_host_and_port()
