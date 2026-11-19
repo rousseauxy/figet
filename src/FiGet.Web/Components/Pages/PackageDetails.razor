@@ -33,6 +33,10 @@
     }
     <h1>@displayId</h1>
     <span class="fg-version">@shown.NormalizedVersion</span>
+    @if (latest!.Version.IsPrerelease)
+    {
+        <span class="fg-badge fg-badge-warn">prerelease</span>
+    }
     <span class="fg-badge @OriginBadge(latest!)">@Origin(latest!)</span>
     @if (upstreamName.Length > 0 && Origin(latest!) != "Local")
     {
@@ -269,6 +273,10 @@
                                 @if (!row.Listed)
                                 {
                                     <span class="fg-badge fg-badge-warn">unlisted</span>
+                                }
+                                @if (entry.Version.IsPrerelease)
+                                {
+                                    <span class="fg-badge fg-badge-warn">prerelease</span>
                                 }
                                 @if (entry.IsAbsoluteLatestVersion)
                                 {

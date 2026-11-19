@@ -46,6 +46,10 @@
     {
         <span class="fg-badge fg-badge-warn">unlisted</span>
     }
+    @if (entry.Version.IsPrerelease)
+    {
+        <span class="fg-badge fg-badge-warn">prerelease</span>
+    }
     @if (entry.IsAbsoluteLatestVersion)
     {
         <span class="fg-badge fg-badge-accent">latest</span>
