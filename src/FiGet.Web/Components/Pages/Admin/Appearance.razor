@@ -94,11 +94,13 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Only seed on a GET; on a post the form already carries what was submitted.
+        // Only seed on a GET; on a post the form already carries what was submitted. The model is set before the await:
+        // when the settings read really suspends (SQL Server, not SQLite) the page renders once mid-await, and an
+        // EditForm with a null model throws.
         if (Choice is null)
         {
-            var stored = await Settings.GetAsync(SettingKeys.Theme, HttpContext.RequestAborted);
-            Choice = new ThemeForm { Name = stored ?? "" };
+            Choice = new ThemeForm();
+            Choice.Name = await Settings.GetAsync(SettingKeys.Theme, HttpContext.RequestAborted) ?? "";
         }
     }
 
