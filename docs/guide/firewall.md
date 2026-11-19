@@ -37,7 +37,7 @@ Only what a feed is configured to use. A server with no proxy feeds needs no egr
 | `community.chocolatey.org` | 443/tcp | Listings and metadata. | A feed proxies the Chocolatey community repository. |
 | `packages.chocolatey.org` | 443/tcp | **The package bytes**, which the API host redirects to. | The same feed. |
 | Your SQL Server | 1433/tcp | The database, when `FiGet:Database:Provider` is `SqlServer`. | Any deployment not on SQLite. |
-| Your identity provider | 443/tcp | Discovery, keys and the token exchange during sign-in. | A sign-in provider is configured. |
+| Your identity provider | 443/tcp | Discovery, keys, the token exchange and the user info during sign-in - called by the server, not only the browser. Hosts per provider below. | A sign-in provider is configured. |
 | Your webhook receiver | 443/tcp | Posting the change report. | `FiGet:Changes:Webhook:Url` or a per-feed address is set. |
 | Hosts in `FiGet:Assets:RemoteFetch:AllowedHosts` | 443/tcp | Fetching an asset by URL, which is refused for every host not on that list. | Someone uses "fetch by URL" on an asset directory. |
 | Your collector | as configured | Traces and metrics. | `OTEL_EXPORTER_OTLP_ENDPOINT` is set. |
@@ -48,6 +48,21 @@ and nuget.org serves both from one host. So when you proxy something else, eithe
 runs it where its packages come from; allowing the API host alone is the failure described at the end of this page.
 
 Plus DNS and NTP, as for any container.
+
+### Sign-in providers
+
+The browser talks to the provider's sign-in page, but FiGet itself fetches the discovery document, the signing keys and
+the user info, and redeems the code. Those calls leave from the server, so each host below has to be open from the
+container. Read from each provider's discovery document (`<issuer>/.well-known/openid-configuration`) on 2026-11-19:
+
+| Provider | Hosts to open, 443/tcp |
+|---|---|
+| Entra ID | `login.microsoftonline.com` (discovery, keys, token) and **`graph.microsoft.com`** (user info). Opening only the first lets the sign-in reach Microsoft and fail on the way back. Setup: [Sign-in with Entra ID](sign-in-entra-id.md). |
+| Google | `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com`, `openidconnect.googleapis.com` |
+| Authentik, Keycloak and other self-hosted providers | The issuer's own host, which serves all of it. |
+
+For any other provider, open the hosts of `issuer`, `token_endpoint`, `jwks_uri` and `userinfo_endpoint` in its
+discovery document. **Admin → System** lists the hosts for the providers configured on that instance.
 
 **FiGet contacts nothing on its own behalf.** There is no telemetry, no update check and no licence call: every outbound
 connection in the table is one a feed, a provider or a setting of yours asked for.
@@ -64,6 +79,17 @@ If the proxy inspects TLS, give the container the trust bundle — on OpenShift 
 `config.openshift.io/inject-trusted-cabundle` ConfigMap mounted over `/etc/ssl/certs/ca-certificates.crt`. Without it
 every gallery call fails certificate validation while everything local keeps working, which reads like a broken feed
 rather than a firewall.
+
+## What a blocked sign-in looks like
+
+Pressing the provider's button waits about a minute and then shows a 500, before the browser ever leaves FiGet: the
+server could not fetch the discovery document. The log entry for that request id reads `IDX20803: Unable to obtain
+configuration from: '<issuer>/.well-known/openid-configuration'` with a timeout underneath. A timeout rather than a
+refusal usually means a firewall dropping the connection, not a provider that is down. Local accounts keep working
+throughout.
+
+If the issuer host is open and the user info host is not, the sign-in reaches the provider, the person signs in there,
+and the failure comes on the way back.
 
 ## What a blocked gallery looks like
 

@@ -41,6 +41,27 @@ public sealed class EgressReportService(
         ["www.poshtestgallery.com"] = "psg-int-centralus.poshtestgallery.com",
     };
 
+    /// <summary>
+    /// Sign-in providers whose discovery document sends FiGet to hosts other than the issuer's. FiGet calls the token
+    /// endpoint, the signing keys and the user info endpoint itself, so each of those hosts has to be reachable from the
+    /// server, not only from the browser.
+    ///
+    /// Read from each provider's published discovery document on 2026-11-19. Entra ID answers everything from its issuer
+    /// host except the user info, which is on Microsoft Graph; Google spreads the three over three hosts. A provider not
+    /// named here is reported by its issuer host alone - true of a self-hosted Authentik or Keycloak, and worth checking
+    /// in its discovery document for anything else.
+    /// </summary>
+    private static readonly Dictionary<string, (string Host, string Why)[]> SignInHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["login.microsoftonline.com"] = [("graph.microsoft.com", "The user info at sign-in: Entra ID serves it from Microsoft Graph, not from the issuer host.")],
+        ["accounts.google.com"] =
+        [
+            ("oauth2.googleapis.com", "The token exchange at sign-in."),
+            ("www.googleapis.com", "The signing keys the ID token is checked against."),
+            ("openidconnect.googleapis.com", "The user info at sign-in."),
+        ],
+    };
+
     public async Task<IReadOnlyList<EgressHost>> ReadAsync(CancellationToken cancellationToken)
     {
         var found = new List<EgressHost>();
@@ -83,6 +104,10 @@ public sealed class EgressReportService(
             if (Uri.TryCreate(provider.Authority, UriKind.Absolute, out var authority))
             {
                 found.Add(new(Authority(authority), Port(authority), "Discovery, keys and the token exchange at sign-in.", $"sign-in provider {provider.DisplayName}"));
+                foreach (var (host, why) in SignInHosts.GetValueOrDefault(authority.Host, []))
+                {
+                    found.Add(new("https://" + host, "443", why, $"sign-in provider {provider.DisplayName}"));
+                }
             }
         }
 
