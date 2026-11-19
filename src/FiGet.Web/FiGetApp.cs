@@ -28,6 +28,7 @@ using FiGet.Web.Connectors;
 using FiGet.Web.Logging;
 using FiGet.Web.SignIn;
 using FiGet.Web.Theming;
+using Microsoft.Extensions.Logging.Console;
 using NuGet.Versioning;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
@@ -309,7 +310,7 @@ public static class FiGetApp
         if (builder.Configuration.GetValue<bool>("FiGet:Logging:Json") || builder.Configuration.GetValue<bool>("DOTNET_RUNNING_IN_CONTAINER"))
         {
             builder.Logging.ClearProviders();
-            builder.Logging.AddJsonConsole(json => json.UseUtcTimestamp = true);
+            builder.Logging.AddJsonConsole(ConfigureJsonConsole);
         }
 
         if (!string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
@@ -1782,5 +1783,15 @@ public static class FiGetApp
             await db.Database.CanConnectAsync(cancellationToken)
                 ? HealthCheckResult.Healthy()
                 : HealthCheckResult.Unhealthy("The database is not reachable.");
+    }
+
+    /// <summary>
+    /// The JSON console lines. The formatter writes a timestamp only when a format is given, so <c>UseUtcTimestamp</c> alone
+    /// left every line without one (seen on QA, 2026-11-19); a raw <c>oc logs</c> or an export then had no times at all.
+    /// </summary>
+    internal static void ConfigureJsonConsole(JsonConsoleFormatterOptions json)
+    {
+        json.UseUtcTimestamp = true;
+        json.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
     }
 }
