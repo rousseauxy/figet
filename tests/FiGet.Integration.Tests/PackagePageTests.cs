@@ -76,6 +76,24 @@ public sealed class PackagePageTests(ProxyServerFixture server) : IClassFixture<
     }
 
     /// <summary>
+    /// A package with only prereleases shows its newest as "latest" (reported by the tester, 2026-11-19): the overview marked it a
+    /// prerelease but the package page did not, so it read as a stable release. The header and the version row say so too.
+    /// </summary>
+    [Fact]
+    public async Task A_package_with_only_prereleases_marks_its_latest_as_a_prerelease()
+    {
+        var id = FiGetServerFixture.UniqueId("Only.Prerelease");
+        server.Upstream.AddVersions(id, ["1.0.0-qa1", "1.0.0-qa2"]);
+
+        using var client = server.CreateClient();
+        var package = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"feeds/proxy/packages/{id}"));
+        Assert.Contains("<span class=\"fg-version\">1.0.0-qa2</span>", package, StringComparison.Ordinal);
+
+        var badges = package.Split("<span class=\"fg-badge fg-badge-warn\">prerelease</span>").Length - 1;
+        Assert.Equal(2, badges);
+    }
+
+    /// <summary>
     /// A search on a proxy feed pages this feed's matches and the upstreams' as one list (reported by the tester, 2026-09-14): every page
     /// used to repeat the first 50 upstream hits, so page 2 showed page 1 again and there was no page 3. Each hit appears
     /// once across the pages, the one this feed holds is not listed again as an upstream hit, and the last page has no Next.
