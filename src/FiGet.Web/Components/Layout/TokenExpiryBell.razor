@@ -1,0 +1,87 @@
+@using FiGet.Application.Tokens
+@inject IServiceScopeFactory Scopes
+@inject TimeProvider Time
+@inject ILogger<TokenExpiryBell> Logger
+
+@*
+    The bell beside the theme button: how many tokens this reader should replace soon. Their own personal keys, and for an
+    administrator the service tokens too - the ones a pipeline holds, whose ending nobody notices until a run fails. The
+    same window as the daily warning (TokenExpiry.Thresholds), so the bell and the audit log never disagree about "soon".
+
+    Rendered on the server with the page, like the rest of the bar: no script and no circuit, so it is right on every
+    page, the anonymous-capable ones included. Never allowed to break the layout: a failure shows no bell.
+*@
+@if (ending.Count > 0)
+{
+    <a class="fg-bell" href="@Href" title="@Title" aria-label="@Title">
+        <svg class="fg-bell-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5.5-6.84V3.5a1.5 1.5 0 0 0-3 0v.66A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2Z" />
+        </svg>
+        <span class="fg-bell-count">@(ending.Count > 9 ? "9+" : ending.Count.ToString(CultureInfo.InvariantCulture))</span>
+    </a>
+}
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+
+    private List<(AccessToken Token, int DaysLeft, bool Own)> ending = [];
+
+    /// <summary>Where the reader can replace them: their own keys first, since only they can.</summary>
+    private string Href => ending.Any(e => e.Own) ? "/account/profile#keys" : "/admin/tokens";
+
+    private string Title
+    {
+        get
+        {
+            var soonest = ending.Min(e => e.DaysLeft);
+            var when = soonest <= 1 ? "within a day" : $"in {soonest} days";
+            return ending.Count == 1
+                ? $"A token ends {when}: {Name(ending[0])}. Make its replacement before then."
+                : $"{ending.Count} tokens end within {TokenExpiry.Thresholds[0]} days, the first {when}: {string.Join(", ", ending.Select(Name))}.";
+        }
+    }
+
+    private static string Name((AccessToken Token, int DaysLeft, bool Own) e) => e.Own ? e.Token.Name : e.Token.Name + " (service)";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            if (AuthState is null || FiGetApp.Actor((await AuthState).User) is not { } actor)
+            {
+                return;
+            }
+
+            var now = Time.GetUtcNow().UtcDateTime;
+            await using var scope = Scopes.CreateAsyncScope();
+            var store = scope.ServiceProvider.GetRequiredService<IAccessTokenStore>();
+            var found = new List<(AccessToken, int, bool)>();
+            foreach (var key in await store.ListOwnedAsync(actor.Key, CancellationToken.None))
+            {
+                if (TokenExpiry.DaysLeft(key, now) is { } days && days <= TokenExpiry.Thresholds[0])
+                {
+                    found.Add((key, days, true));
+                }
+            }
+
+            if (actor.Role is UserRole.Admin or UserRole.SuperAdmin)
+            {
+                foreach (var token in await store.ListAsync(CancellationToken.None))
+                {
+                    if (token.UserKey is null && TokenExpiry.DaysLeft(token, now) is { } days && days <= TokenExpiry.Thresholds[0])
+                    {
+                        found.Add((token, days, false));
+                    }
+                }
+            }
+
+            ending = found.OrderBy(e => e.Item2).ToList();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.LogWarning(ex, "Could not look for tokens that end soon for the bell; showing none.");
+            ending = [];
+        }
+    }
+}

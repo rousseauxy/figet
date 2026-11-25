@@ -17,7 +17,7 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("ProductVersion", "10.0.15")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -814,10 +814,17 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.Property<DateTime>("ExpiresUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("FinishedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Holder")
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("LastResult")
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)");
 
                     b.Property<DateTime?>("TakenUtc")
                         .HasColumnType("datetime2");
@@ -1089,6 +1096,10 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                         .IsRequired()
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
+
+                    b.Property<string>("PublishedBy")
+                        .HasMaxLength(192)
+                        .HasColumnType("nvarchar(192)");
 
                     b.Property<DateTime>("PublishedUtc")
                         .HasColumnType("datetime2");

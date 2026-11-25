@@ -25,8 +25,8 @@ namespace FiGet.Protocol.Management;
 public static class PackageManagementEndpoints
 {
     /// <summary>
-    /// What the reference server calls the publisher of a version it cached from a connector. FiGet does not
-    /// record who pushed a version, so a pushed one has no publisher at all.
+    /// What the reference server calls the publisher of a version it cached from a connector. A pushed version names
+    /// the token or account that pushed it, and none for versions pushed before 1.8.0 kept that.
     /// </summary>
     public const string CachedPublisher = "SYSTEM";
 
@@ -281,7 +281,7 @@ public static class PackageManagementEndpoints
 
         await using (file)
         {
-            var result = await ingestion.PushAsync(request!.Feed, file, cancellationToken);
+            var result = await ingestion.PushAsync(request!.Feed, file, RequestActor.Publisher(http), cancellationToken);
             if (result.Outcome is PushOutcome.Created or PushOutcome.Replaced)
             {
                 audit.Record(http, "package.push", result.Id ?? "", $"feed={request.Feed.Name} version={result.Version} outcome={result.Outcome} api=management");
@@ -358,7 +358,7 @@ public static class PackageManagementEndpoints
         package.Versions.Sum(v => v.Downloads),
         version.Downloads,
         version.PublishedUtc,
-        version.Origin == PackageOrigin.Cached ? CachedPublisher : null,
+        version.Origin == PackageOrigin.Cached ? CachedPublisher : version.PublishedBy,
         version.Size,
         version.Listed,
         Sha512Hex(version),

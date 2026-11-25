@@ -36,10 +36,7 @@ public sealed class ChangeReportJobService(
             using var timer = new PeriodicTimer(Interval, time);
             do
             {
-                if (await JobLeaseGate.TakeAsync(scopes, time, JobLeaseNames.ChangeReport, Interval, logger, stoppingToken))
-                {
-                    await RunOnceAsync(stoppingToken);
-                }
+                await JobLeaseGate.RunAsync(scopes, time, JobLeaseNames.ChangeReport, Interval, logger, RunOnceAsync, stoppingToken);
             }
             while (await timer.WaitForNextTickAsync(stoppingToken));
         }
@@ -49,8 +46,9 @@ public sealed class ChangeReportJobService(
     }
 
     /// <summary>Reports on every feed that has somewhere to report to. One feed's failure does not stop the others.</summary>
-    public async Task RunOnceAsync(CancellationToken cancellationToken)
+    public async Task<string> RunOnceAsync(CancellationToken cancellationToken)
     {
+        int reported = 0, failed = 0;
         await using var scope = scopes.CreateAsyncScope();
         var feeds = scope.ServiceProvider.GetRequiredService<IFeedStore>();
         foreach (var feed in await feeds.ListAsync(cancellationToken))
@@ -65,12 +63,17 @@ public sealed class ChangeReportJobService(
             try
             {
                 await SendAsync(feed, cancellationToken);
+                reported++;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                failed++;
                 logger.LogWarning(ex, "The change report for feed {Feed} could not be built; trying again next run.", feed.Name);
             }
         }
+
+        var done = reported == 0 && failed == 0 ? "No package feed to report on." : $"Built the report for {reported} feed(s).";
+        return failed == 0 ? done : $"{done} Failed on {failed} feed(s); see the server log.";
     }
 
     /// <summary>

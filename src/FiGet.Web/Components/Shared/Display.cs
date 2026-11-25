@@ -41,7 +41,16 @@ public static class Display
         _ => "Any client",
     };
 
-    public static string Count(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
+    /// <summary>How long something took, at the one unit that reads naturally: "under a second", "42 s", "3 min", "2 h".</summary>
+    public static string Duration(TimeSpan span) => span switch
+    {
+        { TotalSeconds: < 1 } => "under a second",
+        { TotalMinutes: < 1 } => $"{(int)span.TotalSeconds} s",
+        { TotalHours: < 1 } => $"{(int)span.TotalMinutes} min",
+        _ => $"{span.TotalHours:0.#} h",
+    };
+
+        public static string Count(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// How often something happens, in the largest whole unit that fits: "6 hours", "90 minutes", "2 days". A schedule

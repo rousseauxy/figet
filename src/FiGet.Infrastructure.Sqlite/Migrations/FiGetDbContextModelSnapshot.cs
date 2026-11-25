@@ -15,7 +15,7 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.15");
 
             modelBuilder.Entity("FiGet.Domain.Entities.AccessToken", b =>
                 {
@@ -783,9 +783,16 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                     b.Property<DateTime>("ExpiresUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("FinishedUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Holder")
                         .IsRequired()
                         .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastResult")
+                        .HasMaxLength(400)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("TakenUtc")
@@ -1049,6 +1056,10 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                     b.Property<string>("ProjectUrl")
                         .IsRequired()
                         .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PublishedBy")
+                        .HasMaxLength(192)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("PublishedUtc")

@@ -290,6 +290,22 @@ pre code { padding: 0; background: none; }
 }
 .fg-theme-btn:hover { color: var(--chrome-text); background: var(--chrome-hover); }
 
+/* The bell for tokens that end soon. A link like its neighbours, so it takes their colour and padding; it is only there
+   when there is something to say, and the count says it in the theme's warning colours. Those follow the page's light or
+   dark, not the bar's, so the pill reads on a dark bar and on a white one alike. */
+.fg-navbar a.fg-bell { display: inline-flex; align-items: center; gap: 0.3rem; }
+.fg-bell-icon { display: block; }
+.fg-bell-count {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-radius: var(--r-pill);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  padding: 0.18rem 0.42rem;
+}
+
 /* A button that has to read as a link: sign-out posts, because a GET sign-out is reachable
    from any page a reader visits. */
 .fg-linklike {
@@ -834,6 +850,10 @@ legend {
   color: var(--text);
   margin: 0 0 0.9rem;
 }
+/* An alert holding paragraphs or a list kept their outer margins inside its padding: more room above the first line
+   than around the rest. The padding is the alert's only spacing at its edges. */
+.fg-alert > :first-child { margin-top: 0; }
+.fg-alert > :last-child { margin-bottom: 0; }
 .fg-alert-info   { background: var(--info-soft);   border-color: var(--info); }
 .fg-alert-warn   { background: var(--warn-soft);   border-color: var(--warn); }
 .fg-alert-danger { background: var(--danger-soft); border-color: var(--danger); }

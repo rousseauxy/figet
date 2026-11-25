@@ -421,6 +421,30 @@ public abstract partial class ExternalSignInTests : IAsyncLifetime
     public void User_names_are_taken_from_the_claim_or_the_email(string? claim, string? email, string expected) =>
         Assert.Equal(expected, ExternalAccountService.UserNameFrom(new ExternalIdentity("s", claim, email, null, null)));
 
+    /// <summary>
+    /// A provider that cannot be reached fails before any redirect, while its metadata is read. That was an HTTP 500 on the
+    /// sign-in button; it is the sign-in page again, saying so, and an audit entry.
+    /// </summary>
+    [Fact]
+    public async Task An_unreachable_provider_sends_back_to_the_sign_in_page_with_a_message()
+    {
+        // A port nothing listens on: taken from the system, then let go, so the connection is refused at once.
+        var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        var slug = await AddProviderAsync(authority: $"http://127.0.0.1:{port}/");
+
+        using var browser = CreateBrowser();
+        var page = await HttpAssert.SuccessBodyAsync(await browser.GetAsync("/account/login"));
+        using var content = new FormUrlEncodedContent(Hidden(FormWithAction(page, $"/account/external/{slug}")));
+        var response = await browser.PostAsync($"/account/external/{slug}", content);
+
+        HttpAssert.Status(HttpStatusCode.Redirect, response);
+        Assert.Equal("/account/login?external=unreachable", response.Headers.Location!.OriginalString);
+        Assert.Contains("cannot be reached right now", await HttpAssert.SuccessBodyAsync(await browser.GetAsync(response.Headers.Location)), StringComparison.Ordinal);
+    }
+
     /// <summary>The whole browser round trip: FiGet's button, the provider's authorize, the callback, and the complete step.</summary>
     private static async Task<HttpResponseMessage> ProviderSignInAsync(HttpClient browser, string slug)
     {
@@ -469,7 +493,7 @@ public abstract partial class ExternalSignInTests : IAsyncLifetime
         return await browser.PostAsync(action, content);
     }
 
-    private async Task<string> AddProviderAsync(string groupsClaim = "")
+    private async Task<string> AddProviderAsync(string groupsClaim = "", string? authority = null)
     {
         var slug = "p" + Guid.NewGuid().ToString("N")[..10];
         await using var scope = server.Services.CreateAsyncScope();
@@ -479,7 +503,7 @@ public abstract partial class ExternalSignInTests : IAsyncLifetime
             {
                 Slug = slug,
                 DisplayName = "Provider " + slug,
-                Authority = idp.Authority,
+                Authority = authority ?? idp.Authority,
                 ClientId = FakeOidcProvider.ClientId,
                 ProtectedClientSecret = secrets.Protect(FakeOidcProvider.ClientSecret),
                 GroupsClaim = groupsClaim,

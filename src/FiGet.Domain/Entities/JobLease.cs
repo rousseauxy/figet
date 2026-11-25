@@ -21,6 +21,18 @@ public sealed class JobLease
     /// lease is taken before the run, and a run that throws leaves the time where a successful one would.
     /// </summary>
     public DateTime? TakenUtc { get; set; }
+
+    /// <summary>When the run that started at <see cref="TakenUtc"/> ended, or null while it runs or when none has ended.</summary>
+    public DateTime? FinishedUtc { get; set; }
+
+    /// <summary>
+    /// What that run did, in one line: what it removed or sent, or why it failed. The jobs table shows it, so a job that
+    /// runs every hour and finds nothing is seen to have looked.
+    /// </summary>
+    public string? LastResult { get; set; }
+
+    /// <summary>The longest <see cref="LastResult"/> kept.</summary>
+    public const int LastResultMaxLength = 400;
 }
 
 /// <summary>The jobs that take a lease, named once.</summary>

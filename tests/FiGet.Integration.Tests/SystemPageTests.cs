@@ -140,6 +140,31 @@ public sealed class SystemPageTests(SqliteServerFixture server) : IClassFixture<
     }
 
     /// <summary>
+    /// Every job is in the table, the token expiry warning included (it was missing until 1.8.0), with what its last run
+    /// did under the time it started.
+    /// </summary>
+    [Fact]
+    public async Task The_jobs_table_lists_every_job_with_what_its_last_run_did()
+    {
+        await using (var scope = server.Services.CreateAsyncScope())
+        {
+            // As this instance itself: its own watch took the lease at start-up, so only it can renew it now.
+            var leases = scope.ServiceProvider.GetRequiredService<IJobLeaseStore>();
+            var me = scope.ServiceProvider.GetRequiredService<JobInstance>().Id;
+            var now = DateTime.UtcNow;
+            Assert.True(await leases.TryAcquireAsync(JobLeaseNames.TokenExpiryWatch, me, now, now.AddDays(1), TestContext.Current.CancellationToken));
+            await leases.RecordFinishedAsync(JobLeaseNames.TokenExpiryWatch, me, now.AddSeconds(2), "Warned about 1 token(s): build-bot (3 d).", TestContext.Current.CancellationToken);
+        }
+
+        using var client = Browser();
+        HttpAssert.Status(HttpStatusCode.Redirect, await BrowserSignIn.SignInAsync(client));
+        var page = await HttpAssert.SuccessBodyAsync(await client.GetAsync("/admin/system"));
+
+        Assert.Contains("Token expiry warning", page, StringComparison.Ordinal);
+        Assert.Contains("Warned about 1 token(s): build-bot (3 d).", page, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// More copies than expected is a sentence, not an alarm, and it has to read as one. Written out of three spans it
     /// rendered as "1 are expected.Both are what a rolling update looks like" - no space where two spans met, the wrong
     /// verb for one replica, and "both" where only one of the two things had been said.

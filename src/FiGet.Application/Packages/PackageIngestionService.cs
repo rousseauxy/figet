@@ -40,13 +40,17 @@ public sealed class PackageIngestionService(
     public Task<PushResult> PushAsync(Feed feed, Stream nupkg, CancellationToken cancellationToken) =>
         PushAsync(feed, nupkg, PackageOrigin.Pushed, cancellationToken);
 
+    /// <summary>A push by a client, recording who pushed it (<see cref="PackageVersion.PublishedBy"/>).</summary>
+    public Task<PushResult> PushAsync(Feed feed, Stream nupkg, string? publishedBy, CancellationToken cancellationToken) =>
+        PushAsync(feed, nupkg, PackageOrigin.Pushed, cancellationToken, publishedBy: publishedBy);
+
     /// <summary>
     /// The same, for a package that came from an upstream rather than from a client. A cached package is
     /// identical in every way except its origin, which is what retention and cache pruning act on - and its
     /// publish date, when the upstream said when it published it. A nupkg does not carry one, so without it
     /// a cached copy would read as published the moment somebody first installed it.
     /// </summary>
-    public async Task<PushResult> PushAsync(Feed feed, Stream nupkg, PackageOrigin origin, CancellationToken cancellationToken, DateTime? publishedUtc = null, bool listed = true)
+    public async Task<PushResult> PushAsync(Feed feed, Stream nupkg, PackageOrigin origin, CancellationToken cancellationToken, DateTime? publishedUtc = null, bool listed = true, string? publishedBy = null)
     {
         IndexedPackage indexed;
         try
@@ -104,6 +108,7 @@ public sealed class PackageIngestionService(
 
         var row = ToEntity(indexed, publishedUtc ?? time.GetUtcNow().UtcDateTime, origin);
         row.LastUsedUtc = time.GetUtcNow().UtcDateTime;
+        row.PublishedBy = publishedBy is null ? null : publishedBy.Length <= PackageVersion.PublishedByMaxLength ? publishedBy : publishedBy[..PackageVersion.PublishedByMaxLength];
 
         // A copy of a version its upstream hides is stored hidden too: listed, it read as the current version to /latest,
         // the feed page and retention until a later listing of the id reconciled it.

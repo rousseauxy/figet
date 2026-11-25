@@ -65,6 +65,15 @@ public sealed class PackageVersion
 
     public DateTime PublishedUtc { get; set; }
 
+    /// <summary>
+    /// Who pushed this version: the token's name as the audit log gives it (<c>user/key</c> for a personal key), or the
+    /// signed-in account's user name. Null for a copy cached from an upstream, and for versions pushed before this was kept.
+    /// </summary>
+    public string? PublishedBy { get; set; }
+
+    /// <summary>The longest <see cref="PublishedBy"/> kept: the audit log's actor column, which holds the same name.</summary>
+    public const int PublishedByMaxLength = 192;
+
     public DateTime LastUpdatedUtc { get; set; }
 
     public long Size { get; set; }

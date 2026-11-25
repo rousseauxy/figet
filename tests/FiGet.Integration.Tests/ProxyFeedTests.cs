@@ -1259,7 +1259,7 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         var versions = System.Text.Json.Nodes.JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"api/packages/merging/versions?name={id}")))!.AsArray();
         Assert.Equal(["1.0.0", "0.9.0"], versions.Select(v => (string?)v!["version"]));
         Assert.Equal("SYSTEM", (string?)versions[0]!["publishedBy"]);
-        Assert.Null(versions[1]!["publishedBy"]);
+        Assert.Equal("bootstrap", (string?)versions[1]!["publishedBy"]);
     }
 
     private async Task<int> UncacheAsync(string id, string feedName = "proxy")

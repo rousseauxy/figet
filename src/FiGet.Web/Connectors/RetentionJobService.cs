@@ -32,10 +32,7 @@ public sealed class RetentionJobService(
             using var timer = new PeriodicTimer(Interval, time);
             do
             {
-                if (await JobLeaseGate.TakeAsync(scopes, time, JobLeaseNames.Retention, Interval, logger, stoppingToken))
-                {
-                    await RunOnceAsync(stoppingToken);
-                }
+                await JobLeaseGate.RunAsync(scopes, time, JobLeaseNames.Retention, Interval, logger, RunOnceAsync, stoppingToken);
             }
             while (await timer.WaitForNextTickAsync(stoppingToken));
         }
@@ -44,8 +41,11 @@ public sealed class RetentionJobService(
         }
     }
 
-    public async Task RunOnceAsync(CancellationToken cancellationToken)
+    /// <summary>Applies every feed's rules. Returns the line the jobs table shows.</summary>
+    public async Task<string> RunOnceAsync(CancellationToken cancellationToken)
     {
+        int feedsWithRules = 0, failed = 0, unlisted = 0, deleted = 0, pruned = 0;
+        long freed = 0;
         await using var scope = scopes.CreateAsyncScope();
         var feeds = scope.ServiceProvider.GetRequiredService<IFeedStore>();
         var retention = scope.ServiceProvider.GetRequiredService<RetentionService>();
@@ -56,9 +56,11 @@ public sealed class RetentionJobService(
                 continue;
             }
 
+            feedsWithRules++;
             try
             {
                 var report = await retention.RunAsync(feed, cancellationToken);
+                (unlisted, deleted, pruned, freed) = (unlisted + report.Unlisted, deleted + report.Deleted, pruned + report.Pruned, freed + report.FreedBytes);
                 if (report.Total > 0)
                 {
                     audit.Record(null, "retention.run", feed.Name, Describe(feed.Name, report));
@@ -66,10 +68,23 @@ public sealed class RetentionJobService(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
+                failed++;
                 logger.LogWarning(ex, "Retention on feed {Feed} failed; trying again next hour.", feed.Name);
             }
         }
+
+        if (feedsWithRules == 0)
+        {
+            return "No feed has retention rules or cache pruning.";
+        }
+
+        var done = unlisted + deleted + pruned == 0
+            ? $"Nothing to do on {Feeds(feedsWithRules)}."
+            : $"{Feeds(feedsWithRules)}: {unlisted} unlisted, {deleted} deleted, {pruned} cached copies pruned, {FiGet.Web.Components.Shared.Display.Size(freed)} freed.";
+        return failed == 0 ? done : $"{done} Failed on {Feeds(failed)}; see the server log.";
     }
+
+    private static string Feeds(int count) => count == 1 ? "1 feed" : $"{count} feeds";
 
     public static string Describe(string feed, RetentionReport report)
     {

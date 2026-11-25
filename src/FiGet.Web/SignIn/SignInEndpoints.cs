@@ -38,7 +38,7 @@ public static class SignInEndpoints
             }
 
             var form = await http.Request.ReadFormAsync(http.RequestAborted);
-            return Challenge(provider, returnUrl: LocalOrRoot(form["returnUrl"].ToString()), linkTo: null);
+            return Challenge(provider, returnUrl: LocalOrRoot(form["returnUrl"].ToString()), linkTo: null, unreachable: "/account/login?external=unreachable");
         });
 
         // Connect a provider to the signed-in account, from its profile page.
@@ -53,7 +53,7 @@ public static class SignInEndpoints
             var provider = await providers.FindBySlugAsync(slug, http.RequestAborted);
             return provider is not { Enabled: true }
                 ? Results.Redirect("/account/profile?linked=unknown")
-                : Challenge(provider, returnUrl: "/account/profile", linkTo: actor.Key);
+                : Challenge(provider, returnUrl: "/account/profile", linkTo: actor.Key, unreachable: "/account/profile?linked=unreachable");
         }).RequireAuthorization();
 
         app.MapGet(CompletePath, CompleteAsync);
@@ -180,7 +180,7 @@ public static class SignInEndpoints
             bool.TryParse(principal.FindFirst("email_verified")?.Value, out var verified) ? verified : null);
     }
 
-    private static IResult Challenge(OidcProvider provider, string returnUrl, int? linkTo)
+    private static IResult Challenge(OidcProvider provider, string returnUrl, int? linkTo, string unreachable)
     {
         var properties = new AuthenticationProperties { RedirectUri = CompletePath };
         properties.Items[ProviderItem] = provider.Slug;
@@ -190,7 +190,40 @@ public static class SignInEndpoints
             properties.Items[LinkItem] = linkTo.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
-        return Results.Challenge(properties, [OidcSchemes.Name(provider.Slug)]);
+        return new ChallengeOrSayUnreachable(provider.Slug, properties, unreachable);
+    }
+
+    /// <summary>
+    /// The challenge, unless the provider cannot be reached. The handler reads the provider's metadata before it can
+    /// redirect anywhere, and when that read fails - the provider down, or a firewall dropping the connection - it throws
+    /// (IDX20803) on this leg, where no remote-failure event runs. Unhandled, that was an HTTP 500. The person is sent
+    /// back to the page they came from with a message instead, and the failure is audited and logged.
+    /// </summary>
+    private sealed class ChallengeOrSayUnreachable(string slug, AuthenticationProperties properties, string unreachable) : IResult
+    {
+        public async Task ExecuteAsync(HttpContext httpContext)
+        {
+            try
+            {
+                await httpContext.ChallengeAsync(OidcSchemes.Name(slug), properties);
+            }
+            catch (Exception ex) when (Unreachable(ex) && !httpContext.Response.HasStarted)
+            {
+                httpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("FiGet.SignIn")
+                    .LogWarning(ex, "The sign-in provider {Provider} could not be reached to start a sign-in.", slug);
+                httpContext.RequestServices.GetRequiredService<AuditLog>().Record(httpContext, "signin.external.unreachable", slug, ex.Message);
+                httpContext.Response.Redirect(unreachable);
+            }
+        }
+
+        /// <summary>
+        /// The configuration manager wraps what went wrong - a timeout, a refused connection, a document that is not
+        /// metadata - in an InvalidOperationException. Anything else is a fault of ours and stays a 500.
+        /// </summary>
+        private static bool Unreachable(Exception ex) =>
+            ex is InvalidOperationException { Message: var message } && message.Contains("IDX20803", StringComparison.Ordinal)
+            || ex is HttpRequestException
+            || ex is TaskCanceledException { InnerException: TimeoutException };
     }
 
     /// <summary>A groups claim is one claim per group, or - from some user info answers - one claim holding a JSON array.</summary>

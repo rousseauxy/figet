@@ -146,6 +146,7 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.HasKey(x => x.Name);
             e.Property(x => x.Name).HasMaxLength(64);
             e.Property(x => x.Holder).HasMaxLength(128);
+            e.Property(x => x.LastResult).HasMaxLength(JobLease.LastResultMaxLength);
         });
 
         modelBuilder.Entity<ServerInstance>(e =>
@@ -359,6 +360,7 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.Property(x => x.PackageTypesLower).HasMaxLength(PackageColumnLimits.PackageTypes);
             e.Property(x => x.Hash).HasMaxLength(128);
             e.Property(x => x.HashAlgorithm).HasMaxLength(16);
+            e.Property(x => x.PublishedBy).HasMaxLength(PackageVersion.PublishedByMaxLength);
             e.HasMany(x => x.Dependencies).WithOne().HasForeignKey(x => x.PackageVersionKey).OnDelete(DeleteBehavior.Cascade);
         });
 

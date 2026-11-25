@@ -213,6 +213,10 @@
                                 else
                                 {
                                     <span class="fg-num">@Display.Date(key.ExpiresUtc, "Never")</span>
+                                    @if (active && TokenExpiry.DaysLeft(key, now) is { } daysLeft && daysLeft <= TokenExpiry.Thresholds[0])
+                                    {
+                                        <span class="fg-badge-trail"><span class="fg-badge fg-badge-warn" title="Whatever uses this key is refused once it ends. Make its replacement first.">@(daysLeft == 1 ? "ends within a day" : $"ends in {daysLeft} days")</span></span>
+                                    }
                                 }
                             </td>
                             <td class="fg-cell-actions">
@@ -326,6 +330,7 @@
             ("ok", _) => ("Provider connected. You can sign in to this account with it.", problem),
             ("already", _) => ("That provider identity was already connected to this account.", problem),
             ("taken", _) => (message, "That provider identity belongs to another account. Sign in with it to reach that account."),
+            ("unreachable", _) => (message, "The provider cannot be reached right now, so connecting it cannot start. Try again later."),
             ("expired" or "unknown", _) => (message, "Connecting did not start. Reload the page and try again."),
             (_, "ok") => ("Provider disconnected.", problem),
             (_, "last") => (message, "That is this account's only way to sign in. Set a password or connect another provider first."),
