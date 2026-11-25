@@ -850,6 +850,10 @@ legend {
   color: var(--text);
   margin: 0 0 0.9rem;
 }
+/* An alert holding paragraphs or a list kept their outer margins inside its padding: more room above the first line
+   than around the rest. The padding is the alert's only spacing at its edges. */
+.fg-alert > :first-child { margin-top: 0; }
+.fg-alert > :last-child { margin-bottom: 0; }
 .fg-alert-info   { background: var(--info-soft);   border-color: var(--info); }
 .fg-alert-warn   { background: var(--warn-soft);   border-color: var(--warn); }
 .fg-alert-danger { background: var(--danger-soft); border-color: var(--danger); }
