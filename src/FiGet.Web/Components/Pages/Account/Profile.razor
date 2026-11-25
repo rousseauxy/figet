@@ -326,6 +326,7 @@
             ("ok", _) => ("Provider connected. You can sign in to this account with it.", problem),
             ("already", _) => ("That provider identity was already connected to this account.", problem),
             ("taken", _) => (message, "That provider identity belongs to another account. Sign in with it to reach that account."),
+            ("unreachable", _) => (message, "The provider cannot be reached right now, so connecting it cannot start. Try again later."),
             ("expired" or "unknown", _) => (message, "Connecting did not start. Reload the page and try again."),
             (_, "ok") => ("Provider disconnected.", problem),
             (_, "last") => (message, "That is this account's only way to sign in. Set a password or connect another provider first."),
