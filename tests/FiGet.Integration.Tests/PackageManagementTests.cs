@@ -48,8 +48,8 @@ public abstract class PackageManagementTests
         Assert.Equal(Convert.ToHexStringLower(SHA512.HashData(bytes)), (string?)oldest["sha512"]);
         Assert.True(DateTime.TryParse((string?)oldest["published"], out _));
 
-        // A pushed version has no recorded publisher; the field is left out rather than invented.
-        Assert.Null(oldest["publishedBy"]);
+        // A pushed version names the token that pushed it, as the audit log does: here the fixture's bootstrap token.
+        Assert.Equal("bootstrap", (string?)oldest["publishedBy"]);
 
         Assert.Equal(["1.2.0"], (await JsonArrayAsync(client, $"api/packages/public/versions?name={id}&version=1.2")).Select(v => (string?)v!["version"]));
         Assert.Empty(await JsonArrayAsync(client, $"api/packages/public/versions?name={id}.missing"));

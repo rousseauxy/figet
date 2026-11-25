@@ -480,7 +480,7 @@ public static class NuGetV3Endpoints
             upload.Value,
             async file =>
             {
-                var result = await ingestion.PushAsync(request!.Feed, file, cancellationToken);
+                var result = await ingestion.PushAsync(request!.Feed, file, RequestActor.Publisher(http), cancellationToken);
                 if (result.Outcome is PushOutcome.Created or PushOutcome.Replaced)
                 {
                     audit.Record(http, "package.push", result.Id ?? "", $"feed={feed} version={result.Version} outcome={result.Outcome}");
