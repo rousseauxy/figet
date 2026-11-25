@@ -192,7 +192,7 @@ only the plain root serves: see conclusion 4 above for why `GET /nuget/{feed}/ap
 | `GET /nuget/{feed}/Packages()` and `Packages(Id='x',Version='y')` | The collection and one entry; an `Id eq` in the filter fetches that package directly. |
 | `GET /nuget/{feed}/GetUpdates()` | `packageIds`, `versions`, `includePrerelease`, `includeAllVersions`. No recorded client sends it. |
 | `GET …/$count` on the three listings | `text/plain` integer. |
-| `GET /nuget/{feed}/package/{id}/{version}` | Download by normalised version. |
+| `GET, HEAD /nuget/{feed}/package/{id}/{version}` | Download by normalised version. A HEAD is answered like the GET, without a body, and not counted. |
 | `GET /nuget/{feed}/package/{id}` | 302 to the latest stable version, else the newest prerelease (2026-09-15). |
 | `GET /nuget/{feed}/Packages(Id='x',Version='y')/Download` | 302 to the download, for PSResourceGet's NuGet.Server mode (2026-09-15). |
 | `GET /nuget/{feed}/package-ids` and `package-versions/{id}` | The Package Manager Console's v2 autocomplete: JSON string arrays (2026-09-15). |

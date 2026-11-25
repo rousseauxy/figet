@@ -15,8 +15,8 @@ All under `/nuget/{feed}/v3`, plus the symbol server.
 | GET | `/registration/{id}/{version}.json` | registration leaf |
 | GET | `/catalog/{id}/{version}.json` | catalog entry (package details) of one version |
 | GET | `/flatcontainer/{id}/index.json` | version list |
-| GET | `/flatcontainer/{id}/{version}/{id}.{version}.nupkg` | package |
-| GET | `/flatcontainer/{id}/{version}/{id}.nuspec` | nuspec |
+| GET, HEAD | `/flatcontainer/{id}/{version}/{id}.{version}.nupkg` | package; a HEAD is not counted as a download |
+| GET, HEAD | `/flatcontainer/{id}/{version}/{id}.nuspec` | nuspec |
 | GET | `/query` | search |
 | GET | `/autocomplete` | autocomplete |
 | PUT | `/publish` (and `/publish/`) | push |

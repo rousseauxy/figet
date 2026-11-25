@@ -68,11 +68,15 @@ Two tokens can be valid at the same time, so a replacement never needs a moment 
 A token with an expiry stops working without telling whoever uses it. FiGet says so ahead of time, twice: **fourteen
 days** and **three days** before the end.
 
-- The tokens page marks the token: *ends in 5 days*.
+- A **bell** in the top bar, with a count, for everyone signed in: their own personal keys, and for an administrator
+  the service tokens too. It leads to the page where the key can be replaced.
+- The tokens page, and the profile page for personal keys, mark the token: *ends in 5 days*.
 - The audit log gets a `token.expiring` entry, and the server's own log a warning, once at each distance.
 - The API's list counts down in `daysLeft`, for a job of your own that replaces keys before they end.
 
-The check runs once a day (`FiGet:Jobs:TokenExpiryWatch`). It covers personal keys as well as service tokens.
+The check runs once a day (`FiGet:Jobs:TokenExpiryWatch`); Admin → System shows when it last ran and which tokens it
+warned about. It covers personal keys as well as service tokens. The bell and the page marks need no job: they are
+worked out when the page is shown.
 
 ## What is refused, and how
 

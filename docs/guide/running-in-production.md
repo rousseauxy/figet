@@ -152,11 +152,13 @@ at will.
   log is its own line, and a `FULL` recovery model with no log backup is the usual reason a log dwarfs its data.
 - **Which migration the schema is on.** Migrations waiting to be applied are reported loudly: that means this build
   expects a newer schema than the database has, and anything the new schema added will fail.
-- **Every background job**: its interval, when it last started, and what stops growing when it stops. A job switched off
-  with `FiGet:Jobs:*` is marked — that is not a job running late, it is a table with nothing bounding it any more.
+- **Every background job**: its interval, when it last ran and what that run did - what it removed, sent or warned
+  about, or why it failed - and what stops growing when it stops. Hovering the time shows how long the run took. A job
+  switched off with `FiGet:Jobs:*` is marked — that is not a job running late, it is a table with nothing bounding it any
+  more.
 
-Stray package, symbol and asset files are the [storage check](#storage). "Last started" means a run began, not that it
-finished.
+Stray package, symbol and asset files are the [storage check](#storage). A run shown without a result is still going,
+or ended with the copy that ran it (a restart, a rollout); the next run fills it in.
 
 ## One volume, two clusters
 

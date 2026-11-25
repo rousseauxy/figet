@@ -82,9 +82,10 @@ rather than a firewall.
 
 ## What a blocked sign-in looks like
 
-Pressing the provider's button waits about a minute and then shows a 500, before the browser ever leaves FiGet: the
-server could not fetch the discovery document. The log entry for that request id reads `IDX20803: Unable to obtain
-configuration from: '<issuer>/.well-known/openid-configuration'` with a timeout underneath. A timeout rather than a
+Pressing the provider's button waits about a minute and then comes back to the sign-in page saying the provider cannot
+be reached, before the browser ever leaves FiGet: the server could not fetch the discovery document. (Before 1.8.0 this
+was an HTTP 500.) The audit log has a `signin.external.unreachable` entry, and the server log a warning reading
+`IDX20803: Unable to obtain configuration from: '<issuer>/.well-known/openid-configuration'` with a timeout underneath. A timeout rather than a
 refusal usually means a firewall dropping the connection, not a provider that is down. Local accounts keep working
 throughout.
 
