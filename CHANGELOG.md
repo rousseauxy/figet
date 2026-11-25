@@ -5,7 +5,7 @@ once its section is written. Releases up to 1.7.1 have their notes on the GitHub
 
 Images: `ghcr.io/rousseauxy/figet:<version>`, `linux/amd64` and `linux/arm64`.
 
-## 1.8.0 - unreleased
+## 1.8.0 - 2026-11-25
 
 Upgrading adds two columns (on `PackageVersions` and `JobLeases`); the migration runs on start-up as usual.
 
