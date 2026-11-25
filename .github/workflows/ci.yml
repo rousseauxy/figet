@@ -261,3 +261,37 @@ jobs:
 
       - name: Show what was published
         run: docker buildx imagetools inspect ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}
+
+  # The GitHub release for the tag, once its images are there. Its notes are the tag's section of CHANGELOG.md, so the
+  # release, the changelog and the tag say the same thing; releases were written by hand until 1.7.1 and then stopped.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') && github.event.repository.visibility == 'public'
+    needs: manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            $0 ~ "^## " { if (found) exit; if (index($0, "## " v " ") == 1) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::CHANGELOG.md has no section for $version. Write it, then tag again."
+            exit 1
+          fi
+          if grep -q "^## $version - unreleased" CHANGELOG.md; then
+            echo "::error::The $version section of CHANGELOG.md still says unreleased. Date it, then tag again."
+            exit 1
+          fi
+          printf '\nImages: `ghcr.io/%s:%s`, `linux/amd64` and `linux/arm64`.\n' "$GITHUB_REPOSITORY" "$version" >> notes.md
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md
