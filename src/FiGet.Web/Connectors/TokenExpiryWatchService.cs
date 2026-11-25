@@ -26,32 +26,33 @@ public sealed partial class TokenExpiryWatchService(
         using var timer = new PeriodicTimer(Interval, time);
         do
         {
-            if (!await JobLeaseGate.TakeAsync(scopes, time, JobLeaseNames.TokenExpiryWatch, Interval, logger, stoppingToken))
-            {
-                continue;
-            }
-
-            try
-            {
-                await using var scope = scopes.CreateAsyncScope();
-                foreach (var warning in await scope.ServiceProvider.GetRequiredService<TokenExpiryWatch>().TakeDueAsync(stoppingToken))
-                {
-                    Report(warning);
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                // A database that is away for a moment must not end the watch for good; the next round looks again.
-                LogFailed(logger, ex);
-            }
+            // A database that is away for a moment must not end the watch for good: a failed round is recorded and logged,
+            // and the next one looks again.
+            await JobLeaseGate.RunAsync(scopes, time, JobLeaseNames.TokenExpiryWatch, Interval, logger, LookAsync, stoppingToken);
         }
         while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
+    private async Task<string> LookAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var warnings = await scope.ServiceProvider.GetRequiredService<TokenExpiryWatch>().TakeDueAsync(cancellationToken);
+        foreach (var warning in warnings)
+        {
+            Report(warning);
+        }
+
+        return warnings.Count == 0
+            ? "No token needed a new warning."
+            : $"Warned about {warnings.Count} token(s): {string.Join(", ", warnings.Select(w => $"{Name(w.Token)} ({w.DaysLeft} d)"))}.";
+    }
+
+    private static string Name(AccessToken token) => token.User is { } owner ? $"{owner.UserName}/{token.Name}" : token.Name;
+
     private void Report(TokenExpiryWarning warning)
     {
         var token = warning.Token;
-        var name = token.User is { } owner ? $"{owner.UserName}/{token.Name}" : token.Name;
+        var name = Name(token);
         var expires = token.ExpiresUtc!.Value.ToString("u", CultureInfo.InvariantCulture);
         audit.Record(
             null,
@@ -63,7 +64,4 @@ public sealed partial class TokenExpiryWatchService(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The token {Token} ends in {Days} day(s), on {Expires}. Whatever uses it is refused from then on; make its replacement before that.")]
     private static partial void LogExpiring(ILogger logger, string token, int days, string expires);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not look for tokens that end soon; trying again at the next round.")]
-    private static partial void LogFailed(ILogger logger, Exception exception);
 }

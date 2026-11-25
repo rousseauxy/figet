@@ -106,23 +106,23 @@ public sealed class AuditWriterService(
         }
 
         lastPrune = now;
-        if (!await Connectors.JobLeaseGate.TakeAsync(scopes, time, JobLeaseNames.AuditPrune, PruneInterval, logger, cancellationToken))
-        {
-            return;
-        }
-
-        try
-        {
-            await using var scope = scopes.CreateAsyncScope();
-            var removed = await scope.ServiceProvider.GetRequiredService<IAuditStore>().PruneAsync(now.AddDays(-days), cancellationToken);
-            if (removed > 0)
+        await Connectors.JobLeaseGate.RunAsync(
+            scopes,
+            time,
+            JobLeaseNames.AuditPrune,
+            PruneInterval,
+            logger,
+            async ct =>
             {
-                logger.LogInformation("Pruned {Count} audit entries older than {Days} days.", removed, days);
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "Could not prune the audit log; trying again later.");
-        }
+                await using var scope = scopes.CreateAsyncScope();
+                var removed = await scope.ServiceProvider.GetRequiredService<IAuditStore>().PruneAsync(now.AddDays(-days), ct);
+                if (removed > 0)
+                {
+                    logger.LogInformation("Pruned {Count} audit entries older than {Days} days.", removed, days);
+                }
+
+                return $"Removed {removed} audit entr{(removed == 1 ? "y" : "ies")} older than {days} days.";
+            },
+            cancellationToken);
     }
 }

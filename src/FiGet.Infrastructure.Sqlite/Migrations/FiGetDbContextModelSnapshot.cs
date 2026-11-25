@@ -783,9 +783,16 @@ namespace FiGet.Infrastructure.Sqlite.Migrations
                     b.Property<DateTime>("ExpiresUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("FinishedUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Holder")
                         .IsRequired()
                         .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastResult")
+                        .HasMaxLength(400)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("TakenUtc")

@@ -814,10 +814,17 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
                     b.Property<DateTime>("ExpiresUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("FinishedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Holder")
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("LastResult")
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)");
 
                     b.Property<DateTime?>("TakenUtc")
                         .HasColumnType("datetime2");

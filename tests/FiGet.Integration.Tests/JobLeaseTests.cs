@@ -80,6 +80,64 @@ public abstract class JobLeaseTests
         Assert.Equal(now.AddMinutes(180), await TakenAsync(job));
     }
 
+    /// <summary>
+    /// How a run ended, for the jobs table. Only the holder that started the run can record it, and the next take clears
+    /// the end, so a result never sits under a start it does not belong to.
+    /// </summary>
+    [Fact]
+    public async Task Only_the_holder_records_how_its_run_ended_and_the_next_run_clears_it()
+    {
+        var job = "ended-" + Guid.NewGuid().ToString("N")[..8];
+        var now = new DateTime(2026, 11, 25, 8, 0, 0, DateTimeKind.Utc);
+        var hour = TimeSpan.FromHours(1);
+        Assert.True(await TryAsync(job, "replica-a", now, now + hour));
+
+        await RecordAsync(job, "replica-b", now.AddSeconds(5), "not mine");
+        Assert.Null((await StateAsync(job))!.FinishedUtc);
+
+        await RecordAsync(job, "replica-a", now.AddSeconds(5), "Removed 2 things. " + new string('x', 600));
+        var ended = (await StateAsync(job))!;
+        Assert.Equal(now.AddSeconds(5), ended.FinishedUtc);
+        Assert.StartsWith("Removed 2 things.", ended.LastResult, StringComparison.Ordinal);
+        Assert.Equal(FiGet.Domain.Entities.JobLease.LastResultMaxLength, ended.LastResult!.Length);
+
+        Assert.True(await TryAsync(job, "replica-a", now.AddMinutes(59), now.AddMinutes(59) + hour));
+        Assert.Null((await StateAsync(job))!.FinishedUtc);
+    }
+
+    /// <summary>A run that throws is a line in the table saying so, and the job's loop goes on.</summary>
+    [Fact]
+    public async Task A_run_that_fails_is_recorded_as_failed()
+    {
+        var job = "fails-" + Guid.NewGuid().ToString("N")[..8];
+        var scopes = server.Services.GetRequiredService<IServiceScopeFactory>();
+        var ran = await FiGet.Web.Connectors.JobLeaseGate.RunAsync(
+            scopes,
+            TimeProvider.System,
+            job,
+            TimeSpan.FromHours(1),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+            _ => throw new InvalidOperationException("the volume is away"),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(ran);
+        var state = (await StateAsync(job))!;
+        Assert.NotNull(state.FinishedUtc);
+        Assert.Equal("Failed: the volume is away", state.LastResult);
+    }
+
+    private async Task RecordAsync(string job, string holder, DateTime finished, string result)
+    {
+        await using var scope = server.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IJobLeaseStore>().RecordFinishedAsync(job, holder, finished, result, CancellationToken.None);
+    }
+
+    private async Task<JobLeaseState?> StateAsync(string job)
+    {
+        await using var scope = server.Services.CreateAsyncScope();
+        return (await scope.ServiceProvider.GetRequiredService<IJobLeaseStore>().ListAsync(TestContext.Current.CancellationToken)).FirstOrDefault(l => l.Name == job);
+    }
+
     private async Task<DateTime?> TakenAsync(string job)
     {
         await using var scope = server.Services.CreateAsyncScope();

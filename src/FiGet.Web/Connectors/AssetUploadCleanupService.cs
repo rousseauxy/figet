@@ -24,25 +24,20 @@ public sealed class AssetUploadCleanupService(
         using var timer = new PeriodicTimer(Interval, time);
         do
         {
-            if (!await JobLeaseGate.TakeAsync(scopes, time, JobLeaseNames.UploadSweep, Interval, logger, stoppingToken))
-            {
-                continue;
-            }
-
-            try
-            {
-                var cutoff = time.GetUtcNow().UtcDateTime - options.Value.Assets.IncompleteUploadExpiry;
-                var removed = await storage.PruneUploadsAsync(cutoff, stoppingToken);
-                if (removed > 0)
-                {
-                    logger.LogInformation("Removed {Count} multipart upload(s) that were never completed.", removed);
-                }
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                logger.LogWarning(ex, "Could not sweep abandoned multipart uploads; trying again in an hour.");
-            }
+            await JobLeaseGate.RunAsync(scopes, time, JobLeaseNames.UploadSweep, Interval, logger, SweepAsync, stoppingToken);
         }
         while (await timer.WaitForNextTickAsync(stoppingToken));
+    }
+
+    private async Task<string> SweepAsync(CancellationToken cancellationToken)
+    {
+        var cutoff = time.GetUtcNow().UtcDateTime - options.Value.Assets.IncompleteUploadExpiry;
+        var removed = await storage.PruneUploadsAsync(cutoff, cancellationToken);
+        if (removed > 0)
+        {
+            logger.LogInformation("Removed {Count} multipart upload(s) that were never completed.", removed);
+        }
+
+        return removed == 0 ? "No abandoned upload." : $"Removed {removed} multipart upload(s) that were never completed.";
     }
 }

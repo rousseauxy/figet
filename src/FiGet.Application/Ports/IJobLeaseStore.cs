@@ -8,13 +8,18 @@ public interface IJobLeaseStore
     /// </summary>
     Task<bool> TryAcquireAsync(string name, string holder, DateTime nowUtc, DateTime expiresUtc, CancellationToken cancellationToken);
 
+    /// <summary>Records how the run <paramref name="holder"/> started ended. Nothing when another instance has taken the job since.</summary>
+    Task RecordFinishedAsync(string name, string holder, DateTime finishedUtc, string result, CancellationToken cancellationToken);
+
     /// <summary>Every lease, for a page that reports when each job last started. At most one row per job.</summary>
     Task<IReadOnlyList<JobLeaseState>> ListAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>One job's lease, as a reader sees it.</summary>
 /// <param name="TakenUtc">When the job last started, or null when it has not run against this database.</param>
-public sealed record JobLeaseState(string Name, string Holder, DateTime ExpiresUtc, DateTime? TakenUtc);
+/// <param name="FinishedUtc">When that run ended; null while it runs, or before this was recorded.</param>
+/// <param name="LastResult">What that run did, in one line.</param>
+public sealed record JobLeaseState(string Name, string Holder, DateTime ExpiresUtc, DateTime? TakenUtc, DateTime? FinishedUtc = null, string? LastResult = null);
 
 /// <summary>This process's name in the lease table: the machine - a pod's name - and a value of its own start.</summary>
 public sealed class JobInstance

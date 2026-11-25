@@ -81,19 +81,18 @@ public sealed class FeedUsageWriterService(
         }
 
         lastPrune = now;
-        if (!await JobLeaseGate.TakeAsync(scopes, time, JobLeaseNames.UsagePrune, PruneInterval, logger, cancellationToken))
-        {
-            return;
-        }
-
-        try
-        {
-            await using var scope = scopes.CreateAsyncScope();
-            await scope.ServiceProvider.GetRequiredService<IFeedUsageStore>().PruneAsync(now - Retention, cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "Could not remove old usage counts; trying again tomorrow.");
-        }
+        await JobLeaseGate.RunAsync(
+            scopes,
+            time,
+            JobLeaseNames.UsagePrune,
+            PruneInterval,
+            logger,
+            async ct =>
+            {
+                await using var scope = scopes.CreateAsyncScope();
+                var removed = await scope.ServiceProvider.GetRequiredService<IFeedUsageStore>().PruneAsync(now - Retention, ct);
+                return $"Removed {removed} daily usage count(s) older than {Retention.TotalDays:0} days.";
+            },
+            cancellationToken);
     }
 }

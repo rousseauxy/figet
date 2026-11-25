@@ -15,7 +15,7 @@ public sealed class EfJobLeaseStore(FiGetDbContext db) : IJobLeaseStore
         var taken = await db.JobLeases
             .Where(l => l.Name == name && (l.ExpiresUtc <= nowUtc || l.Holder == holder))
             .ExecuteUpdateAsync(
-                s => s.SetProperty(l => l.Holder, holder).SetProperty(l => l.ExpiresUtc, expiresUtc).SetProperty(l => l.TakenUtc, nowUtc),
+                s => s.SetProperty(l => l.Holder, holder).SetProperty(l => l.ExpiresUtc, expiresUtc).SetProperty(l => l.TakenUtc, nowUtc).SetProperty(l => l.FinishedUtc, (DateTime?)null),
                 cancellationToken);
         if (taken > 0)
         {
@@ -44,10 +44,18 @@ public sealed class EfJobLeaseStore(FiGetDbContext db) : IJobLeaseStore
         }
     }
 
+    public async Task RecordFinishedAsync(string name, string holder, DateTime finishedUtc, string result, CancellationToken cancellationToken)
+    {
+        var line = result.Length <= JobLease.LastResultMaxLength ? result : result[..(JobLease.LastResultMaxLength - 1)] + "…";
+        await db.JobLeases
+            .Where(l => l.Name == name && l.Holder == holder)
+            .ExecuteUpdateAsync(s => s.SetProperty(l => l.FinishedUtc, finishedUtc).SetProperty(l => l.LastResult, line), cancellationToken);
+    }
+
     public async Task<IReadOnlyList<JobLeaseState>> ListAsync(CancellationToken cancellationToken) =>
         await db.JobLeases
             .AsNoTracking()
             .OrderBy(l => l.Name)
-            .Select(l => new JobLeaseState(l.Name, l.Holder, l.ExpiresUtc, l.TakenUtc))
+            .Select(l => new JobLeaseState(l.Name, l.Holder, l.ExpiresUtc, l.TakenUtc, l.FinishedUtc, l.LastResult))
             .ToListAsync(cancellationToken);
 }

@@ -299,7 +299,8 @@
     <h2>Jobs</h2>
     <p class="fg-muted fg-small">
         These are what keep the database from growing without end. A job that is off is not a job that is behind: nothing
-        will ever remove what it was removing. "Last started" is when a run began, not that it finished.
+        will ever remove what it was removing. "Last run" is when the last run began and, under it, what that run did; a
+        run with no result yet is still going, or ended with the instance that ran it.
     </p>
     <div class="fg-table-wrap">
         <table class="fg-table">
@@ -307,7 +308,7 @@
                 <tr>
                     <th scope="col">Job</th>
                     <th scope="col">Every</th>
-                    <th scope="col">Last started</th>
+                    <th scope="col">Last run</th>
                     <th scope="col">What it bounds</th>
                 </tr>
             </thead>
@@ -329,8 +330,16 @@
                         <td>
                             @switch (Lease(job.Name))
                             {
-                                case { TakenUtc: { } taken }:
-                                    @Display.Date(taken)
+                                case { TakenUtc: { } taken } lease:
+                                    <span title="@(lease.FinishedUtc is { } finished ? $"Ran for {Display.Duration(finished - taken)}" : "No end recorded for this run")">@Display.Date(taken)</span>
+                                    @if (lease.FinishedUtc is not null && !string.IsNullOrEmpty(lease.LastResult))
+                                    {
+                                        <div class="@(lease.LastResult.StartsWith("Failed", StringComparison.Ordinal) ? "fg-error" : "fg-small fg-muted")">@lease.LastResult</div>
+                                    }
+                                    else if (lease.FinishedUtc is null)
+                                    {
+                                        <div class="fg-small fg-muted">no result recorded</div>
+                                    }
                                     break;
 
                                 case not null:
@@ -423,6 +432,7 @@
         yield return new(JobLeaseNames.UploadSweep, "Upload sweep", jobs.UploadSweep, "Multipart uploads nobody finished. Files on the volume, not rows here.");
         yield return new(JobLeaseNames.CatalogueSweep, "Catalogue sweep", jobs.CatalogueSweep, "Nothing: it refreshes what upstreams offer rather than removing anything.");
         yield return new(JobLeaseNames.ChangeReport, "Change report", jobs.ChangeReport, "Nothing: it reports what changed, and keeps release notes current.");
+        yield return new(JobLeaseNames.TokenExpiryWatch, "Token expiry warning", jobs.TokenExpiryWatch, "Nothing: it warns about access tokens that end within 14 days, and again within 3, in the audit log and the server log.");
     }
 
     private string AuditBound() => Options.Value.Audit.RetentionDays > 0

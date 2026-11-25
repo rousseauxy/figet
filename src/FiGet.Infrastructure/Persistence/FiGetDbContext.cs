@@ -146,6 +146,7 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.HasKey(x => x.Name);
             e.Property(x => x.Name).HasMaxLength(64);
             e.Property(x => x.Holder).HasMaxLength(128);
+            e.Property(x => x.LastResult).HasMaxLength(JobLease.LastResultMaxLength);
         });
 
         modelBuilder.Entity<ServerInstance>(e =>

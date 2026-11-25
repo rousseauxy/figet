@@ -39,10 +39,7 @@ public sealed class CatalogueSweepService(
             using var timer = new PeriodicTimer(Interval, time);
             do
             {
-                if (await JobLeaseGate.TakeAsync(scopes, time, JobLeaseNames.CatalogueSweep, Interval, logger, stoppingToken))
-                {
-                    await RunOnceAsync(stoppingToken);
-                }
+                await JobLeaseGate.RunAsync(scopes, time, JobLeaseNames.CatalogueSweep, Interval, logger, RunOnceAsync, stoppingToken);
             }
             while (await timer.WaitForNextTickAsync(stoppingToken));
         }
@@ -51,8 +48,10 @@ public sealed class CatalogueSweepService(
         }
     }
 
-    public async Task RunOnceAsync(CancellationToken cancellationToken)
+    /// <summary>Queues the refreshes that are due. Returns the line the jobs table shows.</summary>
+    public async Task<string> RunOnceAsync(CancellationToken cancellationToken)
     {
+        int swept = 0, queuedTotal = 0;
         await using var scope = scopes.CreateAsyncScope();
         var feeds = scope.ServiceProvider.GetRequiredService<IFeedStore>();
         var packages = scope.ServiceProvider.GetRequiredService<IPackageStore>();
@@ -102,6 +101,8 @@ public sealed class CatalogueSweepService(
                 continue;
             }
 
+            swept++;
+            queuedTotal += queued;
             audit.Record(null, "catalogue.sweep", feed.Name, $"feed={feed.Name} held={held.Count} queued={queued}{(queued >= cap ? " more=next-run" : "")}");
             if (queued >= cap)
             {
@@ -111,5 +112,9 @@ public sealed class CatalogueSweepService(
                     cap);
             }
         }
+
+        return queuedTotal == 0
+            ? "Every upstream answer was fresh enough; nothing queued."
+            : $"Queued {queuedTotal} id(s) for a refresh on {swept} feed(s).";
     }
 }
