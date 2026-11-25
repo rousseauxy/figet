@@ -53,7 +53,8 @@ public static class NuGetV3Endpoints
         v3.MapGet("/registration/{id}/{version}.json", RegistrationLeafAsync);
         v3.MapGet("/catalog/{id}/{version}.json", CatalogEntryAsync);
         v3.MapGet("/flatcontainer/{id}/index.json", FlatContainerVersionsAsync);
-        v3.MapGet("/flatcontainer/{id}/{version}/{file}", FlatContainerFileAsync);
+        // HEAD as well as GET, for the monitoring and download scripts that ask with it; not counted as a download.
+        v3.MapMethods("/flatcontainer/{id}/{version}/{file}", [HttpMethods.Get, HttpMethods.Head], FlatContainerFileAsync);
         v3.MapGet("/query", SearchAsync);
         v3.MapGet("/autocomplete", AutocompleteAsync);
         v3.MapPut("/publish", PushAsync).DisableAntiforgery();
@@ -313,7 +314,7 @@ public static class NuGetV3Endpoints
             return Results.NotFound();
         }
 
-        if (isNupkg)
+        if (isNupkg && !HttpMethods.IsHead(http.Request.Method))
         {
             await store.IncrementDownloadsAsync(row.Key, http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime, cancellationToken);
         }

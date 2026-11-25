@@ -104,8 +104,10 @@ public static class NuGetV2Endpoints
         group.MapGet("/Packages(Id='{id}',Version='{version}')", PackageByKeyAsync);
         group.MapGet("/GetUpdates()", GetUpdatesAsync);
 
-        group.MapGet("/package/{id}/{version}", DownloadAsync);
-        group.MapGet("/package/{id}", LatestDownloadAsync);
+        // HEAD as well as GET: monitoring, link checkers and some download scripts ask with HEAD, and a minimal API maps
+        // only the methods it is told. A HEAD is answered like the GET, body aside, and is not counted as a download.
+        group.MapMethods("/package/{id}/{version}", [HttpMethods.Get, HttpMethods.Head], DownloadAsync);
+        group.MapMethods("/package/{id}", [HttpMethods.Get, HttpMethods.Head], LatestDownloadAsync);
 
         // The v2 autocomplete the NuGet client uses for tab completion in the Package Manager Console. Mapped explicitly, as
         // the api/v2 root is: package-versions/{id} also matches DELETE /{id}/{version}, and a Release build would answer 405.
@@ -114,7 +116,7 @@ public static class NuGetV2Endpoints
 
         // NuGet.Server's download address, which PSResourceGet uses for a feed it takes for NuGet.Server (an address ending
         // in /nuget): sent on to the package download.
-        group.MapGet("/Packages(Id='{id}',Version='{version}')/Download", (HttpContext http, string feed, string id, string version) =>
+        group.MapMethods("/Packages(Id='{id}',Version='{version}')/Download", [HttpMethods.Get, HttpMethods.Head], (HttpContext http, string feed, string id, string version) =>
             Results.Redirect($"{Root(http, feed)}/package/{Uri.EscapeDataString(id)}/{Uri.EscapeDataString(version)}"));
 
         // nuget.exe pushes to the source URL itself, or to {source}/package when the source ends in /api/v2.
@@ -430,7 +432,11 @@ public static class NuGetV2Endpoints
             return Results.NotFound();
         }
 
-        await store.IncrementDownloadsAsync(row.Key, http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime, cancellationToken);
+        if (!HttpMethods.IsHead(http.Request.Method))
+        {
+            await store.IncrementDownloadsAsync(row.Key, http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime, cancellationToken);
+        }
+
         var fileName = string.Create(CultureInfo.InvariantCulture, $"{idLower}.{versionLower}.nupkg");
         return Results.Stream(stream, "application/zip", fileName, enableRangeProcessing: true);
     }

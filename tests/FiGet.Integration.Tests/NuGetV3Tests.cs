@@ -583,6 +583,35 @@ public abstract class NuGetV3Tests
         Assert.Equal(3, (long)search["data"]![0]!["totalDownloads"]!);
     }
 
+    [Fact]
+    public async Task A_download_answers_HEAD_without_counting_it()
+    {
+        var id = FiGetServerFixture.UniqueId("HeadDownload");
+        using (var stream = TestPackages.Create(id, "1.0.0"))
+        {
+            HttpAssert.Status(HttpStatusCode.Created, await PushRawAsync("public", stream, FiGetServerFixture.AdminToken));
+        }
+
+        var lower = id.ToLowerInvariant();
+        using var client = server.CreateClient();
+        foreach (var path in new[]
+        {
+            $"nuget/public/v3/flatcontainer/{lower}/1.0.0/{lower}.1.0.0.nupkg",
+            $"nuget/public/package/{id}/1.0.0",
+            $"nuget/public/api/v2/package/{id}/1.0.0",
+        })
+        {
+            using var head = await client.SendAsync(new HttpRequestMessage(HttpMethod.Head, path));
+            Assert.True(head.StatusCode == HttpStatusCode.OK, $"HEAD {path} answered {(int)head.StatusCode}");
+        }
+
+        using var missing = await client.SendAsync(new HttpRequestMessage(HttpMethod.Head, $"nuget/public/v3/flatcontainer/{lower}/9.9.9/{lower}.9.9.9.nupkg"));
+        HttpAssert.Status(HttpStatusCode.NotFound, missing);
+
+        var search = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/public/v3/query?q=packageid:{id}")))!;
+        Assert.Equal(0, (long)search["data"]![0]!["totalDownloads"]!);
+    }
+
     private async Task<HttpResponseMessage> PushRawAsync(string feed, Stream package, string? apiKey, string resource = "publish")
     {
         using var client = server.CreateClient();
