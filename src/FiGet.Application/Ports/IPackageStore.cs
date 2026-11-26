@@ -26,6 +26,16 @@ public interface IPackageStore
     /// <summary>Several packages with all their versions, without dependencies.</summary>
     Task<IReadOnlyList<Package>> GetPackagesAsync(IReadOnlyCollection<long> packageKeys, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Several packages with every version's numbers, flags, origin, date and download count, and none of its text: enough
+    /// to build the version list and pick the version a result shows. The text of that one version comes from
+    /// <see cref="GetVersionsAsync"/>.
+    /// </summary>
+    Task<IReadOnlyList<Package>> GetPackageOutlinesAsync(IReadOnlyCollection<long> packageKeys, CancellationToken cancellationToken);
+
+    /// <summary>Whole version rows by key, without dependencies or their package.</summary>
+    Task<IReadOnlyList<PackageVersion>> GetVersionsAsync(IReadOnlyCollection<long> versionKeys, CancellationToken cancellationToken);
+
     /// <summary>Which of these lower-cased ids the feed holds a package for.</summary>
     Task<IReadOnlySet<string>> HeldIdsAsync(int feedKey, IReadOnlyCollection<string> idsLower, CancellationToken cancellationToken);
 

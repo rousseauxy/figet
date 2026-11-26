@@ -350,7 +350,8 @@ public static class NuGetV3Endpoints
 
         var filter = new PackageSearchFilter(SearchQueryParser.Parse(query["q"]), prerelease, semVer2, packageType.Length == 0 ? null : packageType);
         var page = await store.SearchAsync(request!.Feed.Key, filter, skip, take, cancellationToken);
-        var packages = (await store.GetPackagesAsync(page.PackageKeys, cancellationToken)).ToDictionary(p => p.Key);
+        // Every version's numbers for the version lists, and the text only of the version each result shows (FG-64).
+        var packages = (await store.GetPackageOutlinesAsync(page.PackageKeys, cancellationToken)).ToDictionary(p => p.Key);
         var feedUrl = PublicUrls.Feed(http, request.Feed.Name);
 
         // The merged version list on a proxy feed, as the registration serves it: a cached older copy is not the latest
@@ -359,7 +360,7 @@ public static class NuGetV3Endpoints
             ? await connector.StoredUpstreamCandidatesAsync(request.Feed, [.. packages.Values], cancellationToken)
             : new Dictionary<string, UpstreamCandidates>();
 
-        var data = new List<SearchResult>(page.PackageKeys.Count);
+        var shown = new List<(Package Package, IReadOnlyList<VersionListEntry<PackageVersion>> List, VersionListEntry<PackageVersion> Latest)>();
         foreach (var packageKey in page.PackageKeys)
         {
             if (!packages.TryGetValue(packageKey, out var package))
@@ -370,14 +371,21 @@ public static class NuGetV3Endpoints
             var list = upstream.TryGetValue(package.IdLower, out var candidates)
                 ? VersionListBuilder.Build(package.Versions.Select(VersionListBuilder.ToCandidate).Concat(candidates.Versions), semVer2)
                 : VersionListBuilder.BuildLocal(package.Versions, semVer2);
-            var latest = list.Latest(prerelease);
-            if (latest is null)
+            if (list.Latest(prerelease) is { } latest)
             {
-                continue;
+                shown.Add((package, list, latest));
             }
+        }
 
+        // An upstream entry's payload is already whole; a local one is an outline until read here.
+        var whole = (await store.GetVersionsAsync([.. shown.Where(s => s.Latest.Source == VersionSource.Local).Select(s => s.Latest.Payload!.Key)], cancellationToken))
+            .ToDictionary(v => v.Key);
+
+        var data = new List<SearchResult>(shown.Count);
+        foreach (var (package, list, latest) in shown)
+        {
             var urls = new UrlSet(feedUrl, package.IdLower);
-            var metadata = latest.Payload!;
+            var metadata = latest.Source == VersionSource.Local && whole.TryGetValue(latest.Payload!.Key, out var row) ? row : latest.Payload!;
             var visible = list.Where(e => e.Listed && (prerelease || !e.Version.IsPrerelease)).ToList();
             data.Add(new SearchResult
             {
