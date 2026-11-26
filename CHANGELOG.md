@@ -5,6 +5,16 @@ once its section is written. Releases up to 1.7.1 have their notes on the GitHub
 
 Images: `ghcr.io/rousseauxy/figet:<version>`, `linux/amd64` and `linux/arm64`.
 
+## 1.8.2 - unreleased
+
+On SQL Server, upgrading changes the collation of two columns on `PackageVersions`; the migration runs on start-up as
+usual. Nothing changes on SQLite.
+
+- **Search is several times faster on SQL Server.** `v3/query` took 1.5 to 3 seconds on an idle instance holding a
+  gallery-sized feed. The search text is now compared byte for byte (it is stored lower-cased already, so results are
+  the same), and a search reads the full text of only the version each result shows instead of every version's. On a
+  test feed of 7,300 versions, searches went from 1.3-4.0 s to 0.1-0.7 s. The v2 `Search()` gains from the first part.
+
 ## 1.8.1 - 2026-11-26
 
 From a load test on the work QA instance. No migration, no new required setting.
