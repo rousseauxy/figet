@@ -411,7 +411,18 @@ public static class NuGetV2Endpoints
         {
             // Look-through: any exact version an upstream has is fetchable, not only the latest, because a
             // meta-package pins its dependencies to exact versions.
-            row = await connector.EnsureCachedAsync(request.Feed, id, wanted, cancellationToken);
+            try
+            {
+                row = await connector.EnsureCachedAsync(request.Feed, id, wanted, throwWhenUnavailable: true, cancellationToken);
+            }
+            catch (UpstreamUnavailableException ex)
+            {
+                // Not "not found": the upstream may well have it. 502, or 504 when it did not answer in time, so a client
+                // reports a gallery problem. Answered here rather than thrown on, which would add a stack trace per download
+                // to the connector's own warning while a gallery is down.
+                http.Response.Headers.RetryAfter = "60";
+                return Results.Text(ex.Message, "text/plain", statusCode: ex.TimedOut ? StatusCodes.Status504GatewayTimeout : StatusCodes.Status502BadGateway);
+            }
         }
 
         if (row is null)

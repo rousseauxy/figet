@@ -386,7 +386,15 @@ public sealed class ConnectorService(
         return row;
     }
 
-    public async Task<PackageVersion?> EnsureCachedAsync(Feed feed, string id, NuGetVersion version, CancellationToken cancellationToken)
+    public async Task<PackageVersion?> EnsureCachedAsync(Feed feed, string id, NuGetVersion version, CancellationToken cancellationToken) =>
+        await EnsureCachedAsync(feed, id, version, throwWhenUnavailable: false, cancellationToken);
+
+    /// <summary>
+    /// The same, for a download. With <paramref name="throwWhenUnavailable"/>, a version that could not be fetched because an
+    /// upstream failed or did not answer throws <see cref="UpstreamUnavailableException"/> instead of returning null, so the
+    /// client hears 502 or 504 rather than "not found". Null still means no upstream has it.
+    /// </summary>
+    public async Task<PackageVersion?> EnsureCachedAsync(Feed feed, string id, NuGetVersion version, bool throwWhenUnavailable, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(feed);
         ArgumentNullException.ThrowIfNull(version);
@@ -409,7 +417,9 @@ public sealed class ConnectorService(
         if (ownership.Undecided)
         {
             logger.LogWarning("Not fetching {Id} {Version}: a higher-priority upstream could not be asked whether it holds the id.", id, version.ToNormalizedString());
-            return null;
+            return throwWhenUnavailable
+                ? throw new UpstreamUnavailableException($"{id} {version.ToNormalizedString()} could not be looked up: an upstream did not answer.", timedOut: false)
+                : null;
         }
 
         // Only the owner, when there is one. No owner means no upstream lists the id - a listing may simply be out of
@@ -418,6 +428,10 @@ public sealed class ConnectorService(
             ? [owner]
             : feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal);
 
+        // Why nothing came back: a failure means the upstream may well hold the version, so "not found" would be a guess.
+        var failures = 0;
+        var timeouts = 0;
+        string? failedUpstream = null;
         foreach (var upstream in sources)
         {
             if (!Allows(upstream, idLower))
@@ -435,6 +449,13 @@ public sealed class ConnectorService(
                 // Includes this connector's own timeout: a slow upstream is an upstream that did not
                 // answer, never an error thrown back at the client.
                 logger.LogWarning(ex, "Upstream {Upstream} could not serve {Id} {Version}.", upstream.Name, id, version.ToNormalizedString());
+                failures++;
+                failedUpstream ??= upstream.Name;
+                if (ex is OperationCanceledException or TimeoutException || ex.InnerException is TimeoutException)
+                {
+                    timeouts++;
+                }
+
                 continue;
             }
 
@@ -466,6 +487,14 @@ public sealed class ConnectorService(
 
                 logger.LogWarning("Upstream {Upstream} served an unusable {Id} {Version}: {Message}", upstream.Name, id, version.ToNormalizedString(), result.Message);
             }
+        }
+
+        if (throwWhenUnavailable && failures > 0)
+        {
+            var timedOut = timeouts == failures;
+            throw new UpstreamUnavailableException(
+                $"{id} {version.ToNormalizedString()} could not be fetched: upstream {failedUpstream} {(timedOut ? "did not answer in time" : "failed")}. Try again later; the server log has the cause.",
+                timedOut);
         }
 
         return null;
