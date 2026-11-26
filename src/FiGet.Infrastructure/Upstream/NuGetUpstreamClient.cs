@@ -228,7 +228,7 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
         var actual = Convert.ToBase64String(await algorithm.ComputeHashAsync(file, cancellationToken));
         if (!string.Equals(actual, published.PackageHash.Trim(), StringComparison.Ordinal))
         {
-            throw new InvalidDataException($"The package {idLower} {version.ToNormalizedString()} from upstream '{upstream.Name}' does not match the hash the upstream publishes for it.");
+            throw new UpstreamHashMismatchException($"The package {idLower} {version.ToNormalizedString()} from upstream '{upstream.Name}' does not match the hash the upstream publishes for it.");
         }
     }
 

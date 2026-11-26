@@ -130,7 +130,7 @@ public sealed class UpstreamQuirkTests : IDisposable
             Assert.Equal(goodBytes.Length, stream.Length);
         }
 
-        await Assert.ThrowsAsync<InvalidDataException>(() => client.OpenPackageAsync(upstream, "quirk.hash", NuGetVersion.Parse("2.0.0"), CancellationToken.None));
+        await Assert.ThrowsAsync<UpstreamHashMismatchException>(() => client.OpenPackageAsync(upstream, "quirk.hash", NuGetVersion.Parse("2.0.0"), CancellationToken.None));
         Assert.Empty(Directory.GetFiles(tempPath));
     }
 

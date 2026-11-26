@@ -15,7 +15,7 @@ All under `/nuget/{feed}/v3`, plus the symbol server.
 | GET | `/registration/{id}/{version}.json` | registration leaf |
 | GET | `/catalog/{id}/{version}.json` | catalog entry (package details) of one version |
 | GET | `/flatcontainer/{id}/index.json` | version list |
-| GET, HEAD | `/flatcontainer/{id}/{version}/{id}.{version}.nupkg` | package; a HEAD is not counted as a download. On a proxy feed, a version not held here that the upstream failed to serve answers 502 (504 when it timed out) with `Retry-After`, not 404 |
+| GET, HEAD | `/flatcontainer/{id}/{version}/{id}.{version}.nupkg` | package; a HEAD is not counted as a download. On a proxy feed, a version not held here that the upstream failed to serve answers 502 (504 when it timed out) with `Retry-After`, not 404. A file that fails the upstream's own published hash is refused: 502 that says so, without `Retry-After`, since asking again gets the same file |
 | GET, HEAD | `/flatcontainer/{id}/{version}/{id}.nuspec` | nuspec |
 | GET | `/query` | search |
 | GET | `/autocomplete` | autocomplete |

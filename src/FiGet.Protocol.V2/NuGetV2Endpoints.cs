@@ -420,7 +420,11 @@ public static class NuGetV2Endpoints
                 // Not "not found": the upstream may well have it. 502, or 504 when it did not answer in time, so a client
                 // reports a gallery problem. Answered here rather than thrown on, which would add a stack trace per download
                 // to the connector's own warning while a gallery is down.
-                http.Response.Headers.RetryAfter = "60";
+                if (!ex.Refused)
+                {
+                    http.Response.Headers.RetryAfter = "60";
+                }
+
                 return Results.Text(ex.Message, "text/plain", statusCode: ex.TimedOut ? StatusCodes.Status504GatewayTimeout : StatusCodes.Status502BadGateway);
             }
         }
