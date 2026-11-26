@@ -14,6 +14,9 @@ namespace FiGet.Infrastructure.Persistence;
 /// </summary>
 public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : DbContext(options), IDataProtectionKeyContext
 {
+    /// <summary>SQL Server's code-point comparison, for columns FiGet lower-cases itself before storing and searching.</summary>
+    public const string BinaryCollation = "Latin1_General_BIN2";
+
     public DbSet<Feed> Feeds => Set<Feed>();
 
     public DbSet<FeedAlias> FeedAliases => Set<FeedAlias>();
@@ -361,6 +364,18 @@ public sealed class FiGetDbContext(DbContextOptions<FiGetDbContext> options) : D
             e.Property(x => x.Hash).HasMaxLength(128);
             e.Property(x => x.HashAlgorithm).HasMaxLength(16);
             e.Property(x => x.PublishedBy).HasMaxLength(PackageVersion.PublishedByMaxLength);
+
+            // A search is a LIKE '%term%' over these two columns of every version in the feed. Both are stored lower-cased,
+            // so a case-insensitive comparison buys nothing, and on SQL Server it is what the time goes on: under the usual
+            // server collation (SQL_Latin1_General_CP1_CI_AS) a search over 7,300 gallery-sized versions took 2.1 s, with a
+            // binary collation 0.25 s (FG-64). SQLite compares bytes already. Chosen by provider name, as DatabaseFactsReader
+            // does, so Infrastructure keeps no reference to a provider package.
+            if ((Database.ProviderName ?? "").Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+            {
+                e.Property(x => x.SearchTextLower).UseCollation(BinaryCollation);
+                e.Property(x => x.TagsLower).UseCollation(BinaryCollation);
+            }
+
             e.HasMany(x => x.Dependencies).WithOne().HasForeignKey(x => x.PackageVersionKey).OnDelete(DeleteBehavior.Cascade);
         });
 

@@ -1123,7 +1123,8 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
 
                     b.Property<string>("SearchTextLower")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(max)")
+                        .UseCollation("Latin1_General_BIN2");
 
                     b.Property<long>("Size")
                         .HasColumnType("bigint");
@@ -1138,7 +1139,8 @@ namespace FiGet.Infrastructure.SqlServer.Migrations
 
                     b.Property<string>("TagsLower")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(max)")
+                        .UseCollation("Latin1_General_BIN2");
 
                     b.Property<string>("Title")
                         .IsRequired()
