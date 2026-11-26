@@ -5,7 +5,7 @@ once its section is written. Releases up to 1.7.1 have their notes on the GitHub
 
 Images: `ghcr.io/rousseauxy/figet:<version>`, `linux/amd64` and `linux/arm64`.
 
-## 1.8.2 - unreleased
+## 1.8.2 - 2026-11-26
 
 On SQL Server, upgrading changes the collation of two columns on `PackageVersions`; the migration runs on start-up as
 usual. Nothing changes on SQLite.
