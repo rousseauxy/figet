@@ -5,6 +5,17 @@ once its section is written. Releases up to 1.7.1 have their notes on the GitHub
 
 Images: `ghcr.io/rousseauxy/figet:<version>`, `linux/amd64` and `linux/arm64`.
 
+## 1.8.3 - unreleased
+
+No migration, no new setting.
+
+- **Gallery publish dates are right on a server outside UTC.** A v2 gallery writes its publish dates as UTC without a
+  time zone; they were read as the server's local time, so on a server in Brussels every cached version was dated one
+  hour early in winter and two in summer. Dates already cached are corrected the next time the id is listed.
+- **A gallery file that fails its own hash says so.** The download is still refused with 502, but the message now says
+  the upstream's file does not match the hash it publishes, and there is no `Retry-After`: asking again gets the same
+  file. It used to say "try again later". Seen for some 2017 versions on the PowerShell Gallery.
+
 ## 1.8.2 - 2026-11-26
 
 On SQL Server, upgrading changes the collation of two columns on `PackageVersions`; the migration runs on start-up as

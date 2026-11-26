@@ -314,6 +314,26 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
             server.Upstream.TimesOut = false;
         }
 
+        // A file that fails the upstream's own hash is refused, and says so: 502 without "try again" or Retry-After,
+        // because the gallery serves the same file every time (FG-67).
+        server.Upstream.ServesMismatchedHash = true;
+        try
+        {
+            foreach (var path in new[] { $"nuget/proxy/v3/flatcontainer/{lower}/1.0.0/{lower}.1.0.0.nupkg", $"nuget/proxy/package/{id}/1.0.0" })
+            {
+                using var refused = await client.GetAsync(path);
+                Assert.True(refused.StatusCode == HttpStatusCode.BadGateway, $"{path} answered {(int)refused.StatusCode}");
+                Assert.Null(refused.Headers.RetryAfter);
+                var message = await refused.Content.ReadAsStringAsync();
+                Assert.Contains("does not match the hash it publishes", message, StringComparison.Ordinal);
+                Assert.DoesNotContain("Try again", message, StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            server.Upstream.ServesMismatchedHash = false;
+        }
+
         HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/proxy/v3/flatcontainer/{lower}/9.9.9/{lower}.9.9.9.nupkg"));
         await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/flatcontainer/{lower}/1.0.0/{lower}.1.0.0.nupkg"));
     }

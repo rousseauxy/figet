@@ -52,7 +52,8 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
         try
         {
             var items = await metadata.GetMetadataAsync(idLower, includePrerelease: true, includeUnlisted: true, cache, NullLogger.Instance, timeout.Token);
-            described = [.. items.Select(ToMetadata)];
+            var v2 = await repository.GetResourceAsync<ServiceIndexResourceV3>(timeout.Token) is null;
+            described = [.. items.Select(m => ToMetadata(m, v2))];
 
             // The gallery's own spelling, which only the metadata carries: the version resources answer for an
             // id they were given and hand back nothing about how it is written.
@@ -228,12 +229,24 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
         var actual = Convert.ToBase64String(await algorithm.ComputeHashAsync(file, cancellationToken));
         if (!string.Equals(actual, published.PackageHash.Trim(), StringComparison.Ordinal))
         {
-            throw new InvalidDataException($"The package {idLower} {version.ToNormalizedString()} from upstream '{upstream.Name}' does not match the hash the upstream publishes for it.");
+            throw new UpstreamHashMismatchException($"The package {idLower} {version.ToNormalizedString()} from upstream '{upstream.Name}' does not match the hash the upstream publishes for it.");
         }
     }
 
+    /// <summary>
+    /// A v2 gallery's <c>Published</c> is an <c>Edm.DateTime</c>: UTC, written without a zone (<c>2017-04-25T23:43:17.52</c>).
+    /// NuGet's v2 parser reads that as the server's local time, so on a server in Brussels every date came out one or two
+    /// hours early (FG-68). The clock reading it parsed is the UTC time; a value that did carry a zone was parsed with it
+    /// and is converted as it says. The one value this cannot tell apart is an explicit offset equal to the server's own,
+    /// which an Edm.DateTime never has.
+    /// </summary>
+    private static DateTime? V2Published(DateTimeOffset? published) =>
+        published is not { } value ? null
+        : value.Offset == TimeZoneInfo.Local.GetUtcOffset(value.DateTime) ? DateTime.SpecifyKind(value.DateTime, DateTimeKind.Utc)
+        : value.UtcDateTime;
+
     /// <summary>What one upstream entry says about itself, with the gaps turned into empty strings.</summary>
-    private static UpstreamMetadata ToMetadata(IPackageSearchMetadata m) => new(
+    private static UpstreamMetadata ToMetadata(IPackageSearchMetadata m, bool v2) => new(
         m.Identity.Version,
         m.Description ?? "",
         m.Summary ?? "",
@@ -243,7 +256,7 @@ public sealed class NuGetUpstreamClient(ConnectorSettings settings) : IUpstreamC
         m.ProjectUrl?.ToString() ?? "",
         m.IconUrl?.ToString() ?? "",
         m.LicenseUrl?.ToString() ?? "",
-        m.Published?.UtcDateTime,
+        v2 ? V2Published(m.Published) : m.Published?.UtcDateTime,
         m.DownloadCount ?? 0,
         m.IsListed,
         ToDependencies(m));

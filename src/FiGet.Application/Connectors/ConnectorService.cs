@@ -431,6 +431,7 @@ public sealed class ConnectorService(
         // Why nothing came back: a failure means the upstream may well hold the version, so "not found" would be a guess.
         var failures = 0;
         var timeouts = 0;
+        var refusals = 0;
         string? failedUpstream = null;
         foreach (var upstream in sources)
         {
@@ -443,6 +444,16 @@ public sealed class ConnectorService(
             try
             {
                 nupkg = await client.OpenPackageAsync(upstream, idLower, version, cancellationToken);
+            }
+            catch (UpstreamHashMismatchException ex)
+            {
+                // Not a bad afternoon at the gallery: it serves a file that fails its own hash, and will again. No stack
+                // trace, the message says it all.
+                logger.LogWarning("Upstream {Upstream} could not serve {Id} {Version}: {Message}", upstream.Name, id, version.ToNormalizedString(), ex.Message);
+                failures++;
+                refusals++;
+                failedUpstream ??= upstream.Name;
+                continue;
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
@@ -487,6 +498,16 @@ public sealed class ConnectorService(
 
                 logger.LogWarning("Upstream {Upstream} served an unusable {Id} {Version}: {Message}", upstream.Name, id, version.ToNormalizedString(), result.Message);
             }
+        }
+
+        if (throwWhenUnavailable && failures > 0 && refusals == failures)
+        {
+            throw new UpstreamUnavailableException(
+                $"{id} {version.ToNormalizedString()} could not be fetched: upstream {failedUpstream} serves a file that does not match the hash it publishes for it, so it was refused. Asking again will not help; the server log has the details.",
+                timedOut: false)
+            {
+                Refused = true,
+            };
         }
 
         if (throwWhenUnavailable && failures > 0)

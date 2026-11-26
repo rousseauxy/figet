@@ -89,6 +89,9 @@ public sealed class StubUpstreamClient : IUpstreamClient
     /// </summary>
     public bool TimesOut { get; set; }
 
+    /// <summary>Set when a test wants every download to fail the upstream's own published hash, as the real client reports it.</summary>
+    public bool ServesMismatchedHash { get; set; }
+
     /// <summary>
     /// Whether this upstream says anything *about* the versions it lists. False models the state every
     /// restart begins in: the version list is read back from the database, while what the gallery says
@@ -286,6 +289,10 @@ public sealed class StubUpstreamClient : IUpstreamClient
     {
         Interlocked.Increment(ref downloadCalls);
         FailIfAsked();
+        if (ServesMismatchedHash)
+        {
+            throw new UpstreamHashMismatchException($"The package {idLower} {version.ToNormalizedString()} from upstream '{upstream.Name}' does not match the hash the upstream publishes for it.");
+        }
 
         if (packages.TryGetValue(idLower, out var versions)
             && versions.TryGetValue(version.ToNormalizedString(), out var bytes))

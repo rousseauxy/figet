@@ -26,4 +26,10 @@ public sealed class UpstreamUnavailableException : Exception
 
     /// <summary>Every failure was a timeout: the upstream never answered in time (504 rather than 502).</summary>
     public bool TimedOut { get; }
+
+    /// <summary>
+    /// The upstream answered, with a file that fails its own published hash. Still 502, but without "try again later" or a
+    /// Retry-After: the next attempt gets the same file.
+    /// </summary>
+    public bool Refused { get; init; }
 }

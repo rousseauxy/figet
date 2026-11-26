@@ -94,6 +94,40 @@ public sealed class UpstreamQuirkTests : IDisposable
     }
 
     /// <summary>
+    /// A v2 gallery writes <c>Published</c> as UTC without a zone (<c>2017-04-25T23:43:17.52</c>). Read as the server's local
+    /// time, every cached date on a server outside UTC was an hour early in winter and two in summer (QA, Europe/Brussels,
+    /// FG-68). A date with a zone keeps meaning what it says. Only falsifiable on a machine whose clock is not on UTC: the
+    /// bug was the local offset, and on UTC it is zero.
+    /// </summary>
+    [Fact]
+    public async Task A_v2_published_date_without_a_zone_is_read_as_utc()
+    {
+        await using var feed = await StartAsync(app =>
+        {
+            app.MapGet("/", (HttpContext http) => Results.Text(
+                $"""<?xml version="1.0" encoding="utf-8"?><service xml:base="{Base(http)}" xmlns:atom="http://www.w3.org/2005/Atom" xmlns="http://www.w3.org/2007/app"><workspace><atom:title type="text">Default</atom:title><collection href="Packages"><atom:title type="text">Packages</atom:title></collection></workspace></service>""",
+                "application/xml"));
+            app.MapGet("/FindPackagesById()", (HttpContext http) =>
+            {
+                var xml = Feed(Base(http), ["1.0.0", "2.0.0"]);
+                const string Marker = "2026-01-01T00:00:00Z</d:Published>";
+                var first = xml.IndexOf(Marker, StringComparison.Ordinal);
+                xml = string.Concat(xml.AsSpan(0, first), "2017-04-25T23:43:17.52</d:Published>", xml.AsSpan(first + Marker.Length));
+                xml = xml.Replace(Marker, "2020-01-10T07:05:00Z</d:Published>", StringComparison.Ordinal);
+                return Results.Text(xml, "application/atom+xml;type=feed;charset=utf-8");
+            });
+        });
+
+        using var client = new NuGetUpstreamClient(new ConnectorSettings { TempPath = tempPath });
+        var upstream = new FeedUpstream { Key = 4, Name = "dated-gallery", Url = feed.Address + "/", Kind = UpstreamKind.V2 };
+
+        var catalog = await client.GetCatalogAsync(upstream, "quirk.v2", CancellationToken.None);
+        var published = catalog.Described.ToDictionary(m => m.Version.ToNormalizedString(), m => m.Published);
+        Assert.Equal(new DateTime(2017, 4, 25, 23, 43, 17, 520, DateTimeKind.Utc), published["1.0.0"]);
+        Assert.Equal(new DateTime(2020, 1, 10, 7, 5, 0, DateTimeKind.Utc), published["2.0.0"]);
+    }
+
+    /// <summary>
     /// A v2 gallery publishes each package's hash. A download that matches it is served; one that does not - truncated,
     /// altered, a different file behind the name - is refused, so it is never cached as that version. Backlog item from the
     /// 2026-09-14 review.
@@ -130,7 +164,7 @@ public sealed class UpstreamQuirkTests : IDisposable
             Assert.Equal(goodBytes.Length, stream.Length);
         }
 
-        await Assert.ThrowsAsync<InvalidDataException>(() => client.OpenPackageAsync(upstream, "quirk.hash", NuGetVersion.Parse("2.0.0"), CancellationToken.None));
+        await Assert.ThrowsAsync<UpstreamHashMismatchException>(() => client.OpenPackageAsync(upstream, "quirk.hash", NuGetVersion.Parse("2.0.0"), CancellationToken.None));
         Assert.Empty(Directory.GetFiles(tempPath));
     }
 
