@@ -187,6 +187,62 @@ public sealed class EfPackageStore(FiGetDbContext db) : IPackageStore
         return packages;
     }
 
+    public async Task<IReadOnlyList<Package>> GetPackageOutlinesAsync(IReadOnlyCollection<long> packageKeys, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(packageKeys);
+        var packages = new List<Package>();
+        foreach (var chunk in packageKeys.Distinct().Chunk(LookupBatch))
+        {
+            // A gallery module carries 20 to 80 KB of tags, description and release notes per version, and a search page
+            // of twenty such modules with 150 versions each read over 180 MB to show twenty of them (FG-64).
+            packages.AddRange(await db.Packages.AsNoTracking()
+                .Where(p => chunk.Contains(p.Key))
+                .Select(p => new Package
+                {
+                    Key = p.Key,
+                    FeedKey = p.FeedKey,
+                    Id = p.Id,
+                    IdLower = p.IdLower,
+                    Versions = p.Versions
+                        .Select(v => new PackageVersion
+                        {
+                            Key = v.Key,
+                            PackageKey = v.PackageKey,
+                            OriginalVersion = v.OriginalVersion,
+                            NormalizedVersion = v.NormalizedVersion,
+                            NormalizedVersionLower = v.NormalizedVersionLower,
+                            IsPrerelease = v.IsPrerelease,
+                            IsSemVer2 = v.IsSemVer2,
+                            Listed = v.Listed,
+                            Origin = v.Origin,
+                            PublishedUtc = v.PublishedUtc,
+                            Downloads = v.Downloads,
+                        })
+                        .ToList(),
+                })
+                .ToListAsync(cancellationToken));
+        }
+
+        foreach (var package in packages)
+        {
+            package.Versions.ForEach(v => v.Package = package);
+        }
+
+        return packages;
+    }
+
+    public async Task<IReadOnlyList<PackageVersion>> GetVersionsAsync(IReadOnlyCollection<long> versionKeys, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(versionKeys);
+        var versions = new List<PackageVersion>();
+        foreach (var chunk in versionKeys.Distinct().Chunk(LookupBatch))
+        {
+            versions.AddRange(await db.PackageVersions.AsNoTracking().Where(v => chunk.Contains(v.Key)).ToListAsync(cancellationToken));
+        }
+
+        return versions;
+    }
+
     public Task<PackageVersion?> GetVersionAsync(int feedKey, string idLower, string normalizedVersionLower, CancellationToken cancellationToken) =>
         db.PackageVersions.AsNoTracking()
             .Include(v => v.Package)

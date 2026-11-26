@@ -326,6 +326,38 @@ public abstract class NuGetV3Tests
         HttpAssert.Status(HttpStatusCode.Unauthorized, await anonymous.DeleteAsync($"nuget/public/v3/publish/{id}/1.0.0"));
     }
 
+    /// <summary>
+    /// A search reads every version's numbers but the text of the shown version alone (FG-64), and on SQL Server compares
+    /// the stored lower-cased text byte for byte. Neither changes the answer: the shown text is the latest's, every version
+    /// keeps its download count, a word only an older version's description holds still finds the package, and the case
+    /// of the term does not matter.
+    /// </summary>
+    [Fact]
+    public async Task Search_shows_the_latest_text_and_every_version_and_matches_older_text_in_any_case()
+    {
+        var id = FiGetServerFixture.UniqueId("Search.Text");
+        var word = "oldword" + Guid.NewGuid().ToString("N")[..8];
+        foreach (var (version, description) in new[] { ("1.0.0", "First release with " + word + "."), ("2.0.0", "Second release.") })
+        {
+            using var stream = TestPackages.Create(id, version, b => b.Description = description);
+            HttpAssert.Status(HttpStatusCode.Created, await PushRawAsync("public", stream, FiGetServerFixture.AdminToken));
+        }
+
+        using var client = server.CreateClient();
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/public/v3/flatcontainer/{id.ToLowerInvariant()}/1.0.0/{id.ToLowerInvariant()}.1.0.0.nupkg"));
+
+        var hit = Assert.Single(JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/public/v3/query?q=packageid:{id}")))!["data"]!.AsArray())!;
+        Assert.Equal("2.0.0", (string?)hit["version"]);
+        Assert.Equal("Second release.", (string?)hit["description"]);
+        Assert.Equal(1, (long)hit["totalDownloads"]!);
+        var versions = hit["versions"]!.AsArray();
+        Assert.Equal(["1.0.0", "2.0.0"], versions.Select(v => (string?)v!["version"]));
+        Assert.Equal(1, (long)versions[0]!["downloads"]!);
+
+        var byOldWord = JsonNode.Parse(await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/public/v3/query?q={word.ToUpperInvariant()}")))!;
+        Assert.Equal(id, (string?)Assert.Single(byOldWord["data"]!.AsArray())!["id"]);
+    }
+
     [Fact]
     public async Task Hard_delete_removes_the_version_and_the_file()
     {
