@@ -5,7 +5,7 @@ once its section is written. Releases up to 1.7.1 have their notes on the GitHub
 
 Images: `ghcr.io/rousseauxy/figet:<version>`, `linux/amd64` and `linux/arm64`.
 
-## 1.8.1 - unreleased
+## 1.8.1 - 2026-11-26
 
 From a load test on the work QA instance. No migration, no new required setting.
 
