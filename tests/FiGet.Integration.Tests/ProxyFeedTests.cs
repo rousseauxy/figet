@@ -274,6 +274,51 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
     }
 
     /// <summary>
+    /// A version that could not be fetched because the upstream failed is not "not found": a 404 made Install-Module report
+    /// a missing package while the gallery was unreachable (QA, 2026-11-26, FG-59). It answers 502 with a retry hint, and a
+    /// version the upstream answers it does not have is still 404.
+    /// </summary>
+    [Fact]
+    public async Task A_download_the_upstream_failed_to_serve_answers_502_or_504_not_404()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.FetchFails");
+        AddUpstream(id, "1.0.0");
+        Assert.Single(await FindAsync("proxy", id));
+        var lower = id.ToLowerInvariant();
+        using var client = server.CreateClient();
+
+        server.Upstream.Fails = true;
+        try
+        {
+            foreach (var path in new[] { $"nuget/proxy/v3/flatcontainer/{lower}/1.0.0/{lower}.1.0.0.nupkg", $"nuget/proxy/package/{id}/1.0.0" })
+            {
+                using var failed = await client.GetAsync(path);
+                Assert.True(failed.StatusCode == HttpStatusCode.BadGateway, $"{path} answered {(int)failed.StatusCode}");
+                Assert.True(failed.Headers.RetryAfter is not null, "no Retry-After");
+                Assert.Contains("could not be fetched", await failed.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            server.Upstream.Fails = false;
+        }
+
+        // An upstream that does not answer in time is a 504.
+        server.Upstream.TimesOut = true;
+        try
+        {
+            HttpAssert.Status(HttpStatusCode.GatewayTimeout, await client.GetAsync($"nuget/proxy/v3/flatcontainer/{lower}/1.0.0/{lower}.1.0.0.nupkg"));
+        }
+        finally
+        {
+            server.Upstream.TimesOut = false;
+        }
+
+        HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/proxy/v3/flatcontainer/{lower}/9.9.9/{lower}.9.9.9.nupkg"));
+        await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/flatcontainer/{lower}/1.0.0/{lower}.1.0.0.nupkg"));
+    }
+
+    /// <summary>
     /// After an upstream fails to answer, ids nothing is known about are not asked of it again for a pause, so an outage
     /// does not cost every request the whole timeout; after the pause it is asked again. Found cross-checking other
     /// package servers' issue trackers (2026-09-15).
@@ -609,7 +654,9 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
         {
             Assert.Empty(await FindAsync("layered", id));
             using var client = server.CreateClient();
-            HttpAssert.Status(HttpStatusCode.NotFound, await client.GetAsync($"nuget/layered/package/{id}/3.0.0"));
+
+            // Not served, and not "not found" either since 1.8.1: the upstream ahead did not answer, so 502 (FG-59).
+            HttpAssert.Status(HttpStatusCode.BadGateway, await client.GetAsync($"nuget/layered/package/{id}/3.0.0"));
         }
         finally
         {

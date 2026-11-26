@@ -5,6 +5,19 @@ once its section is written. Releases up to 1.7.1 have their notes on the GitHub
 
 Images: `ghcr.io/rousseauxy/figet:<version>`, `linux/amd64` and `linux/arm64`.
 
+## 1.8.1 - unreleased
+
+From a load test on the work QA instance. No migration, no new required setting.
+
+- **Requests that went wrong are logged even with the request log off.** An answer of 500 or more, a client that left
+  before or during the answer, and a request slower than `FiGet:Logging:SlowRequestSeconds` (default 5) to send its
+  first byte are each one warning line. These were invisible: clients saw timeouts, cut-off answers and 404s, and the
+  server's log said nothing. With `FiGet:Logging:Requests` on, every line also says how the request ended and its time
+  to the first byte.
+- **An upstream that fails is no longer "not found".** A download of a version a proxy feed does not hold, which its
+  upstream failed to serve, answers 502 (504 when it did not answer in time) with `Retry-After: 60`, so Install-Module
+  reports a gallery problem rather than a missing package. A version the upstream answers it does not have is still 404.
+
 ## 1.8.0 - 2026-11-25
 
 Upgrading adds two columns (on `PackageVersions` and `JobLeases`); the migration runs on start-up as usual.

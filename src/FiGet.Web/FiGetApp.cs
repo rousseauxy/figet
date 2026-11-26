@@ -477,11 +477,9 @@ public static class FiGetApp
         });
 
         // After authentication on purpose: the line says who the caller turned out to be, not just where
-        // it came from. Opt-in, because a package client is chatty and most instances never need it.
-        if (app.Configuration.GetValue<bool>("FiGet:Logging:Requests"))
-        {
-            app.UseMiddleware<RequestLogMiddleware>();
-        }
+        // it came from. Always in the pipeline: every request is logged only with FiGet:Logging:Requests, because a package
+        // client is chatty, but the ones that went wrong are logged regardless.
+        app.UseMiddleware<RequestLogMiddleware>();
 
         // RFC 2324, asked for by the tester. A browser gets the error page for 418; a BREW request, which that page cannot be
         // re-run for, gets the refusal as text.

@@ -5,9 +5,10 @@ namespace FiGet.Web.Logging;
 
 /// <summary>
 /// One structured line per request, so somebody can answer "did that client reach us, and what did it ask
-/// for" without guessing from timings. Off unless <c>FiGet:Logging:Requests</c> says otherwise, which is
+/// for" without guessing from timings. Every request only when <c>FiGet:Logging:Requests</c> says so, which is
 /// what the server being replaced does too - its HTTP request log is opt-in, and its per-download table is
-/// a per-feed checkbox.
+/// a per-feed checkbox. The requests that went wrong - a server error, a client that gave up, a slow start - are
+/// logged whatever the switch says.
 ///
 /// It exists because the absence was felt: a colleague reported a package "no longer being cached", and
 /// with nothing logged there was no way to tell whether his client had reached this server at all. The
@@ -18,8 +19,17 @@ namespace FiGet.Web.Logging;
 /// <see cref="ConnectionInfo.RemoteIpAddress"/> is the proxy rather than the caller. Logging the raw
 /// header beside it means the line is never quietly wrong about who asked.
 /// </summary>
-public sealed class RequestLogMiddleware(RequestDelegate next, ILogger<RequestLogMiddleware> logger)
+public sealed class RequestLogMiddleware(RequestDelegate next, ILogger<RequestLogMiddleware> logger, IConfiguration configuration)
 {
+    /// <summary>Every request, at Information. Off by default: a package client is chatty.</summary>
+    private readonly bool everything = configuration.GetValue<bool>("FiGet:Logging:Requests");
+
+    /// <summary>
+    /// How long a request may take to start answering before it is logged as slow, whatever the switch says. Measured to
+    /// the first byte, so a large download that starts at once is not slow however long it streams. Zero turns it off.
+    /// </summary>
+    private readonly TimeSpan slow = TimeSpan.FromSeconds(Math.Max(0, configuration.GetValue("FiGet:Logging:SlowRequestSeconds", 5d)));
+
     public async Task InvokeAsync(HttpContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -31,26 +41,66 @@ public sealed class RequestLogMiddleware(RequestDelegate next, ILogger<RequestLo
         }
 
         var started = Stopwatch.GetTimestamp();
+        TimeSpan? firstByte = null;
+        context.Response.OnStarting(() =>
+        {
+            firstByte = Stopwatch.GetElapsedTime(started);
+            return Task.CompletedTask;
+        });
+
+        var threw = false;
         try
         {
             await next(context);
         }
+        catch
+        {
+            threw = true;
+            throw;
+        }
         finally
         {
             // In a finally block: a request that failed is the one most worth having a line for.
-            var elapsed = Stopwatch.GetElapsedTime(started);
-            logger.LogInformation(
-                "{Method} {Path}{Query} -> {Status} in {ElapsedMs:F0}ms | caller={Caller} forwarded={Forwarded} who={Who} agent={Agent}",
-                context.Request.Method,
-                context.Request.Path.Value,
-                Query(context.Request),
-                context.Response.StatusCode,
-                elapsed.TotalMilliseconds,
-                context.Connection.RemoteIpAddress?.ToString() ?? "-",
-                Header(context, "X-Forwarded-For"),
-                RequestActor.Describe(context),
-                Header(context, "User-Agent"));
+            Write(context, Stopwatch.GetElapsedTime(started), firstByte, threw);
         }
+    }
+
+    /// <summary>
+    /// One line. With the switch on, every request at Information. With it off, only the ones somebody will be hunting for,
+    /// at Warning: an answer of 500 or more, a request the client gave up on, and one that took longer than
+    /// <see cref="slow"/> to start answering. These were invisible during a load test on 2026-11-26: clients saw timeouts,
+    /// cut-off answers and 404s, and the server's log had nothing to say about any of them.
+    /// </summary>
+    private void Write(HttpContext context, TimeSpan elapsed, TimeSpan? firstByte, bool threw)
+    {
+        // An unhandled exception is turned into a 500 by a handler outside this one, after this line is written; until then
+        // the status still reads 200.
+        var status = threw ? StatusCodes.Status500InternalServerError : context.Response.StatusCode;
+        var aborted = context.RequestAborted.IsCancellationRequested;
+        var waited = firstByte ?? elapsed;
+        var outcome = aborted
+            ? firstByte is null ? "client left before an answer" : "client left during the answer"
+            : threw ? "failed" : "done";
+        var problem = status >= 500 || aborted || (slow > TimeSpan.Zero && waited >= slow);
+        if (!everything && !problem)
+        {
+            return;
+        }
+
+        logger.Log(
+            problem ? LogLevel.Warning : LogLevel.Information,
+            "{Method} {Path}{Query} -> {Status} {Outcome} in {ElapsedMs:F0}ms (first byte {FirstByteMs}) | caller={Caller} forwarded={Forwarded} who={Who} agent={Agent}",
+            context.Request.Method,
+            context.Request.Path.Value,
+            Query(context.Request),
+            status,
+            outcome,
+            elapsed.TotalMilliseconds,
+            firstByte is { } fb ? fb.TotalMilliseconds.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + "ms" : "none",
+            context.Connection.RemoteIpAddress?.ToString() ?? "-",
+            Header(context, "X-Forwarded-For"),
+            RequestActor.Describe(context),
+            Header(context, "User-Agent"));
     }
 
     /// <summary>

@@ -262,6 +262,13 @@ project replaces and its command-line client.
 |---|---|---|---|
 | HEAD on a package download | `NuGetV3Tests.A_download_answers_HEAD_without_counting_it`, both databases | 2026-11-25 | 200 for the v3 flat container `.nupkg` and the v2 `/package/{id}/{version}` on both routes, 404 for a version that is not there, and the download count stays 0. On QA (1.7.7) both had answered 405 |
 
+## Requests that went wrong
+
+| What was verified | How (client and version, command or request) | When | Result |
+|---|---|---|---|
+| Logged with the request log off | `ProblemRequestLogTests` and `SlowRequestLogTests` (SQLite), `RequestLogTests` with it on | 2026-11-26 | Off: an ordinary request writes no line; a client reading 64 KB of an 8 MB download and closing is logged "client left during the answer", with no exception text; with the slow threshold at a microsecond a request is logged with "-> 200 done" and its first-byte time. Falsified: with the abandoned check removed, that test fails. A 500 from an unhandled exception was not exercised: no endpoint throws on demand |
+| An upstream failure is 502/504, not 404 | `ProxyFeedTests.A_download_the_upstream_failed_to_serve_answers_502_or_504_not_404` | 2026-11-26 | With the stub upstream failing, a known version not yet cached answers 502 with `Retry-After` on the v3 and the v2 download; timing out, 504; a version the upstream does not have, 404; once it answers again, 200. The undecided-owner case (the upstream ahead cannot be asked) is now 502 too. Falsified: without the switch on the v3 call, 404 again |
+
 ## Background jobs
 
 | What was verified | How (client and version, command or request) | When | Result |
