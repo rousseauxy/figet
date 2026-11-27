@@ -195,7 +195,7 @@ public sealed class ConnectorOptions
     /// How long a search waits for its upstreams before answering with what the feed holds itself; the upstream search
     /// carries on and its answer serves the next search. Zero never waits.
     /// </summary>
-    public TimeSpan UpstreamSearchBudget { get; set; } = TimeSpan.FromSeconds(1);
+    public TimeSpan UpstreamSearchBudget { get; set; } = TimeSpan.FromSeconds(3);
 
     /// <summary>
     /// How many package ids one replica keeps upstream descriptions for in memory before dropping the

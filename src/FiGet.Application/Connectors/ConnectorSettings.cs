@@ -32,7 +32,7 @@ public sealed class ConnectorSettings
     /// How long a search request waits for its upstreams before it answers with what the feed holds itself. A search that
     /// takes longer keeps running and fills the cache for the next request; zero never waits for an upstream.
     /// </summary>
-    public TimeSpan UpstreamSearchBudget { get; set; } = TimeSpan.FromSeconds(1);
+    public TimeSpan UpstreamSearchBudget { get; set; } = TimeSpan.FromSeconds(3);
 
     /// <summary>
     /// Where a package downloaded from an upstream is buffered while it is indexed: <c>FiGet:Storage:TempPath</c>, or the
