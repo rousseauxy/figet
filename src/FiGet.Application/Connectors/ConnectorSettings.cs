@@ -25,6 +25,15 @@ public sealed class ConnectorSettings
     /// </summary>
     public TimeSpan UnreachableBackoff { get; set; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>How long one upstream's answer to a search is reused before the upstream is asked again.</summary>
+    public TimeSpan UpstreamSearchTtl { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// How long a search request waits for its upstreams before it answers with what the feed holds itself. A search that
+    /// takes longer keeps running and fills the cache for the next request; zero never waits for an upstream.
+    /// </summary>
+    public TimeSpan UpstreamSearchBudget { get; set; } = TimeSpan.FromSeconds(1);
+
     /// <summary>
     /// Where a package downloaded from an upstream is buffered while it is indexed: <c>FiGet:Storage:TempPath</c>, or the
     /// system temp directory. On a pod the system one is the container's small writable layer, and an installer-sized

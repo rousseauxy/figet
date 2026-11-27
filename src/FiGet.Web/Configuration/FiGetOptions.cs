@@ -188,6 +188,15 @@ public sealed class ConnectorOptions
     /// </summary>
     public TimeSpan UpstreamTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>How long one upstream's answer to a search is reused before the upstream is asked again.</summary>
+    public TimeSpan UpstreamSearchTtl { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// How long a search waits for its upstreams before answering with what the feed holds itself; the upstream search
+    /// carries on and its answer serves the next search. Zero never waits.
+    /// </summary>
+    public TimeSpan UpstreamSearchBudget { get; set; } = TimeSpan.FromSeconds(1);
+
     /// <summary>
     /// How many package ids one replica keeps upstream descriptions for in memory before dropping the
     /// oldest. The descriptions are the large part - a couple of thousand versions of one module can be
