@@ -13,7 +13,7 @@ No migration. Two new settings, `FiGet:Connector:UpstreamSearchTtl` and `Upstrea
   each request; on a test cluster the gallery took 1.3-2 s of each search (5 s under load) while the feed's own
   queries took milliseconds. Each upstream's answer is now kept for five minutes (`UpstreamSearchTtl`), so a repeated
   search asks nothing upstream, and concurrent searches for the same term share one upstream search. A search waits
-  at most one second for its upstreams (`UpstreamSearchBudget`); past that it answers with what the feed holds, and
+  at most three seconds for its upstreams (`UpstreamSearchBudget`); past that it answers with what the feed holds, and
   the upstream search finishes in the background for the next one. Applies to v3 search and v2 `Search()`
   (Find-Module). Install-Module and restore never searched, so they are unchanged.
 
