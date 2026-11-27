@@ -982,6 +982,101 @@ public sealed class ProxyFeedTests(ProxyServerFixture server) : IClassFixture<Pr
     }
 
     /// <summary>
+    /// FG-64: every term search asked the gallery again, 1.3-2 s each on a test cluster while the local queries took
+    /// milliseconds. The same question within the search TTL is answered from what the upstream said the first time.
+    /// </summary>
+    [Fact]
+    public async Task A_repeated_search_asks_the_upstream_once()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.SearchKept");
+        AddUpstream(id, "1.0.0");
+
+        using var client = server.CreateClient();
+        var before = server.Upstream.SearchCalls;
+        for (var i = 0; i < 3; i++)
+        {
+            Assert.Contains(id, await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/query?q={id}")), StringComparison.Ordinal);
+        }
+
+        Assert.Equal(1, server.Upstream.SearchCalls - before);
+
+        // Find-Module (v2 Search()) goes through the same kept answer.
+        var v2 = $"nuget/proxy/Search()?$filter=IsLatestVersion&searchTerm='{id}'&includePrerelease=false&$skip=0&$top=40";
+        before = server.Upstream.SearchCalls;
+        for (var i = 0; i < 3; i++)
+        {
+            Assert.Contains(id, await HttpAssert.SuccessBodyAsync(await client.GetAsync(v2)), StringComparison.Ordinal);
+        }
+
+        Assert.Equal(1, server.Upstream.SearchCalls - before);
+    }
+
+    /// <summary>
+    /// A gallery slower than the search budget no longer holds the client: the search answers with what the feed holds
+    /// after the budget, the upstream search carries on, and its answer serves the next search without asking again.
+    /// </summary>
+    [Fact]
+    public async Task A_slow_upstream_search_answers_after_the_budget_and_serves_the_next_search()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.SearchSlow");
+        AddUpstream(id, "1.0.0");
+        var budget = server.Services.GetRequiredService<ConnectorSettings>().UpstreamSearchBudget;
+
+        using var client = server.CreateClient();
+        var before = server.Upstream.SearchCalls;
+        server.Upstream.HoldSearches();
+        try
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var first = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/query?q={id}"));
+            clock.Stop();
+
+            Assert.DoesNotContain(id, first, StringComparison.Ordinal);
+            Assert.True(clock.Elapsed >= budget - TimeSpan.FromMilliseconds(50), $"Answered in {clock.Elapsed}, before the {budget} budget.");
+            Assert.True(clock.Elapsed < budget + TimeSpan.FromSeconds(5), $"Answered in {clock.Elapsed} against a {budget} budget.");
+        }
+        finally
+        {
+            server.Upstream.ReleaseSearches();
+        }
+
+        string next = "";
+        for (var attempt = 0; attempt < 50 && !next.Contains(id, StringComparison.Ordinal); attempt++)
+        {
+            if (attempt > 0)
+            {
+                await Task.Delay(100);
+            }
+
+            next = await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/query?q={id}"));
+        }
+
+        Assert.Contains(id, next, StringComparison.Ordinal);
+        Assert.Equal(1, server.Upstream.SearchCalls - before);
+    }
+
+    /// <summary>A search the upstream failed is not kept: the next one asks again and finds the package.</summary>
+    [Fact]
+    public async Task A_failed_upstream_search_is_asked_again()
+    {
+        var id = FiGetServerFixture.UniqueId("Proxy.SearchFailed");
+        AddUpstream(id, "1.0.0");
+
+        using var client = server.CreateClient();
+        server.Upstream.Fails = true;
+        try
+        {
+            Assert.DoesNotContain(id, await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/query?q={id}")), StringComparison.Ordinal);
+        }
+        finally
+        {
+            server.Upstream.Fails = false;
+        }
+
+        Assert.Contains(id, await HttpAssert.SuccessBodyAsync(await client.GetAsync($"nuget/proxy/v3/query?q={id}")), StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The merged version list in search, not only in by-id lookups. Found cross-checking other package servers' issue
     /// trackers: with 1.0.0 cached by a pinned install and 2.0.0 on the gallery, a wildcard Find-Module (Search()),
     /// Find-PSResource, nuget list and the v3 query all offered the cached 1.0.0 as the one latest version, while

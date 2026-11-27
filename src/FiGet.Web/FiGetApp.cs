@@ -197,12 +197,15 @@ public static class FiGetApp
             {
                 UpstreamIndexTtl = figet.Connector.UpstreamIndexTtl,
                 UpstreamTimeout = figet.Connector.UpstreamTimeout,
+                UpstreamSearchTtl = figet.Connector.UpstreamSearchTtl,
+                UpstreamSearchBudget = figet.Connector.UpstreamSearchBudget,
                 TempPath = figet.Storage.TempPath,
             };
         });
         services.AddSingleton<IUpstreamClient, NuGetUpstreamClient>();
         services.AddSingleton(sp => new UpstreamMetadataCache(
             sp.GetRequiredService<IOptions<FiGetOptions>>().Value.Connector.MaxDescribedPackages));
+        services.AddSingleton(sp => new UpstreamSearchCache(sp.GetRequiredService<TimeProvider>()));
 
         // Refreshing a stale catalogue happens behind the request that noticed it was stale. The queue is
         // shared, the worker is one loop, and the connector only ever asks - it never waits.

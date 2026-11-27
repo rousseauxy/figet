@@ -112,6 +112,15 @@ public sealed class StubUpstreamClient : IUpstreamClient
     /// <summary>Lets any waiting catalogue calls finish, and stops holding new ones.</summary>
     public void ReleaseCatalogues() => Interlocked.Exchange(ref catalogGate, null)?.TrySetResult();
 
+    private TaskCompletionSource? searchGate;
+
+    /// <summary>Makes searches wait until <see cref="ReleaseSearches"/> is called, as a slow gallery does.</summary>
+    public void HoldSearches() =>
+        Volatile.Write(ref searchGate, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+
+    /// <summary>Lets any waiting searches finish, and stops holding new ones.</summary>
+    public void ReleaseSearches() => Interlocked.Exchange(ref searchGate, null)?.TrySetResult();
+
     /// <summary>Dependencies this upstream declares, keyed by "id|version".</summary>
     private readonly ConcurrentDictionary<string, List<UpstreamDependency>> dependencies = new(StringComparer.OrdinalIgnoreCase);
 
@@ -237,7 +246,7 @@ public sealed class StubUpstreamClient : IUpstreamClient
     }
 
     /// <summary>Matches on the id, which is all the real galleries are asked for in these tests.</summary>
-    public Task<IReadOnlyList<UpstreamSearchHit>> SearchAsync(
+    public async Task<IReadOnlyList<UpstreamSearchHit>> SearchAsync(
         FeedUpstream upstream,
         string query,
         bool includePrerelease,
@@ -246,6 +255,11 @@ public sealed class StubUpstreamClient : IUpstreamClient
         CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref searchCalls);
+        if (Volatile.Read(ref searchGate) is { } gate)
+        {
+            await gate.Task.WaitAsync(cancellationToken);
+        }
+
         FailIfAsked();
 
         IReadOnlyList<UpstreamSearchHit> hits = packages
@@ -263,7 +277,7 @@ public sealed class StubUpstreamClient : IUpstreamClient
             .Take(take)
             .ToList();
 
-        return Task.FromResult(hits);
+        return hits;
     }
 
     /// <summary>Release notes this upstream reports for one version, keyed "id|version".</summary>

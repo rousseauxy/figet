@@ -22,6 +22,7 @@ public sealed class ConnectorService(
     IPackageStorage storage,
     PackageIngestionService ingestion,
     UpstreamMetadataCache metadataCache,
+    UpstreamSearchCache searchCache,
     IUpstreamRefreshQueue refreshes,
     ConnectorSettings settings,
     TimeProvider time,
@@ -621,42 +622,117 @@ public sealed class ConnectorService(
     {
         ArgumentNullException.ThrowIfNull(feed);
         take = Math.Min(take, MaxUpstreamSearchHits);
+        var upstreams = feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal).ToList();
+        if (upstreams.Count == 0 || take <= 0)
+        {
+            return [];
+        }
+
+        // Each upstream is asked once per question and its answer kept a few minutes (FG-64): the gallery round trip was
+        // most of every term search's time. The search runs on its own clock, not the request's, so a request that stops
+        // waiting still leaves the answer for the next one.
+        var searches = upstreams
+            .Select(upstream => searchCache.GetOrStart(
+                SearchKey(upstream, query, includePrerelease, take),
+                settings.UpstreamSearchTtl,
+                () => SearchOneUpstreamAsync(upstream, query, includePrerelease, take)))
+            .ToList();
+
+        var all = Task.WhenAll(searches);
+        if (!all.IsCompleted)
+        {
+            try
+            {
+                await all.WaitAsync(settings.UpstreamSearchBudget, time, cancellationToken);
+            }
+            catch (TimeoutException)
+            {
+                logger.LogInformation(
+                    "A search for {Query} in feed {Feed} answered without {Upstreams}: still searching after {Budget}; the answer is kept for the next search.",
+                    query,
+                    feed.Name,
+                    string.Join(", ", upstreams.Where((_, i) => !searches[i].IsCompleted).Select(u => u.Name)),
+                    settings.UpstreamSearchBudget);
+            }
+        }
+
+        // Merged in upstream order, the first upstream to name an id winning, as the version lists are.
         var hits = new List<UpstreamSearchHit>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var upstream in feed.Upstreams.Where(u => u.Enabled).OrderBy(u => u.Ordinal))
+        foreach (var search in searches)
         {
-            var offset = 0;
-            for (var chunk = 0; hits.Count < take && chunk < MaxSearchChunksPerUpstream; chunk++)
+            if (search.IsCompletedSuccessfully && search.Result is { } found)
             {
-                var size = Math.Min(SearchChunk, take - hits.Count);
-                IReadOnlyList<UpstreamSearchHit> found;
-                try
-                {
-                    found = await client.SearchAsync(upstream, query, includePrerelease, offset, size, cancellationToken);
-                }
-                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-                {
-                    logger.LogWarning(ex, "Upstream {Upstream} did not answer a search for {Query}.", upstream.Name, query);
-                    break;
-                }
-
-                var before = hits.Count;
                 foreach (var hit in found)
                 {
-                    if (hits.Count < take && Allows(upstream, hit.Id.ToLowerInvariant()) && seen.Add(hit.Id))
+                    if (hits.Count < take && seen.Add(hit.Id))
                     {
-                        hits.Add(hit with { Upstream = upstream.Name });
+                        hits.Add(hit);
                     }
                 }
-
-                if (found.Count < size || (hits.Count == before && found.Count > 0 && found.All(h => seen.Contains(h.Id))))
-                {
-                    break;
-                }
-
-                offset += found.Count;
             }
+        }
+
+        return hits;
+    }
+
+    /// <summary>
+    /// Everything that decides one upstream's answer. The address and the patterns are part of it, so an edited upstream
+    /// is not answered from what it said before the edit.
+    /// </summary>
+    private static string SearchKey(FeedUpstream upstream, string query, bool includePrerelease, int take) =>
+        string.Join(
+            '\u001f',
+            upstream.Key.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            upstream.Url,
+            upstream.Allow,
+            upstream.Deny,
+            includePrerelease ? "1" : "0",
+            take.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            query.Trim());
+
+    /// <summary>
+    /// Up to <paramref name="take"/> hits from one upstream that its patterns allow, or null when it did not answer. Bounded
+    /// by <see cref="ConnectorSettings.UpstreamTimeout"/> alone: no request waits on it past the search budget.
+    /// </summary>
+    private async Task<IReadOnlyList<UpstreamSearchHit>?> SearchOneUpstreamAsync(FeedUpstream upstream, string query, bool includePrerelease, int take)
+    {
+        var name = upstream.Name;
+        using var timeout = new CancellationTokenSource(settings.UpstreamTimeout, time);
+        var hits = new List<UpstreamSearchHit>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var offset = 0;
+        for (var chunk = 0; hits.Count < take && chunk < MaxSearchChunksPerUpstream; chunk++)
+        {
+            var size = Math.Min(SearchChunk, take - hits.Count);
+            IReadOnlyList<UpstreamSearchHit> found;
+            try
+            {
+                found = await client.SearchAsync(upstream, query, includePrerelease, offset, size, timeout.Token);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Upstream {Upstream} did not answer a search for {Query}.", name, query);
+
+                // What earlier chunks found is still an answer; with nothing found, the next request asks again.
+                return chunk == 0 ? null : hits;
+            }
+
+            var before = hits.Count;
+            foreach (var hit in found)
+            {
+                if (hits.Count < take && Allows(upstream, hit.Id.ToLowerInvariant()) && seen.Add(hit.Id))
+                {
+                    hits.Add(hit with { Upstream = name });
+                }
+            }
+
+            if (found.Count < size || (hits.Count == before && found.Count > 0 && found.All(h => seen.Contains(h.Id))))
+            {
+                break;
+            }
+
+            offset += found.Count;
         }
 
         return hits;
